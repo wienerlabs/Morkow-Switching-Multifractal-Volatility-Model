@@ -1,20 +1,20 @@
-# 📊 MSM-VaR: Sistem de Măsurare a Riscului de Piață
+#  MSM-VaR: Sistem de Măsurare a Riscului de Piață
 
 > **Model statistic pentru cuantificarea riscului financiar folosind Markov-Switching Multifractal (MSM) și Value-at-Risk (VaR)**
 
 ---
 
-## 🎯 Ce face acest proiect?
+##  Ce face acest proiect?
 
 Acest proiect implementează un **sistem de măsurare a riscului de piață** care răspunde la întrebarea fundamentală din finanțe:
 
 > *"Cât de mult pot pierde mâine, în cel mai rău caz rezonabil?"*
 
-**⚠️ Clarificare importantă:** Acesta este un model de **măsurare a riscului**, NU de predicție a crash-urilor. Nu prezice când va scădea piața, ci **cuantifică nivelul curent de risc** bazat pe volatilitatea recentă.
+** Clarificare importantă:** Acesta este un model de **măsurare a riscului**, NU de predicție a crash-urilor. Nu prezice când va scădea piața, ci **cuantifică nivelul curent de risc** bazat pe volatilitatea recentă.
 
 ---
 
-## 🧠 Cum funcționează? (Explicație simplă)
+##  Cum funcționează? (Explicație simplă)
 
 ### Analogia "Termometrului de Risc"
 
@@ -33,7 +33,7 @@ Imaginați-vă modelul ca un **termometru pentru piețe financiare**:
 
 ---
 
-## 📐 Fundamente Matematice
+##  Fundamente Matematice
 
 ### 1. Modelul Markov-Switching Multifractal (MSM)
 
@@ -87,7 +87,7 @@ Unde:
 
 ---
 
-## ✅ Validare Statistică (Backtesting)
+##  Validare Statistică (Backtesting)
 
 ### Testul Kupiec (Unconditional Coverage)
 
@@ -105,8 +105,8 @@ unde:
 ```
 
 **Interpretare:**
-- p-value ≥ 0.05 → ✅ Model corect calibrat
-- p-value < 0.05 → ❌ Breach rate diferă semnificativ de 5%
+- p-value ≥ 0.05 →  Model corect calibrat
+- p-value < 0.05 →  Breach rate diferă semnificativ de 5%
 
 ### Testul Christoffersen (Independence)
 
@@ -122,8 +122,8 @@ Azi Breach      n₁₀          n₁₁
 ```
 
 **Interpretare:**
-- p-value ≥ 0.05 → ✅ Breach-urile sunt independente
-- p-value < 0.05 → ❌ Breach-urile vin în clustere (modelul sub-estimează persistența riscului)
+- p-value ≥ 0.05 →  Breach-urile sunt independente
+- p-value < 0.05 →  Breach-urile vin în clustere (modelul sub-estimează persistența riscului)
 
 ### Conditional Coverage (CC)
 
@@ -172,7 +172,7 @@ calibrate_msm_advanced(returns, method='hybrid')
 
 ---
 
-## 📊 Rezultate Tipice
+##  Rezultate Tipice
 
 ### Output Exemplu (BTC-USD)
 
@@ -194,7 +194,7 @@ calibrate_msm_advanced(returns, method='hybrid')
    Sigma states: [1.285, 1.957, 2.981, 4.539, 8.923]
 
    --- Quality Metrics ---
-   VaR breach rate: 5.02% (target: 5.0%)  ✅
+   VaR breach rate: 5.02% (target: 5.0%)  
    Corr(|r|, σ):    0.3 (out-of-sample)
    Log-likelihood:  -8234.52
    AIC: 16475.04
@@ -218,7 +218,7 @@ Conditional Coverage: LR=1.258 | p-value=0.5331 ✅ PASS
 
 ---
 
-## 🚀 Cum să folosești
+##  Cum să folosești
 
 ### Instalare
 
@@ -257,7 +257,7 @@ CALIBRATION_METHOD = 'hybrid'  # 'mle', 'grid', 'empirical', 'hybrid'
 
 ---
 
-## 📁 Structura Proiectului
+##  Structura Proiectului
 
 ```
 MSM_VAR_MODEL/
@@ -270,7 +270,7 @@ MSM_VAR_MODEL/
 
 ---
 
-## 🛠️ Stack Tehnic
+##  Stack Tehnic
 
 | Categorie | Tehnologii |
 |-----------|------------|
@@ -282,7 +282,7 @@ MSM_VAR_MODEL/
 
 ---
 
-## 📚 Referințe Academice
+##  Referințe Academice
 
 1. **Calvet, L. E., & Fisher, A. J. (2004)**
    *"How to Forecast Long-Run Volatility: Regime Switching and the Estimation of Multifractal Processes"*
@@ -305,25 +305,25 @@ MSM_VAR_MODEL/
 ## ⚖️ Limitări și Disclaimer
 
 ### Ce poate face modelul:
-- ✅ Cuantifică riscul curent bazat pe volatilitatea recentă
-- ✅ Estimează VaR cu validare statistică riguroasă
-- ✅ Identifică regimuri de volatilitate (calm vs. turbulent)
-- ✅ Oferă probabilități tail condiționate pe regimul curent
+-  Cuantifică riscul curent bazat pe volatilitatea recentă
+-  Estimează VaR cu validare statistică riguroasă
+-  Identifică regimuri de volatilitate (calm vs. turbulent)
+-  Oferă probabilități tail condiționate pe regimul curent
 
 ### Ce NU poate face modelul:
-- ❌ **NU prezice crash-uri** înainte să se întâmple
-- ❌ **NU oferă semnale de tranzacționare** (buy/sell)
-- ❌ **NU garantează profituri** sau protecție împotriva pierderilor
-- ❌ **NU captează evenimente "black swan"** (extreme rare)
+-  **NU prezice crash-uri** înainte să se întâmple
+-  **NU oferă semnale de tranzacționare** (buy/sell)
+-  **NU garantează profituri** sau protecție împotriva pierderilor
+-  **NU captează evenimente "black swan"** (extreme rare)
 
 ### Disclaimer
 > Acest model este dezvoltat în scop educațional și de cercetare. Nu constituie sfat financiar. Performanța trecută nu garantează rezultate viitoare. Orice decizie de investiție trebuie luată în consultare cu un profesionist financiar autorizat.
 
 ---
 
-## 👤 Autor
+##  Autor
 
-**[Tontici Sergiu]**
+**Tontici Sergiu**
 
 📧 Email: [tonticisergiu236@gmail.com]
 🔗 LinkedIn: [https://www.linkedin.com/in/sergiu-tontici-71aa96361/]
@@ -331,13 +331,13 @@ MSM_VAR_MODEL/
 
 ---
 
-## 📄 Licență
+##  Licență
 
 MIT License - vezi fișierul [LICENSE](LICENSE) pentru detalii.
 
 ---
 
-## 🤝 Contribuții
+##  Contribuții
 
 Contribuțiile sunt binevenite! Pentru modificări majore, deschide mai întâi un issue pentru a discuta ce ai dori să schimbi.
 
@@ -358,6 +358,7 @@ git push origin feature/NumeFeature
 ---
 
 <p align="center">
-  <i>Proiect dezvoltat cu 📊 pentru înțelegerea riscului financiar</i>
+  <i>Proiect dezvoltat cu  pentru înțelegerea riscului financiar</i>
 </p>
+
 
