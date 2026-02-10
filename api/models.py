@@ -596,3 +596,58 @@ class HawkesSimulateResponse(BaseModel):
     mean_intensity: float
     peak_intensity: float
     timestamp: datetime
+
+
+# ── Multifractal / Hurst ──────────────────────────────────────────────
+
+
+class HurstResponse(BaseModel):
+    token: str
+    H: float = Field(..., description="Hurst exponent estimate")
+    H_se: float = Field(..., description="Standard error of H")
+    r_squared: float = Field(..., description="R² of log-log regression")
+    interpretation: str
+    method: str = Field(..., description="rs or dfa")
+    timestamp: datetime
+
+
+class MultifractalSpectrumResponse(BaseModel):
+    token: str
+    width: float = Field(..., description="Spectrum width (degree of multifractality)")
+    peak_alpha: float = Field(..., description="α at peak f(α)")
+    is_multifractal: bool
+    q_values: list[float]
+    tau_q: list[float]
+    H_q: list[float] = Field(..., description="Generalized Hurst exponent H(q)")
+    alpha: list[float]
+    f_alpha: list[float]
+    timestamp: datetime
+
+
+class RegimeHurstItem(BaseModel):
+    regime: int
+    sigma: float
+    n_obs: int
+    fraction: float
+    H: float | None = None
+    H_se: float | None = None
+    interpretation: str
+
+
+class RegimeHurstResponse(BaseModel):
+    token: str
+    per_regime: list[RegimeHurstItem]
+    n_states: int
+    summary: str
+    timestamp: datetime
+
+
+class FractalDiagnosticsResponse(BaseModel):
+    token: str
+    H_rs: float
+    H_dfa: float
+    spectrum_width: float
+    is_multifractal: bool
+    is_long_range_dependent: bool
+    confidence_z: float
+    timestamp: datetime
