@@ -27,6 +27,8 @@ from api.models import (
     CopulaFitResult,
     CopulaPortfolioVaRResponse,
     ErrorResponse,
+    RegimeDependentCopulaVaRResponse,
+    RegimeTailDependenceItem,
     EVTBacktestResponse,
     EVTBacktestRow,
     EVTCalibrateRequest,
@@ -990,6 +992,62 @@ def compare_portfolio_copulas():
             )
             for r in ranking
         ],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/portfolio/copula/regime-var", response_model=RegimeDependentCopulaVaRResponse)
+def compute_regime_dependent_copula_var(
+    alpha: float = Query(0.05, gt=0.0, lt=1.0),
+    n_simulations: int = Query(10_000, ge=1000, le=100_000),
+):
+    """Portfolio VaR using regime-dependent copula mixture.
+
+    Crisis regimes use Student-t copula (tail dependence),
+    calm regimes use Gaussian copula (no tail dependence).
+    Samples are blended proportionally to current regime probabilities.
+    """
+    from copula_portfolio_var import regime_dependent_copula_var as rdcv_fn
+
+    model = _get_portfolio_model()
+    assets = model["assets"]
+    equal_w = {a: 1.0 / len(assets) for a in assets}
+    result = rdcv_fn(model, equal_w, alpha=alpha, n_simulations=n_simulations)
+
+    rc = result["current_regime_copula"]
+    td_rc = rc["tail_dependence"]
+
+    return RegimeDependentCopulaVaRResponse(
+        regime_dependent_var=result["regime_dependent_var"],
+        static_var=result["static_var"],
+        var_difference_pct=result["var_difference_pct"],
+        current_regime_copula=CopulaFitResult(
+            family=rc["family"],
+            params=rc["params"],
+            log_likelihood=rc["log_likelihood"],
+            aic=rc["aic"],
+            bic=rc["bic"],
+            n_obs=rc["n_obs"],
+            n_assets=rc["n_assets"],
+            n_params=rc["n_params"],
+            tail_dependence=TailDependence(
+                lambda_lower=td_rc["lambda_lower"],
+                lambda_upper=td_rc["lambda_upper"],
+            ),
+        ),
+        regime_tail_dependence=[
+            RegimeTailDependenceItem(
+                regime=rtd["regime"],
+                family=rtd["family"],
+                lambda_lower=rtd["lambda_lower"],
+                lambda_upper=rtd["lambda_upper"],
+            )
+            for rtd in result["regime_tail_dependence"]
+        ],
+        dominant_regime=result["dominant_regime"],
+        regime_probs=result["regime_probs"],
+        n_simulations=result["n_simulations"],
+        alpha=result["alpha"],
         timestamp=datetime.now(timezone.utc),
     )
 

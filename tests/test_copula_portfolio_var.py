@@ -154,3 +154,129 @@ class TestCompareCopulas:
         ranking = cpv.compare_copulas(multivariate_returns, families=["gaussian", "frank"])
         assert len(ranking) == 2
 
+
+class TestRegimeDependentCopulaVar:
+    """Tests for regime_dependent_copula_var() and _sample_regime_copula()."""
+
+    def test_output_keys(self, portfolio_model):
+        w = {"A": 0.4, "B": 0.35, "C": 0.25}
+        result = cpv.regime_dependent_copula_var(portfolio_model, w, n_simulations=3000)
+        expected = {
+            "regime_dependent_var", "static_var", "var_difference_pct",
+            "current_regime_copula", "regime_tail_dependence",
+            "dominant_regime", "regime_probs", "n_simulations", "alpha",
+        }
+        assert expected.issubset(result.keys())
+
+    def test_var_is_negative(self, portfolio_model):
+        w = {"A": 0.4, "B": 0.35, "C": 0.25}
+        result = cpv.regime_dependent_copula_var(portfolio_model, w, n_simulations=3000)
+        assert result["regime_dependent_var"] < 0
+        assert result["static_var"] < 0
+
+    def test_regime_tail_dependence_per_regime(self, portfolio_model):
+        w = {"A": 0.4, "B": 0.35, "C": 0.25}
+        result = cpv.regime_dependent_copula_var(portfolio_model, w, n_simulations=3000)
+        rtd = result["regime_tail_dependence"]
+        assert len(rtd) == 5
+        for item in rtd:
+            assert "regime" in item
+            assert "family" in item
+            assert "lambda_lower" in item
+            assert "lambda_upper" in item
+
+    def test_crisis_regimes_use_student_t(self, portfolio_model):
+        w = {"A": 0.4, "B": 0.35, "C": 0.25}
+        result = cpv.regime_dependent_copula_var(portfolio_model, w, n_simulations=3000)
+        rtd = result["regime_tail_dependence"]
+        # States 4 and 5 (indices 3,4) should use student_t (crisis)
+        for item in rtd:
+            if item["regime"] >= 4:
+                assert item["family"] == "student_t"
+
+    def test_calm_regimes_use_gaussian(self, portfolio_model):
+        w = {"A": 0.4, "B": 0.35, "C": 0.25}
+        result = cpv.regime_dependent_copula_var(portfolio_model, w, n_simulations=3000)
+        rtd = result["regime_tail_dependence"]
+        # States 1-3 (indices 0,1,2) should use gaussian (calm)
+        for item in rtd:
+            if item["regime"] <= 3:
+                assert item["family"] == "gaussian"
+
+    def test_crisis_tail_dependence_ge_calm(self, portfolio_model):
+        w = {"A": 0.4, "B": 0.35, "C": 0.25}
+        result = cpv.regime_dependent_copula_var(portfolio_model, w, n_simulations=3000)
+        rtd = result["regime_tail_dependence"]
+        calm_max = max(
+            (item["lambda_lower"] + item["lambda_upper"])
+            for item in rtd if item["regime"] <= 3
+        )
+        crisis_min = min(
+            (item["lambda_lower"] + item["lambda_upper"])
+            for item in rtd if item["regime"] >= 4
+        )
+        # Student-t has non-negative tail dependence, Gaussian always zero
+        assert crisis_min >= calm_max
+        # Calm regimes (Gaussian) must have exactly zero tail dependence
+        assert calm_max == 0.0
+
+    def test_var_difference_pct_computed(self, portfolio_model):
+        w = {"A": 0.4, "B": 0.35, "C": 0.25}
+        result = cpv.regime_dependent_copula_var(portfolio_model, w, n_simulations=3000)
+        assert isinstance(result["var_difference_pct"], float)
+        assert np.isfinite(result["var_difference_pct"])
+
+    def test_regime_probs_sum_to_one(self, portfolio_model):
+        w = {"A": 0.4, "B": 0.35, "C": 0.25}
+        result = cpv.regime_dependent_copula_var(portfolio_model, w, n_simulations=3000)
+        np.testing.assert_allclose(sum(result["regime_probs"]), 1.0, atol=1e-6)
+
+    def test_dominant_regime_valid(self, portfolio_model):
+        w = {"A": 0.4, "B": 0.35, "C": 0.25}
+        result = cpv.regime_dependent_copula_var(portfolio_model, w, n_simulations=3000)
+        assert 1 <= result["dominant_regime"] <= 5
+
+    def test_deterministic_with_seed(self, portfolio_model):
+        w = {"A": 0.4, "B": 0.35, "C": 0.25}
+        r1 = cpv.regime_dependent_copula_var(portfolio_model, w, seed=77, n_simulations=3000)
+        r2 = cpv.regime_dependent_copula_var(portfolio_model, w, seed=77, n_simulations=3000)
+        assert r1["regime_dependent_var"] == r2["regime_dependent_var"]
+
+    def test_current_regime_copula_is_valid(self, portfolio_model):
+        w = {"A": 0.4, "B": 0.35, "C": 0.25}
+        result = cpv.regime_dependent_copula_var(portfolio_model, w, n_simulations=3000)
+        rc = result["current_regime_copula"]
+        assert "family" in rc
+        assert "params" in rc
+        assert "tail_dependence" in rc
+        assert rc["family"] in cpv.COPULA_FAMILIES
+
+
+class TestSampleRegimeCopula:
+    """Tests for _sample_regime_copula() helper."""
+
+    def test_output_shape(self, portfolio_model):
+        K = 5
+        d = 3
+        n_samples = 500
+        rng = np.random.RandomState(42)
+        # Build regime copulas manually
+        rc_list = cpv.regime_conditional_copulas(portfolio_model, family="gaussian")
+        probs = np.ones(K) / K
+        u = cpv._sample_regime_copula(rc_list, probs, n_samples, d, rng)
+        assert u.shape == (n_samples, d)
+
+    def test_values_in_unit_interval(self, portfolio_model):
+        rc_list = cpv.regime_conditional_copulas(portfolio_model, family="gaussian")
+        probs = np.ones(5) / 5
+        rng = np.random.RandomState(42)
+        u = cpv._sample_regime_copula(rc_list, probs, 500, 3, rng)
+        assert np.all(u >= 0) and np.all(u <= 1)
+
+    def test_concentrated_on_single_regime(self, portfolio_model):
+        rc_list = cpv.regime_conditional_copulas(portfolio_model, family="gaussian")
+        probs = np.array([1.0, 0.0, 0.0, 0.0, 0.0])
+        rng = np.random.RandomState(42)
+        u = cpv._sample_regime_copula(rc_list, probs, 500, 3, rng)
+        assert u.shape == (500, 3)
+

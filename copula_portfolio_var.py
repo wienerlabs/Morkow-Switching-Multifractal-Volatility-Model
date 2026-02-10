@@ -494,3 +494,167 @@ def compare_copulas(
         r["best"] = rank == 0
 
     return results
+
+
+# Regime-to-copula family mapping:
+# Calm regimes (low volatility states) → Gaussian/Frank (no tail dependence)
+# Crisis regimes (high volatility states) → Student-t/Clayton (strong tail dependence)
+_REGIME_COPULA_MAP = {
+    "calm": "gaussian",
+    "crisis": "student_t",
+}
+
+
+def _classify_regime(k: int, K: int) -> str:
+    """Map regime index to calm/crisis based on position in state ordering."""
+    # States are ordered low-vol → high-vol. Top 40% are crisis.
+    threshold = max(1, int(K * 0.6))
+    return "crisis" if k >= threshold else "calm"
+
+
+def _sample_regime_copula(
+    regime_copulas: list[dict],
+    regime_probs: np.ndarray,
+    n_samples: int,
+    d: int,
+    rng: np.random.RandomState,
+) -> np.ndarray:
+    """
+    Sample from regime-weighted mixture of copulas.
+
+    Each regime contributes samples proportional to its current probability.
+    Crisis regimes use Student-t copula (tail dependence), calm regimes use Gaussian.
+    """
+    K = len(regime_copulas)
+    all_samples = []
+
+    for k in range(K):
+        p_k = float(regime_probs[k])
+        n_k = max(1, int(round(p_k * n_samples)))
+        copula_fit = regime_copulas[k]["copula"]
+        family = copula_fit["family"]
+        params = copula_fit["params"]
+
+        # Deserialize R matrix if stored as list
+        params_copy = dict(params)
+        if "R" in params_copy and isinstance(params_copy["R"], list):
+            params_copy["R"] = np.array(params_copy["R"])
+
+        try:
+            u_k = _sample_copula(family, params_copy, n_k, d, rng)
+        except Exception as exc:
+            logger.warning("Sampling failed for regime %d (%s): %s — falling back to Gaussian", k + 1, family, exc)
+            R_fallback = np.eye(d)
+            u_k = _sample_copula("gaussian", {"R": R_fallback}, n_k, d, rng)
+
+        all_samples.append(u_k)
+
+    combined = np.vstack(all_samples)
+    rng.shuffle(combined)
+
+    # Trim or pad to exact n_samples
+    if len(combined) > n_samples:
+        combined = combined[:n_samples]
+    elif len(combined) < n_samples:
+        extra = n_samples - len(combined)
+        idx = rng.choice(len(combined), size=extra, replace=True)
+        combined = np.vstack([combined, combined[idx]])
+
+    return combined
+
+
+def regime_dependent_copula_var(
+    model: dict,
+    weights: dict[str, float],
+    alpha: float = 0.05,
+    n_simulations: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """
+    Portfolio VaR using regime-dependent copula mixture.
+
+    Fits regime-appropriate copula families (Gaussian for calm, Student-t for crisis),
+    then blends Monte Carlo samples proportionally to current regime probabilities.
+    Crisis regimes contribute heavier-tailed samples, producing more conservative VaR.
+
+    Args:
+        model: Output of calibrate_multivariate() from portfolio_var.py.
+        weights: Asset weights dict, e.g. {"BTC": 0.5, "ETH": 0.5}.
+        alpha: VaR confidence level (default 0.05 = 95% VaR).
+        n_simulations: Number of Monte Carlo draws.
+        seed: Random seed for reproducibility.
+
+    Returns:
+        Dict with regime_dependent_var, static_var, var_difference_pct,
+        current_regime_copula, regime_tail_dependence, and simulation metadata.
+    """
+    assets = model["assets"]
+    d = len(assets)
+    K = model["num_states"]
+    w = np.array([weights.get(a, 0.0) for a in assets])
+    probs = model["current_probs"]
+    rng = np.random.RandomState(seed)
+
+    # Fit regime-appropriate copulas: calm → gaussian, crisis → student_t
+    regime_copulas = []
+    for k in range(K):
+        regime_type = _classify_regime(k, K)
+        family = _REGIME_COPULA_MAP[regime_type]
+        try:
+            rc_list = regime_conditional_copulas(model, family=family)
+            regime_copulas.append(rc_list[k])
+        except Exception as exc:
+            logger.warning("Regime %d copula fit failed: %s — using full-sample gaussian", k + 1, exc)
+            returns_arr = model["returns_df"].values
+            fallback = fit_copula(returns_arr, family="gaussian")
+            regime_copulas.append({"regime": k + 1, "n_obs": len(returns_arr), "copula": fallback})
+
+    # Regime-weighted copula MC simulation
+    u_sim = _sample_regime_copula(regime_copulas, probs, n_simulations, d, rng)
+
+    # Convert uniform margins to return space using per-asset MSM marginals
+    returns_sim = np.zeros_like(u_sim)
+    for i, asset in enumerate(assets):
+        sigma_i = sum(
+            probs[k_] * model["per_asset"][asset]["sigma_states"][k_]
+            for k_ in range(K)
+        )
+        returns_sim[:, i] = norm.ppf(np.clip(u_sim[:, i], 1e-10, 1 - 1e-10)) * sigma_i
+
+    port_returns = returns_sim @ w
+    regime_var = float(np.percentile(port_returns, alpha * 100))
+
+    # Static VaR (best single copula) for comparison
+    best_fit = compare_copulas(model["returns_df"], families=list(COPULA_FAMILIES))
+    static_fit = best_fit[0] if best_fit else fit_copula(model["returns_df"].values, "gaussian")
+    static_result = copula_portfolio_var(model, weights, static_fit, alpha=alpha, n_simulations=n_simulations, seed=seed)
+    static_var = static_result["copula_var"]
+
+    var_diff_pct = ((regime_var - static_var) / abs(static_var) * 100) if abs(static_var) > 1e-12 else 0.0
+
+    # Most probable regime's copula
+    dominant_k = int(np.argmax(probs))
+    current_regime_copula = regime_copulas[dominant_k]["copula"]
+
+    # Tail dependence per regime
+    regime_tail_dependence = []
+    for k in range(K):
+        rc = regime_copulas[k]["copula"]
+        regime_tail_dependence.append({
+            "regime": k + 1,
+            "family": rc["family"],
+            "lambda_lower": rc["tail_dependence"]["lambda_lower"],
+            "lambda_upper": rc["tail_dependence"]["lambda_upper"],
+        })
+
+    return {
+        "regime_dependent_var": regime_var,
+        "static_var": static_var,
+        "var_difference_pct": var_diff_pct,
+        "current_regime_copula": current_regime_copula,
+        "regime_tail_dependence": regime_tail_dependence,
+        "dominant_regime": dominant_k + 1,
+        "regime_probs": probs.tolist(),
+        "n_simulations": n_simulations,
+        "alpha": alpha,
+    }

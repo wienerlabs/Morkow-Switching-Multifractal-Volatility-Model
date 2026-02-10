@@ -430,6 +430,26 @@ class CopulaCompareResponse(BaseModel):
     timestamp: datetime
 
 
+class RegimeTailDependenceItem(BaseModel):
+    regime: int
+    family: str
+    lambda_lower: float
+    lambda_upper: float
+
+
+class RegimeDependentCopulaVaRResponse(BaseModel):
+    regime_dependent_var: float
+    static_var: float
+    var_difference_pct: float
+    current_regime_copula: CopulaFitResult
+    regime_tail_dependence: list[RegimeTailDependenceItem]
+    dominant_regime: int
+    regime_probs: list[float]
+    n_simulations: int
+    alpha: float
+    timestamp: datetime
+
+
 # --- EVT (Extreme Value Theory) models ---
 
 
