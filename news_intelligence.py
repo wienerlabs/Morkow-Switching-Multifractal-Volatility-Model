@@ -603,3 +603,160 @@ def compute_market_signal(items: list[NewsItem],
         bear_pct=round(bear_pct, 4),
         neutral_pct=round(neut_pct, 4),
     )
+
+
+# ── Main Orchestrator ──
+
+def fetch_news_intelligence(
+    regime_state: int = 3,
+    num_states: int = 5,
+    max_items: int = 50,
+    timeout: float = 30.0,
+) -> dict:
+    """
+    Fetch from all 3 sources, apply advanced scoring pipeline, return feed + signal.
+
+    Pipeline:
+    1. Parallel fetch from CryptoCompare, NewsData.io, CryptoPanic
+    2. Transform each article → NewsItem with sentiment + impact
+    3. Jaccard deduplication + Bayesian multi-source fusion
+    4. Sort by timestamp descending, cap at max_items
+    5. Compute aggregate MarketSignal
+
+    Args:
+        regime_state: Current MSM regime (1-based). Higher = more volatile.
+        num_states: Total MSM regimes (default 5).
+        max_items: Max news items to return.
+        timeout: HTTP timeout per source.
+
+    Returns:
+        Dict with 'items' (list of NewsItem as dicts), 'signal' (MarketSignal),
+        'source_counts', and 'meta'.
+    """
+    t0 = time.time()
+    errors: list[str] = []
+
+    with httpx.Client(timeout=timeout) as client:
+        # Fetch from all sources
+        try:
+            cc_raw = _fetch_cryptocompare(client)
+        except Exception as e:
+            cc_raw = []
+            errors.append(f"CryptoCompare: {e}")
+
+        try:
+            nd_raw = _fetch_newsdata(client)
+        except Exception as e:
+            nd_raw = []
+            errors.append(f"NewsData: {e}")
+
+        try:
+            cp_raw = _fetch_cryptopanic(client)
+        except Exception as e:
+            cp_raw = []
+            errors.append(f"CryptoPanic: {e}")
+
+    if not cc_raw and not nd_raw and not cp_raw:
+        logger.error("All news sources failed: %s", errors)
+        return {
+            "items": [],
+            "signal": _signal_to_dict(compute_market_signal([])),
+            "source_counts": {"cryptocompare": 0, "newsdata": 0, "cryptopanic": 0},
+            "meta": {"errors": errors, "elapsed_ms": 0, "total": 0},
+        }
+
+    # Transform with progressive novelty tracking
+    recent_titles: list[str] = []
+    all_items: list[NewsItem] = []
+
+    for i, raw in enumerate(cc_raw):
+        item = _transform_cc(raw, i, recent_titles, regime_state, num_states)
+        all_items.append(item)
+        recent_titles.append(item.title)
+
+    for i, raw in enumerate(nd_raw):
+        item = _transform_nd(raw, i, recent_titles, regime_state, num_states)
+        all_items.append(item)
+        recent_titles.append(item.title)
+
+    for i, raw in enumerate(cp_raw):
+        item = _transform_cp(raw, i, recent_titles, regime_state, num_states)
+        all_items.append(item)
+        recent_titles.append(item.title)
+
+    # Bayesian fusion of duplicate stories across sources
+    fused = fuse_duplicate_sentiments(all_items)
+
+    # Sort by timestamp descending, cap
+    fused.sort(key=lambda n: n.timestamp, reverse=True)
+    fused = fused[:max_items]
+
+    # Compute aggregate market signal
+    signal = compute_market_signal(fused)
+
+    elapsed = round((time.time() - t0) * 1000)
+    logger.info(
+        "News fetch: CC=%d ND=%d CP=%d → %d items, %d fused | signal=%s %.3f | %dms",
+        len(cc_raw), len(nd_raw), len(cp_raw), len(all_items), len(fused),
+        signal.direction, signal.strength, elapsed,
+    )
+
+    return {
+        "items": [_item_to_dict(n) for n in fused],
+        "signal": _signal_to_dict(signal),
+        "source_counts": {
+            "cryptocompare": len(cc_raw),
+            "newsdata": len(nd_raw),
+            "cryptopanic": len(cp_raw),
+        },
+        "meta": {
+            "errors": errors,
+            "elapsed_ms": elapsed,
+            "total": len(fused),
+            "regime_state": regime_state,
+        },
+    }
+
+
+# ── Serialization helpers ──
+
+def _item_to_dict(item: NewsItem) -> dict:
+    return {
+        "id": item.id,
+        "source": item.source,
+        "api_source": item.api_source,
+        "title": item.title,
+        "body": item.body,
+        "url": item.url,
+        "timestamp": item.timestamp,
+        "assets": item.assets,
+        "sentiment": {
+            "score": item.sentiment.score,
+            "confidence": item.sentiment.confidence,
+            "label": item.sentiment.label,
+            "bull_weight": item.sentiment.bull_weight,
+            "bear_weight": item.sentiment.bear_weight,
+            "entropy": item.sentiment.entropy,
+        },
+        "impact": item.impact,
+        "novelty": item.novelty,
+        "source_credibility": item.source_credibility,
+        "time_decay": item.time_decay,
+        "regime_multiplier": item.regime_multiplier,
+    }
+
+
+def _signal_to_dict(sig: MarketSignal) -> dict:
+    return {
+        "sentiment_ewma": sig.sentiment_ewma,
+        "sentiment_momentum": sig.sentiment_momentum,
+        "entropy": sig.entropy,
+        "confidence": sig.confidence,
+        "direction": sig.direction,
+        "strength": sig.strength,
+        "n_sources": sig.n_sources,
+        "n_items": sig.n_items,
+        "bull_pct": sig.bull_pct,
+        "bear_pct": sig.bear_pct,
+        "neutral_pct": sig.neutral_pct,
+    }
