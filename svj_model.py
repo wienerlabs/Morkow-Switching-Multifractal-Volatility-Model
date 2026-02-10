@@ -108,6 +108,7 @@ def detect_jumps(
         "realized_variance": round(float(rv), 6),
         "bipower_variation": round(float(bv), 6),
         "threshold_multiplier": threshold_multiplier,
+    }
 
 
 def calibrate_svj(
@@ -351,3 +352,319 @@ def _svj_neg_log_likelihood(params: np.ndarray, returns: np.ndarray) -> float:
         return 1e12
 
     return -total_ll
+
+
+
+def svj_var(
+    returns: pd.Series | np.ndarray,
+    calibration: dict,
+    alpha: float = 0.05,
+    n_simulations: int = 50000,
+    seed: int = 42,
+) -> dict:
+    """
+    Jump-adjusted VaR via Monte Carlo simulation of the SVJ process.
+
+    Simulates one-day-ahead returns from the calibrated SVJ model and
+    computes VaR at the specified confidence level.
+
+    Args:
+        returns: Historical returns (percentage) for current state estimation.
+        calibration: Output of calibrate_svj().
+        alpha: Tail probability (e.g. 0.05 for 95% VaR).
+        n_simulations: Number of Monte Carlo paths.
+        seed: Random seed.
+
+    Returns:
+        Dict with var_svj, var_diffusion_only, var_jump_component,
+        expected_shortfall, jump_contribution_pct.
+    """
+    if isinstance(returns, pd.Series):
+        values = returns.values.astype(float)
+    else:
+        values = np.asarray(returns, dtype=float)
+
+    rng = np.random.RandomState(seed)
+    dt = 1.0 / 252.0
+
+    kappa = calibration["kappa"]
+    theta = calibration["theta"]
+    sigma = calibration["sigma"]
+    rho = calibration["rho"]
+    lambda_ = calibration["lambda_"]
+    mu_j = calibration["mu_j"]
+    sigma_j = calibration["sigma_j"]
+
+    # Current variance estimate from recent realized vol
+    recent_var = float(np.var(values[-min(20, len(values)):] / 100.0)) * 252.0
+    V_current = max(recent_var, theta * 0.5)
+
+    # Simulate one-day returns with full SVJ
+    Z1 = rng.randn(n_simulations)
+    Z2 = rng.randn(n_simulations)
+    W1 = Z1
+    W2 = rho * Z1 + math.sqrt(1 - rho**2) * Z2
+
+    sqrt_V = math.sqrt(max(V_current, 1e-10))
+
+    # Diffusion component
+    diffusion = -0.5 * V_current * dt + sqrt_V * math.sqrt(dt) * W1
+
+    # Jump component: N ~ Poisson(λΔt), J ~ N(μⱼ, σⱼ²)
+    n_jumps_sim = rng.poisson(lambda_ * dt, n_simulations)
+    jump_component = np.zeros(n_simulations)
+    for i in range(n_simulations):
+        if n_jumps_sim[i] > 0:
+            jump_sizes = rng.normal(mu_j, sigma_j, n_jumps_sim[i])
+            jump_component[i] = np.sum(jump_sizes)
+
+    # Jump-compensated drift
+    jump_compensator = lambda_ * (math.exp(mu_j + 0.5 * sigma_j**2) - 1.0) * dt
+    full_returns = (diffusion + jump_component - jump_compensator) * 100.0  # back to percentage
+
+    # Diffusion-only returns for comparison
+    diffusion_returns = diffusion * 100.0
+
+    # VaR calculations
+    var_svj = float(np.percentile(full_returns, alpha * 100))
+    var_diffusion = float(np.percentile(diffusion_returns, alpha * 100))
+
+    # Expected shortfall (CVaR)
+    tail_returns = full_returns[full_returns <= var_svj]
+    es = float(np.mean(tail_returns)) if len(tail_returns) > 0 else var_svj
+
+    # Jump contribution
+    var_jump_only = var_svj - var_diffusion
+    jump_pct = abs(var_jump_only / var_svj) * 100 if abs(var_svj) > 1e-10 else 0.0
+
+    return {
+        "var_svj": round(float(var_svj), 6),
+        "var_diffusion_only": round(float(var_diffusion), 6),
+        "var_jump_component": round(float(var_jump_only), 6),
+        "expected_shortfall": round(float(es), 6),
+        "jump_contribution_pct": round(float(jump_pct), 4),
+        "alpha": alpha,
+        "confidence": round(1.0 - alpha, 4),
+        "n_simulations": n_simulations,
+        "current_variance": round(float(V_current), 6),
+        "avg_jumps_per_day": round(float(np.mean(n_jumps_sim)), 4),
+    }
+
+
+def decompose_risk(
+    returns: pd.Series | np.ndarray,
+    calibration: dict,
+) -> dict:
+    """
+    Decompose total return variance into diffusion and jump components.
+
+    Total variance = diffusion variance + jump variance
+    Diffusion variance = θ (long-run Heston variance)
+    Jump variance = λ(μⱼ² + σⱼ²) (Poisson-compound-normal)
+
+    Args:
+        returns: Return series (percentage).
+        calibration: Output of calibrate_svj().
+
+    Returns:
+        Dict with diffusion_var, jump_var, total_var, jump_share_pct,
+        diffusion_share_pct, annualized metrics.
+    """
+    if isinstance(returns, pd.Series):
+        values = returns.values.astype(float)
+    else:
+        values = np.asarray(returns, dtype=float)
+
+    theta = calibration["theta"]
+    lambda_ = calibration["lambda_"]
+    mu_j = calibration["mu_j"]
+    sigma_j = calibration["sigma_j"]
+
+    # Annualized variance decomposition
+    diffusion_var = theta  # long-run Heston variance (annualized)
+    jump_var = lambda_ * (mu_j**2 + sigma_j**2)  # jump contribution (annualized)
+    total_model_var = diffusion_var + jump_var
+
+    # Empirical variance for comparison
+    empirical_var = float(np.var(values / 100.0)) * 252.0
+
+    jump_share = jump_var / total_model_var * 100 if total_model_var > 1e-12 else 0.0
+    diffusion_share = diffusion_var / total_model_var * 100 if total_model_var > 1e-12 else 100.0
+
+    # Daily metrics
+    daily_diffusion_vol = math.sqrt(diffusion_var / 252.0) * 100  # percentage
+    daily_jump_vol = math.sqrt(max(jump_var / 252.0, 0)) * 100
+    daily_total_vol = math.sqrt(max(total_model_var / 252.0, 0)) * 100
+
+    return {
+        "diffusion_variance": round(float(diffusion_var), 6),
+        "jump_variance": round(float(jump_var), 6),
+        "total_model_variance": round(float(total_model_var), 6),
+        "empirical_variance": round(float(empirical_var), 6),
+        "jump_share_pct": round(float(jump_share), 4),
+        "diffusion_share_pct": round(float(diffusion_share), 4),
+        "daily_diffusion_vol": round(float(daily_diffusion_vol), 4),
+        "daily_jump_vol": round(float(daily_jump_vol), 4),
+        "daily_total_vol": round(float(daily_total_vol), 4),
+        "annualized_diffusion_vol": round(float(math.sqrt(diffusion_var) * 100), 4),
+        "annualized_jump_vol": round(float(math.sqrt(max(jump_var, 0)) * 100), 4),
+        "annualized_total_vol": round(float(math.sqrt(max(total_model_var, 0)) * 100), 4),
+    }
+
+
+def svj_diagnostics(
+    returns: pd.Series | np.ndarray,
+    calibration: dict,
+) -> dict:
+    """
+    Comprehensive diagnostics for the calibrated SVJ model.
+
+    Includes jump detection statistics, parameter stability indicators,
+    EVT tail analysis of jump sizes, and Hawkes clustering metrics.
+
+    Args:
+        returns: Return series (percentage).
+        calibration: Output of calibrate_svj().
+
+    Returns:
+        Dict with jump_stats, parameter_quality, tail_analysis, clustering.
+    """
+    if isinstance(returns, pd.Series):
+        values = returns.values.astype(float)
+    else:
+        values = np.asarray(returns, dtype=float)
+
+    jumps = detect_jumps(returns)
+
+    # Parameter quality checks
+    kappa = calibration["kappa"]
+    theta = calibration["theta"]
+    sigma = calibration["sigma"]
+    lambda_ = calibration["lambda_"]
+
+    half_life = math.log(2) / kappa if kappa > 0 else float("inf")
+    mean_reversion_days = half_life * 252
+
+    # Tail analysis: kurtosis and skewness of returns
+    r = values / 100.0
+    skew = float(stats.skew(r))
+    kurt = float(stats.kurtosis(r))
+
+    # Model-implied moments
+    model_var = theta + lambda_ * (calibration["mu_j"]**2 + calibration["sigma_j"]**2)
+    model_skew_approx = lambda_ * calibration["mu_j"] * (3 * calibration["sigma_j"]**2 + calibration["mu_j"]**2)
+
+    # EVT integration: fit GPD to jump sizes if enough jumps
+    evt_tail = None
+    if jumps["n_jumps"] >= 10:
+        try:
+            from extreme_value_theory import fit_gpd, select_threshold
+            jump_losses = np.abs(np.array(jumps["jump_returns"]))
+            thresh_info = select_threshold(jump_losses)
+            gpd_fit = fit_gpd(jump_losses, thresh_info["threshold"])
+            evt_tail = {
+                "gpd_xi": gpd_fit["xi"],
+                "gpd_beta": gpd_fit["beta"],
+                "threshold": gpd_fit["threshold"],
+                "n_exceedances": gpd_fit["n_exceedances"],
+                "tail_index": gpd_fit["xi"],
+            }
+        except Exception as e:
+            logger.debug("EVT tail analysis of jumps failed: %s", e)
+
+    # Clustering analysis via Hawkes if enough jumps
+    clustering = None
+    if jumps["n_jumps"] >= 5:
+        try:
+            from hawkes_process import extract_events, fit_hawkes, detect_clusters
+            events = extract_events(returns, threshold_percentile=5.0, use_absolute=True)
+            if events["n_events"] >= 5:
+                h_fit = fit_hawkes(events["event_times"], events["T"])
+                clusters = detect_clusters(events["event_times"], h_fit)
+                clustering = {
+                    "branching_ratio": round(h_fit["branching_ratio"], 4),
+                    "half_life_days": round(h_fit["half_life"] * 252, 2),
+                    "n_clusters": len(clusters),
+                    "avg_cluster_size": round(
+                        float(np.mean([c["n_events"] for c in clusters])), 2
+                    ) if clusters else 0.0,
+                    "stationarity": h_fit["stationarity"],
+                }
+        except Exception as e:
+            logger.debug("Hawkes clustering analysis failed: %s", e)
+
+    return {
+        "jump_stats": {
+            "n_jumps": jumps["n_jumps"],
+            "jump_fraction": jumps["jump_fraction"],
+            "avg_jump_size": jumps["avg_jump_size"],
+            "jump_vol": jumps["jump_vol"],
+            "bns_statistic": jumps["bns_statistic"],
+            "bns_pvalue": jumps["bns_pvalue"],
+            "jumps_significant": jumps["bns_pvalue"] < 0.05,
+        },
+        "parameter_quality": {
+            "feller_satisfied": calibration["feller_satisfied"],
+            "feller_ratio": calibration["feller_ratio"],
+            "half_life_years": round(float(half_life), 4),
+            "mean_reversion_days": round(float(mean_reversion_days), 1),
+            "optimization_success": calibration["optimization_success"],
+        },
+        "moment_comparison": {
+            "empirical_skewness": round(float(skew), 6),
+            "empirical_kurtosis": round(float(kurt), 6),
+            "model_variance": round(float(model_var), 6),
+            "model_skew_approx": round(float(model_skew_approx), 6),
+        },
+        "evt_tail": evt_tail,
+        "clustering": clustering,
+    }
+
+
+def svj_vol_series(returns: pd.Series) -> pd.Series:
+    """
+    Generate SVJ-implied volatility series for model comparison.
+
+    Calibrates SVJ and produces a time series of conditional volatility
+    estimates using the discretized Heston variance process with jump
+    contribution.
+
+    Args:
+        returns: Daily log-returns in percentage with DatetimeIndex.
+
+    Returns:
+        pd.Series of conditional volatility (same index as returns).
+    """
+    values = returns.values.astype(float)
+    n = len(values)
+
+    cal = calibrate_svj(returns)
+    kappa = cal["kappa"]
+    theta = cal["theta"]
+    sigma = cal["sigma"]
+    rho = cal["rho"]
+    lambda_ = cal["lambda_"]
+    mu_j = cal["mu_j"]
+    sigma_j = cal["sigma_j"]
+
+    dt = 1.0 / 252.0
+    r = values / 100.0
+
+    # Run discretized Heston variance filter
+    V = np.empty(n)
+    V[0] = theta
+
+    for t in range(1, n):
+        v_prev = max(V[t - 1], 1e-10)
+        # Euler-Maruyama step for variance
+        innovation = r[t - 1] + 0.5 * v_prev * dt  # approximate return innovation
+        dV = kappa * (theta - v_prev) * dt + sigma * math.sqrt(v_prev * dt) * (
+            rho * innovation / math.sqrt(max(v_prev * dt, 1e-12))
+        )
+        V[t] = max(v_prev + dV, 1e-10)
+
+    # Total conditional vol = sqrt(V_t/252 + jump_var/252) in percentage
+    jump_var_daily = lambda_ * (mu_j**2 + sigma_j**2) * dt
+    total_vol = np.sqrt(V * dt + jump_var_daily) * 100.0
+
+    return pd.Series(total_vol, index=returns.index, name="svj_vol")

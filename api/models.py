@@ -735,3 +735,133 @@ class RoughCompareMSMResponse(BaseModel):
     rmse_ratio: float
     corr_diff: float
     timestamp: datetime
+
+
+# ── SVJ (Stochastic Volatility with Jumps) ──────────────────────────
+
+
+class SVJCalibrateRequest(BaseModel):
+    token: str
+    use_hawkes: bool = Field(default=False, description="Use Hawkes process for jump clustering")
+    jump_threshold_multiplier: float = Field(default=3.0, ge=1.5, le=6.0)
+
+
+class SVJHawkesParams(BaseModel):
+    mu: float
+    alpha: float
+    beta: float
+    branching_ratio: float
+    current_intensity: float
+    baseline_intensity: float
+    intensity_ratio: float
+
+
+class SVJCalibrateResponse(BaseModel):
+    token: str
+    kappa: float
+    theta: float
+    sigma: float
+    rho: float
+    lambda_: float = Field(alias="lambda_")
+    mu_j: float
+    sigma_j: float
+    feller_ratio: float
+    feller_satisfied: bool
+    log_likelihood: Optional[float] = None
+    aic: Optional[float] = None
+    bic: Optional[float] = None
+    n_obs: int
+    n_jumps_detected: int
+    jump_fraction: float
+    bns_statistic: float
+    bns_pvalue: float
+    optimization_success: bool
+    use_hawkes: bool
+    hawkes_params: Optional[SVJHawkesParams] = None
+    timestamp: datetime
+
+    class Config:
+        populate_by_name = True
+
+
+class SVJVaRResponse(BaseModel):
+    token: str
+    var_svj: float
+    var_diffusion_only: float
+    var_jump_component: float
+    expected_shortfall: float
+    jump_contribution_pct: float
+    alpha: float
+    confidence: float
+    n_simulations: int
+    current_variance: float
+    avg_jumps_per_day: float
+    timestamp: datetime
+
+
+class SVJJumpRiskResponse(BaseModel):
+    token: str
+    diffusion_variance: float
+    jump_variance: float
+    total_model_variance: float
+    empirical_variance: float
+    jump_share_pct: float
+    diffusion_share_pct: float
+    daily_diffusion_vol: float
+    daily_jump_vol: float
+    daily_total_vol: float
+    annualized_diffusion_vol: float
+    annualized_jump_vol: float
+    annualized_total_vol: float
+    timestamp: datetime
+
+
+class SVJJumpStats(BaseModel):
+    n_jumps: int
+    jump_fraction: float
+    avg_jump_size: float
+    jump_vol: float
+    bns_statistic: float
+    bns_pvalue: float
+    jumps_significant: bool
+
+
+class SVJParameterQuality(BaseModel):
+    feller_satisfied: bool
+    feller_ratio: float
+    half_life_years: float
+    mean_reversion_days: float
+    optimization_success: bool
+
+
+class SVJMomentComparison(BaseModel):
+    empirical_skewness: float
+    empirical_kurtosis: float
+    model_variance: float
+    model_skew_approx: float
+
+
+class SVJEVTTail(BaseModel):
+    gpd_xi: float
+    gpd_beta: float
+    threshold: float
+    n_exceedances: int
+    tail_index: float
+
+
+class SVJClustering(BaseModel):
+    branching_ratio: float
+    half_life_days: float
+    n_clusters: int
+    avg_cluster_size: float
+    stationarity: bool
+
+
+class SVJDiagnosticsResponse(BaseModel):
+    token: str
+    jump_stats: SVJJumpStats
+    parameter_quality: SVJParameterQuality
+    moment_comparison: SVJMomentComparison
+    evt_tail: Optional[SVJEVTTail] = None
+    clustering: Optional[SVJClustering] = None
+    timestamp: datetime
