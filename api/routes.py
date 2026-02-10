@@ -16,12 +16,22 @@ from api.models import (
     CalibrateRequest,
     CalibrateResponse,
     CalibrationMetrics,
+    CompareRequest,
+    CompareResponse,
+    ComparisonReportResponse,
     ErrorResponse,
+    ModelMetricsRow,
     NewsFeedResponse,
     NewsMarketSignalModel,
+    RegimeDurationsResponse,
+    RegimeHistoryResponse,
+    RegimePeriod,
     RegimeResponse,
+    RegimeStatisticsResponse,
+    RegimeStatRow,
     RegimeStreamMessage,
     TailProbResponse,
+    TransitionAlertResponse,
     VaRResponse,
     VolatilityForecastResponse,
     get_regime_name,
@@ -367,3 +377,176 @@ def get_news_signal(
         raise HTTPException(status_code=502, detail=f"News fetch error: {exc}")
 
     return NewsMarketSignalModel(**result["signal"])
+
+
+# ── Regime Analytics Endpoints ──
+
+
+@router.get("/regime/durations", response_model=RegimeDurationsResponse)
+def get_regime_durations(token: str = Query(...)):
+    """Expected duration (in days) for each regime state."""
+    from regime_analytics import compute_expected_durations
+
+    m = _get_model(token)
+    cal = m["calibration"]
+    durations = compute_expected_durations(cal["p_stay"], cal["num_states"])
+
+    return RegimeDurationsResponse(
+        token=token,
+        p_stay=cal["p_stay"],
+        num_states=cal["num_states"],
+        durations=durations,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/regime/history", response_model=RegimeHistoryResponse)
+def get_regime_history(token: str = Query(...)):
+    """Historical timeline of consecutive regime periods."""
+    from regime_analytics import extract_regime_history
+
+    m = _get_model(token)
+    df = extract_regime_history(m["filter_probs"], m["returns"], m["sigma_states"])
+
+    periods = [
+        RegimePeriod(
+            start=row["start"],
+            end=row["end"],
+            regime=int(row["regime"]),
+            duration=int(row["duration"]),
+            cumulative_return=float(row["cumulative_return"]),
+            volatility=float(row["volatility"]),
+            max_drawdown=float(row["max_drawdown"]),
+        )
+        for _, row in df.iterrows()
+    ]
+
+    return RegimeHistoryResponse(
+        token=token,
+        num_periods=len(periods),
+        periods=periods,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/regime/transition-alert", response_model=TransitionAlertResponse)
+def get_transition_alert(
+    token: str = Query(...),
+    threshold: float = Query(0.3, gt=0.0, lt=1.0),
+):
+    """Alert when probability of leaving current regime exceeds threshold."""
+    from regime_analytics import detect_regime_transition
+
+    m = _get_model(token)
+    result = detect_regime_transition(m["filter_probs"], threshold=threshold)
+
+    return TransitionAlertResponse(
+        token=token,
+        alert=result["alert"],
+        current_regime=result["current_regime"],
+        transition_probability=result["transition_probability"],
+        most_likely_next_regime=result["most_likely_next_regime"],
+        next_regime_probability=result["next_regime_probability"],
+        threshold=result["threshold"],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/regime/statistics", response_model=RegimeStatisticsResponse)
+def get_regime_statistics(token: str = Query(...)):
+    """Per-regime conditional statistics (mean return, vol, Sharpe, drawdown)."""
+    from regime_analytics import compute_regime_statistics
+
+    m = _get_model(token)
+    df = compute_regime_statistics(m["returns"], m["filter_probs"], m["sigma_states"])
+
+    stats = [
+        RegimeStatRow(
+            regime=int(row["regime"]),
+            mean_return=float(row["mean_return"]),
+            volatility=float(row["volatility"]),
+            sharpe_ratio=float(row["sharpe_ratio"]),
+            max_drawdown=float(row["max_drawdown"]),
+            days_in_regime=int(row["days_in_regime"]),
+            frequency=float(row["frequency"]),
+        )
+        for _, row in df.iterrows()
+    ]
+
+    return RegimeStatisticsResponse(
+        token=token,
+        num_states=m["calibration"]["num_states"],
+        total_observations=len(m["returns"]),
+        statistics=stats,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+# ── Model Comparison Endpoints ──
+
+# Cache comparison results per token for the report endpoint
+_comparison_cache: dict[str, tuple[pd.DataFrame, float]] = {}
+
+
+@router.post("/compare", response_model=CompareResponse)
+def run_model_comparison(req: CompareRequest):
+    """Run volatility model comparison on a calibrated token's returns."""
+    from model_comparison import compare_models, _MODEL_REGISTRY
+
+    m = _get_model(req.token)
+    returns = m["returns"]
+
+    if req.models:
+        invalid = [k for k in req.models if k not in _MODEL_REGISTRY]
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown model keys: {invalid}. Valid: {list(_MODEL_REGISTRY.keys())}",
+            )
+
+    try:
+        df = compare_models(returns, alpha=req.alpha, models=req.models)
+    except Exception as exc:
+        logger.exception("Model comparison failed for token=%s", req.token)
+        raise HTTPException(status_code=500, detail=f"Comparison error: {exc}")
+
+    _comparison_cache[req.token] = (df, req.alpha)
+
+    results = [
+        ModelMetricsRow(**row.to_dict())
+        for _, row in df.iterrows()
+    ]
+
+    return CompareResponse(
+        token=req.token,
+        alpha=req.alpha,
+        num_observations=len(returns),
+        models_compared=[r.model for r in results],
+        results=results,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/compare/report/{token}", response_model=ComparisonReportResponse)
+def get_comparison_report(token: str, alpha: float = Query(0.05)):
+    """Generate a structured report from a previous comparison run."""
+    from model_comparison import generate_comparison_report
+
+    if token not in _comparison_cache:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No comparison results for '{token}'. Call POST /compare first.",
+        )
+
+    df, cached_alpha = _comparison_cache[token]
+    report = generate_comparison_report(df, alpha=cached_alpha)
+
+    return ComparisonReportResponse(
+        token=token,
+        alpha=cached_alpha,
+        summary_table=report["summary_table"],
+        winners=report["winners"],
+        pass_fail=report["pass_fail"],
+        ranking=report["ranking"],
+        timestamp=datetime.now(timezone.utc),
+    )

@@ -188,3 +188,109 @@ class NewsFeedResponse(BaseModel):
     signal: NewsMarketSignalModel
     source_counts: NewsSourceCounts
     meta: NewsMeta
+
+
+# ── Regime Analytics Models ──
+
+
+class RegimeDurationsResponse(BaseModel):
+    token: str
+    p_stay: float
+    num_states: int
+    durations: dict[int, float] = Field(..., description="Expected duration per regime (days)")
+    timestamp: datetime
+
+
+class RegimePeriod(BaseModel):
+    start: datetime
+    end: datetime
+    regime: int
+    duration: int
+    cumulative_return: float
+    volatility: float
+    max_drawdown: float
+
+
+class RegimeHistoryResponse(BaseModel):
+    token: str
+    num_periods: int
+    periods: list[RegimePeriod]
+    timestamp: datetime
+
+
+class TransitionAlertResponse(BaseModel):
+    token: str
+    alert: bool
+    current_regime: int
+    transition_probability: float
+    most_likely_next_regime: int
+    next_regime_probability: float
+    threshold: float
+    timestamp: datetime
+
+
+class RegimeStatRow(BaseModel):
+    regime: int
+    mean_return: float
+    volatility: float
+    sharpe_ratio: float
+    max_drawdown: float
+    days_in_regime: int
+    frequency: float
+
+
+class RegimeStatisticsResponse(BaseModel):
+    token: str
+    num_states: int
+    total_observations: int
+    statistics: list[RegimeStatRow]
+    timestamp: datetime
+
+
+# ── Model Comparison Models ──
+
+
+class CompareRequest(BaseModel):
+    token: str = Field(..., description="Token key from _model_store (must be calibrated)")
+    alpha: float = Field(0.05, gt=0.0, lt=1.0)
+    models: Optional[list[str]] = Field(
+        None,
+        description="Subset of: msm, garch, egarch, gjr, rolling_20, rolling_60, ewma. None = all.",
+    )
+
+
+class ModelMetricsRow(BaseModel):
+    model: str
+    log_likelihood: Optional[float]
+    aic: Optional[float]
+    bic: Optional[float]
+    breach_rate: Optional[float]
+    breach_count: int
+    kupiec_lr: Optional[float]
+    kupiec_pvalue: Optional[float]
+    kupiec_pass: Optional[bool]
+    christoffersen_lr: Optional[float]
+    christoffersen_pvalue: Optional[float]
+    christoffersen_pass: Optional[bool]
+    mae_volatility: float
+    correlation: Optional[float]
+    num_params: int
+
+
+class CompareResponse(BaseModel):
+    token: str
+    alpha: float
+    num_observations: int
+    models_compared: list[str]
+    results: list[ModelMetricsRow]
+    timestamp: datetime
+
+
+class ComparisonReportResponse(BaseModel):
+    token: str
+    alpha: float
+    summary_table: str = Field(..., description="Markdown table")
+    winners: dict[str, str]
+    pass_fail: dict[str, dict[str, Optional[bool]]]
+    ranking: list[str]
+    timestamp: datetime
