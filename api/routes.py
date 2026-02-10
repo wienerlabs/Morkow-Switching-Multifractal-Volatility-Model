@@ -21,6 +21,11 @@ from api.models import (
     CompareRequest,
     CompareResponse,
     ComparisonReportResponse,
+    CopulaCompareItem,
+    CopulaCompareResponse,
+    CopulaDiagnosticsResponse,
+    CopulaFitResult,
+    CopulaPortfolioVaRResponse,
     ErrorResponse,
     EVTBacktestResponse,
     EVTBacktestRow,
@@ -35,6 +40,7 @@ from api.models import (
     PortfolioCalibrateRequest,
     PortfolioVaRResponse,
     RegimeBreakdownItem,
+    RegimeCopulaItem,
     RegimeDurationsResponse,
     RegimeHistoryResponse,
     RegimePeriod,
@@ -43,6 +49,7 @@ from api.models import (
     RegimeStatRow,
     RegimeStreamMessage,
     StressVaRResponse,
+    TailDependence,
     TailProbResponse,
     TransitionAlertResponse,
     VaRComparisonRow,
@@ -59,6 +66,7 @@ router = APIRouter()
 _model_store: dict[str, dict] = {}
 _portfolio_store: dict[str, dict] = {}
 _evt_store: dict[str, dict] = {}  # EVT calibration results per token
+_copula_store: dict[str, dict] = {}  # Copula fit results per portfolio key
 
 
 def _get_model(token: str) -> dict:
@@ -613,12 +621,24 @@ def _load_portfolio_returns(req: PortfolioCalibrateRequest) -> pd.DataFrame:
 
 @router.post("/portfolio/calibrate", response_model=PortfolioVaRResponse)
 def calibrate_portfolio(req: PortfolioCalibrateRequest):
-    """Calibrate multi-asset MSM and compute portfolio VaR."""
+    """Calibrate multi-asset MSM and compute portfolio VaR. Optionally fit copula."""
     from portfolio_var import calibrate_multivariate, portfolio_var as pvar_fn
 
     returns_df = _load_portfolio_returns(req)
     model = calibrate_multivariate(returns_df, num_states=req.num_states, method=req.method)
     _portfolio_store[_PORTFOLIO_KEY] = model
+
+    # Optionally fit copula during calibration
+    if req.copula_family:
+        from copula_portfolio_var import compare_copulas, fit_copula
+
+        family = req.copula_family.lower()
+        if family == "auto":
+            ranking = compare_copulas(returns_df)
+            copula_fit = ranking[0] if ranking else fit_copula(returns_df, "gaussian")
+        else:
+            copula_fit = fit_copula(returns_df, family=family)
+        _copula_store[_PORTFOLIO_KEY] = copula_fit
 
     result = pvar_fn(model, req.weights, alpha=0.05)
     return PortfolioVaRResponse(
@@ -814,5 +834,126 @@ def get_evt_diagnostics(token: str = Query(...)):
         n_exceedances=e["n_exceedances"],
         backtest=[EVTBacktestRow(**row) for row in bt],
         comparison=[VaRComparisonRow(**row) for row in cmp],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+# =========================================================================
+# Copula Portfolio VaR Endpoints
+# =========================================================================
+
+
+def _get_portfolio_model() -> dict:
+    if _PORTFOLIO_KEY not in _portfolio_store:
+        raise HTTPException(404, "No calibrated portfolio. Call POST /portfolio/calibrate first.")
+    return _portfolio_store[_PORTFOLIO_KEY]
+
+
+def _get_copula_fit() -> dict:
+    if _PORTFOLIO_KEY not in _copula_store:
+        raise HTTPException(
+            404,
+            "No copula fit. Call POST /portfolio/calibrate with copula_family "
+            "or POST /portfolio/copula/compare first.",
+        )
+    return _copula_store[_PORTFOLIO_KEY]
+
+
+def _copula_fit_to_model(fit: dict) -> CopulaFitResult:
+    td = fit["tail_dependence"]
+    return CopulaFitResult(
+        family=fit["family"],
+        params=fit["params"],
+        log_likelihood=fit["log_likelihood"],
+        aic=fit["aic"],
+        bic=fit["bic"],
+        n_obs=fit["n_obs"],
+        n_assets=fit["n_assets"],
+        n_params=fit["n_params"],
+        tail_dependence=TailDependence(lambda_lower=td["lambda_lower"], lambda_upper=td["lambda_upper"]),
+    )
+
+
+@router.post("/portfolio/copula/var", response_model=CopulaPortfolioVaRResponse)
+def compute_copula_portfolio_var(
+    weights: dict[str, float],
+    alpha: float = Query(0.05, gt=0.0, lt=1.0),
+    n_simulations: int = Query(10_000, ge=1000, le=100_000),
+):
+    """Portfolio VaR using copula-based Monte Carlo simulation."""
+    from copula_portfolio_var import copula_portfolio_var as cpvar_fn
+
+    model = _get_portfolio_model()
+    copula_fit = _get_copula_fit()
+    result = cpvar_fn(model, weights, copula_fit, alpha=alpha, n_simulations=n_simulations)
+    td = result["tail_dependence"]
+    return CopulaPortfolioVaRResponse(
+        copula_var=result["copula_var"],
+        gaussian_var=result["gaussian_var"],
+        var_ratio=result["var_ratio"],
+        copula_family=result["copula_family"],
+        tail_dependence=TailDependence(lambda_lower=td["lambda_lower"], lambda_upper=td["lambda_upper"]),
+        n_simulations=result["n_simulations"],
+        alpha=result["alpha"],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/portfolio/copula/diagnostics", response_model=CopulaDiagnosticsResponse)
+def get_copula_diagnostics():
+    """Return copula fit details and regime-conditional copulas."""
+    from copula_portfolio_var import regime_conditional_copulas
+
+    model = _get_portfolio_model()
+    copula_fit = _get_copula_fit()
+
+    regime_copulas = regime_conditional_copulas(model, family=copula_fit["family"])
+
+    return CopulaDiagnosticsResponse(
+        portfolio_key=_PORTFOLIO_KEY,
+        copula_family=copula_fit["family"],
+        fit=_copula_fit_to_model(copula_fit),
+        regime_copulas=[
+            RegimeCopulaItem(
+                regime=rc["regime"],
+                n_obs=rc["n_obs"],
+                copula=_copula_fit_to_model(rc["copula"]),
+            )
+            for rc in regime_copulas
+        ],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.post("/portfolio/copula/compare", response_model=CopulaCompareResponse)
+def compare_portfolio_copulas():
+    """Compare all copula families on the calibrated portfolio data."""
+    from copula_portfolio_var import compare_copulas
+
+    model = _get_portfolio_model()
+    returns_df = model["returns_df"]
+    ranking = compare_copulas(returns_df)
+
+    # Store the best copula fit
+    if ranking:
+        _copula_store[_PORTFOLIO_KEY] = ranking[0]
+
+    return CopulaCompareResponse(
+        portfolio_key=_PORTFOLIO_KEY,
+        results=[
+            CopulaCompareItem(
+                family=r["family"],
+                log_likelihood=r["log_likelihood"],
+                aic=r["aic"],
+                bic=r["bic"],
+                tail_dependence=TailDependence(
+                    lambda_lower=r["tail_dependence"]["lambda_lower"],
+                    lambda_upper=r["tail_dependence"]["lambda_upper"],
+                ),
+                rank=r["rank"],
+                best=r["best"],
+            )
+            for r in ranking
+        ],
         timestamp=datetime.now(timezone.utc),
     )

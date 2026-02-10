@@ -104,8 +104,8 @@ def _ll_student_t(u: np.ndarray, R: np.ndarray, nu: float) -> float:
     ll -= 0.5 * n * np.log(det_R)
 
     quad = np.sum(z * (z @ R_inv), axis=1)
-    ll += np.sum(-(nu + d) / 2 * np.log(1 + quad / nu))
-    ll -= np.sum(-(nu + 1) / 2 * np.log(1 + z**2 / nu))
+    ll += float(np.sum(-(nu + d) / 2 * np.log(1 + quad / nu)))
+    ll -= float(np.sum(-(nu + 1) / 2 * np.log(1 + z**2 / nu)))
 
     return float(ll)
 
