@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from api.models import (
+    AssetDecompositionItem,
+    AssetStressItem,
     BacktestSummaryResponse,
     CalibrateRequest,
     CalibrateResponse,
@@ -20,9 +22,13 @@ from api.models import (
     CompareResponse,
     ComparisonReportResponse,
     ErrorResponse,
+    MarginalVaRResponse,
     ModelMetricsRow,
     NewsFeedResponse,
     NewsMarketSignalModel,
+    PortfolioCalibrateRequest,
+    PortfolioVaRResponse,
+    RegimeBreakdownItem,
     RegimeDurationsResponse,
     RegimeHistoryResponse,
     RegimePeriod,
@@ -30,6 +36,7 @@ from api.models import (
     RegimeStatisticsResponse,
     RegimeStatRow,
     RegimeStreamMessage,
+    StressVaRResponse,
     TailProbResponse,
     TransitionAlertResponse,
     VaRResponse,
@@ -43,6 +50,7 @@ router = APIRouter()
 
 # In-memory model state (per-token)
 _model_store: dict[str, dict] = {}
+_portfolio_store: dict[str, dict] = {}
 
 
 def _get_model(token: str) -> dict:
@@ -560,5 +568,118 @@ def get_comparison_report(token: str, alpha: float = Query(0.05)):
         winners=report["winners"],
         pass_fail=report["pass_fail"],
         ranking=report["ranking"],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+# =========================================================================
+# Portfolio VaR Endpoints
+# =========================================================================
+
+_PORTFOLIO_KEY = "default"
+
+
+def _load_portfolio_returns(req: PortfolioCalibrateRequest) -> pd.DataFrame:
+    """Fetch multi-asset returns and return a DataFrame of log-returns in %."""
+    import yfinance as yf
+
+    frames = {}
+    for ticker in req.tokens:
+        df = yf.download(ticker, period=req.period, auto_adjust=True, progress=False)
+        if df.empty or len(df) < 30:
+            raise HTTPException(400, f"Insufficient data for {ticker}")
+        close = df["Close"].squeeze()
+        rets = 100.0 * np.diff(np.log(close.values))
+        frames[ticker] = pd.Series(rets, index=close.index[1:], name=ticker)
+    returns_df = pd.DataFrame(frames).dropna()
+    if len(returns_df) < 30:
+        raise HTTPException(400, f"Only {len(returns_df)} common observations after alignment")
+    return returns_df
+
+
+@router.post("/portfolio/calibrate", response_model=PortfolioVaRResponse)
+def calibrate_portfolio(req: PortfolioCalibrateRequest):
+    """Calibrate multi-asset MSM and compute portfolio VaR."""
+    from portfolio_var import calibrate_multivariate, portfolio_var as pvar_fn
+
+    returns_df = _load_portfolio_returns(req)
+    model = calibrate_multivariate(returns_df, num_states=req.num_states, method=req.method)
+    _portfolio_store[_PORTFOLIO_KEY] = model
+
+    result = pvar_fn(model, req.weights, alpha=0.05)
+    return PortfolioVaRResponse(
+        portfolio_var=result["portfolio_var"],
+        portfolio_sigma=result["portfolio_sigma"],
+        z_alpha=result["z_alpha"],
+        weights=result["weights"],
+        regime_breakdown=[RegimeBreakdownItem(**rb) for rb in result["regime_breakdown"]],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.post("/portfolio/var", response_model=PortfolioVaRResponse)
+def compute_portfolio_var(
+    weights: dict[str, float],
+    alpha: float = Query(0.05, gt=0.0, lt=1.0),
+):
+    """Compute portfolio VaR with custom weights/alpha on a previously calibrated model."""
+    from portfolio_var import portfolio_var as pvar_fn
+
+    if _PORTFOLIO_KEY not in _portfolio_store:
+        raise HTTPException(404, "No calibrated portfolio. Call POST /portfolio/calibrate first.")
+    model = _portfolio_store[_PORTFOLIO_KEY]
+    result = pvar_fn(model, weights, alpha=alpha)
+    return PortfolioVaRResponse(
+        portfolio_var=result["portfolio_var"],
+        portfolio_sigma=result["portfolio_sigma"],
+        z_alpha=result["z_alpha"],
+        weights=result["weights"],
+        regime_breakdown=[RegimeBreakdownItem(**rb) for rb in result["regime_breakdown"]],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.post("/portfolio/marginal-var", response_model=MarginalVaRResponse)
+def compute_marginal_var(
+    weights: dict[str, float],
+    alpha: float = Query(0.05, gt=0.0, lt=1.0),
+):
+    """Marginal VaR and Euler risk decomposition."""
+    from portfolio_var import marginal_var as mvar_fn
+
+    if _PORTFOLIO_KEY not in _portfolio_store:
+        raise HTTPException(404, "No calibrated portfolio. Call POST /portfolio/calibrate first.")
+    model = _portfolio_store[_PORTFOLIO_KEY]
+    result = mvar_fn(model, weights, alpha=alpha)
+    return MarginalVaRResponse(
+        portfolio_var=result["portfolio_var"],
+        portfolio_sigma=result["portfolio_sigma"],
+        decomposition=[AssetDecompositionItem(**d) for d in result["decomposition"]],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.post("/portfolio/stress-var", response_model=StressVaRResponse)
+def compute_stress_var(
+    weights: dict[str, float],
+    forced_regime: int = Query(5, ge=1),
+    alpha: float = Query(0.05, gt=0.0, lt=1.0),
+):
+    """Stressed VaR by forcing the model into a specific regime."""
+    from portfolio_var import stress_var as svar_fn
+
+    if _PORTFOLIO_KEY not in _portfolio_store:
+        raise HTTPException(404, "No calibrated portfolio. Call POST /portfolio/calibrate first.")
+    model = _portfolio_store[_PORTFOLIO_KEY]
+    result = svar_fn(model, weights, forced_regime=forced_regime, alpha=alpha)
+    return StressVaRResponse(
+        forced_regime=result["forced_regime"],
+        stressed_var=result["stressed_var"],
+        stressed_sigma=result["stressed_sigma"],
+        normal_var=result["normal_var"],
+        normal_sigma=result["normal_sigma"],
+        stress_multiplier=result["stress_multiplier"],
+        regime_correlation=result["regime_correlation"],
+        asset_stress=[AssetStressItem(**a) for a in result["asset_stress"]],
         timestamp=datetime.now(timezone.utc),
     )

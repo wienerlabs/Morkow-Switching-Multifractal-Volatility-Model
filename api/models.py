@@ -307,7 +307,7 @@ class PortfolioCalibrateRequest(BaseModel):
     num_states: int = Field(5, ge=2, le=10)
     method: str = Field("mle", pattern="^(mle|grid|empirical|hybrid)$")
     period: str = "2y"
-    data_source: DataSource = DataSource.yfinance
+    data_source: DataSource = DataSource.YFINANCE
 
 
 class RegimeBreakdownItem(BaseModel):
