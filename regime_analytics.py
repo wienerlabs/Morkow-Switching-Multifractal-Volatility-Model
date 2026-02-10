@@ -12,29 +12,30 @@ import pandas as pd
 
 
 def compute_expected_durations(
-    p_stay: float, num_states: int
+    p_stay, num_states: int
 ) -> dict[int, float]:
     """
-    Expected regime duration from the MSM transition matrix.
+    Expected regime duration: E[Duration_k] = 1 / (1 - p_stay_k).
 
-    For a symmetric transition matrix where every state has the same
-    persistence probability, E[Duration_k] = 1 / (1 - p_stay).
-
-    Args:
-        p_stay: Diagonal element of the transition matrix (probability of
-                remaining in the same state next period).
-        num_states: Number of MSM regimes (K).
-
-    Returns:
-        Dict mapping 1-based regime index to expected duration in days.
+    p_stay: scalar (same for all regimes) or list/array of length K.
     """
-    if p_stay >= 1.0 or p_stay <= 0.0:
-        raise ValueError(f"p_stay must be in (0, 1), got {p_stay}")
     if num_states < 2:
         raise ValueError(f"num_states must be >= 2, got {num_states}")
 
-    expected = 1.0 / (1.0 - p_stay)
-    return {k: round(expected, 2) for k in range(1, num_states + 1)}
+    if isinstance(p_stay, (list, np.ndarray)):
+        arr = np.asarray(p_stay, dtype=float)
+        if arr.size == 1:
+            arr = np.full(num_states, arr.flat[0])
+    else:
+        arr = np.full(num_states, float(p_stay))
+
+    if np.any(arr <= 0) or np.any(arr >= 1):
+        raise ValueError(f"All p_stay values must be in (0, 1), got {arr}")
+
+    return {
+        k: round(1.0 / (1.0 - arr[k - 1]), 2)
+        for k in range(1, num_states + 1)
+    }
 
 
 def _max_drawdown_pct(returns: np.ndarray) -> float:

@@ -26,6 +26,8 @@ class CalibrateRequest(BaseModel):
     method: CalibrationMethod = CalibrationMethod.MLE
     target_var_breach: float = Field(0.05, gt=0.0, lt=1.0)
     interval: str = Field("1D", description="Candle interval for Solana data")
+    use_student_t: bool = Field(False, description="Use Student-t distribution for VaR")
+    nu: float = Field(5.0, gt=2.0, description="Student-t degrees of freedom (must be > 2)")
 
 
 class CalibrationMetrics(BaseModel):
@@ -42,7 +44,7 @@ class CalibrateResponse(BaseModel):
     num_states: int
     sigma_low: float
     sigma_high: float
-    p_stay: float
+    p_stay: float | list[float]
     sigma_states: list[float]
     metrics: CalibrationMetrics
     calibrated_at: datetime
@@ -66,6 +68,7 @@ class VaRResponse(BaseModel):
     sigma_forecast: float
     z_alpha: float
     regime_probabilities: list[float]
+    distribution: str = "normal"
 
 
 class VolatilityForecastResponse(BaseModel):
@@ -195,7 +198,7 @@ class NewsFeedResponse(BaseModel):
 
 class RegimeDurationsResponse(BaseModel):
     token: str
-    p_stay: float
+    p_stay: float | list[float]
     num_states: int
     durations: dict[int, float] = Field(..., description="Expected duration per regime (days)")
     timestamp: datetime
@@ -293,4 +296,64 @@ class ComparisonReportResponse(BaseModel):
     winners: dict[str, str]
     pass_fail: dict[str, dict[str, Optional[bool]]]
     ranking: list[str]
+    timestamp: datetime
+
+
+# --- Portfolio VaR models ---
+
+class PortfolioCalibrateRequest(BaseModel):
+    tokens: list[str] = Field(..., min_length=2, description="Ticker symbols")
+    weights: dict[str, float] = Field(..., description="Asset weights summing to ~1.0")
+    num_states: int = Field(5, ge=2, le=10)
+    method: str = Field("mle", pattern="^(mle|grid|empirical|hybrid)$")
+    period: str = "2y"
+    data_source: DataSource = DataSource.yfinance
+
+
+class RegimeBreakdownItem(BaseModel):
+    regime: int
+    probability: float
+    portfolio_sigma: float
+    portfolio_var: float
+
+
+class PortfolioVaRResponse(BaseModel):
+    portfolio_var: float
+    portfolio_sigma: float
+    z_alpha: float
+    weights: dict[str, float]
+    regime_breakdown: list[RegimeBreakdownItem]
+    timestamp: datetime
+
+
+class AssetDecompositionItem(BaseModel):
+    asset: str
+    weight: float
+    marginal_var: float
+    component_var: float
+    pct_contribution: float
+
+
+class MarginalVaRResponse(BaseModel):
+    portfolio_var: float
+    portfolio_sigma: float
+    decomposition: list[AssetDecompositionItem]
+    timestamp: datetime
+
+
+class AssetStressItem(BaseModel):
+    asset: str
+    normal_sigma: float
+    stressed_sigma: float
+
+
+class StressVaRResponse(BaseModel):
+    forced_regime: int
+    stressed_var: float
+    stressed_sigma: float
+    normal_var: float
+    normal_sigma: float
+    stress_multiplier: float
+    regime_correlation: list[list[float]]
+    asset_stress: list[AssetStressItem]
     timestamp: datetime

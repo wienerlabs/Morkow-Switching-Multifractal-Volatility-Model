@@ -110,6 +110,8 @@ def calibrate(req: CalibrateRequest):
         "filter_probs": fprobs,
         "sigma_states": sigma_states,
         "P_matrix": P,
+        "use_student_t": req.use_student_t,
+        "nu": req.nu,
         "calibrated_at": datetime.now(timezone.utc),
     }
 
@@ -156,15 +158,24 @@ def get_current_regime(token: str = Query(...)):
 
 
 @router.get("/var/{confidence}", response_model=VaRResponse)
-def get_var(confidence: float, token: str = Query(...)):
+def get_var(
+    confidence: float,
+    token: str = Query(...),
+    use_student_t: bool = Query(None, description="Override distribution. Defaults to calibration setting."),
+    nu: float = Query(None, gt=2.0, description="Override Student-t df."),
+):
     from importlib import import_module
 
     msm = import_module("MSM-VaR_MODEL")
     m = _get_model(token)
 
     alpha = 1.0 - confidence if confidence > 0.5 else confidence
+    st = use_student_t if use_student_t is not None else m.get("use_student_t", False)
+    df = nu if nu is not None else m.get("nu", 5.0)
+
     var_t1, sigma_t1, z_alpha, pi_t1 = msm.msm_var_forecast_next_day(
-        m["filter_probs"], m["sigma_states"], m["P_matrix"], alpha=alpha
+        m["filter_probs"], m["sigma_states"], m["P_matrix"],
+        alpha=alpha, use_student_t=st, nu=df,
     )
 
     return VaRResponse(
@@ -174,6 +185,7 @@ def get_var(confidence: float, token: str = Query(...)):
         sigma_forecast=sigma_t1,
         z_alpha=z_alpha,
         regime_probabilities=pi_t1.tolist(),
+        distribution="student_t" if st else "normal",
     )
 
 

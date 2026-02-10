@@ -120,45 +120,48 @@ def christoffersen_independence_test(breach_series):
 
 # -------------------------------------------------------
 # 3. MSM: model simplu cu K stări + filter bayesian
-#     CORECTAT: returnează σ_{t|t-1} (forecast) și σ_t (filtered)
 # -------------------------------------------------------
+
+
+def _build_transition_matrix(p_stay, K: int) -> np.ndarray:
+    """Build K×K transition matrix from scalar or per-regime p_stay."""
+    p_arr = np.atleast_1d(np.asarray(p_stay, dtype=float))
+    if p_arr.size == 1:
+        p_arr = np.full(K, p_arr[0])
+    if p_arr.size != K:
+        raise ValueError(f"p_stay must be scalar or length K={K}, got {p_arr.size}")
+    P = np.zeros((K, K))
+    for k in range(K):
+        off_diag = (1.0 - p_arr[k]) / max(K - 1, 1)
+        P[k, :] = off_diag
+        P[k, k] = p_arr[k]
+    return P
+
 
 def msm_vol_forecast(
     returns: pd.Series,
     num_states: int = 5,
-    sigma_low: float = 0.1,   # % vol zilnică în cea mai calmă stare
-    sigma_high: float = 1.0,  # % vol zilnică în cea mai turbulentă stare
-    p_stay: float = 0.97
+    sigma_low: float = 0.1,
+    sigma_high: float = 1.0,
+    p_stay=0.97,
 ):
     """
-    Modelează volatilitatea cu un lanț Markov simplu cu K stări.
-    
-    IMPORTANT - Diferența între forecast și filtered:
-    - σ_{t|t-1} (FORECAST): E[σ_t | info până la t-1] - făcut ÎNAINTE de a vedea r_t
-    - σ_t (FILTERED): E[σ_t | info până la t] - făcut DUPĂ ce vedem r_t
-    
-    Pentru VaR corect, trebuie să folosim FORECAST (σ_{t|t-1})!
+    MSM Bayesian filter with K volatility states.
 
-    Returnează:
-    -----------
-    sigma_forecast_series : pd.Series (T,) – σ_{t|t-1} forecast (OUT-OF-SAMPLE)
-    sigma_filtered_series : pd.Series (T,) – σ_t filtered (IN-SAMPLE)  
-    filter_probs_df       : pd.DataFrame (T, K) – p(state k | info până la t)
-    sigma_states          : np.ndarray (K,) – vol. în % pentru fiecare stare
-    P_matrix              : np.ndarray (K, K) – matricea de tranziție
+    p_stay: float or array-like of length K. If scalar, all states share
+            the same persistence. If array, each state k has its own p_stay[k].
+
+    Returns (sigma_forecast, sigma_filtered, filter_probs_df, sigma_states, P_matrix).
     """
     r = np.asarray(returns.values, dtype=float)
     n = len(r)
     K = num_states
 
-    # nivelele de volatilitate (în %)
     sigmas = np.exp(
         np.linspace(np.log(sigma_low), np.log(sigma_high), num_states)
-    )  # [sigma_1, ..., sigma_K]
+    )
 
-    # matrice de tranziție simplă
-    P = np.full((K, K), (1.0 - p_stay) / (K - 1))
-    np.fill_diagonal(P, p_stay)
+    P = _build_transition_matrix(p_stay, K)
 
     # prior inițial: uniform
     pi_t = np.full(K, 1.0 / K)
@@ -212,29 +215,32 @@ def msm_vol_forecast(
 
 def msm_log_likelihood(params, returns, num_states=5):
     """
-    Calculează log-likelihood-ul negativ pentru MSM.
-    
-    Parametri optimizați:
-    - sigma_low: volatilitatea minimă (stare calmă)
-    - sigma_high: volatilitatea maximă (stare turbulentă)
-    - p_stay: probabilitatea de a rămâne în aceeași stare
+    Negative log-likelihood for MSM.
+
+    params: [sigma_low, sigma_high, p_stay_1, ..., p_stay_K]
+            OR [sigma_low, sigma_high, p_stay] (scalar — backward compat).
     """
-    sigma_low, sigma_high, p_stay = params
-    
-    # Validare parametri
-    if sigma_low <= 0 or sigma_high <= sigma_low or p_stay <= 0 or p_stay >= 1:
+    if len(params) == 3:
+        sigma_low, sigma_high, p_stay = params
+        p_stay_arr = np.full(num_states, p_stay)
+    elif len(params) == num_states + 2:
+        sigma_low, sigma_high = params[0], params[1]
+        p_stay_arr = np.array(params[2:])
+    else:
         return 1e10
-    
+
+    if sigma_low <= 0 or sigma_high <= sigma_low:
+        return 1e10
+    if np.any(p_stay_arr <= 0) or np.any(p_stay_arr >= 1):
+        return 1e10
+
     r = np.asarray(returns, dtype=float)
     n = len(r)
     K = num_states
-    
-    # Sigma states (geometric spacing)
+
     sigmas = np.exp(np.linspace(np.log(sigma_low), np.log(sigma_high), K))
-    
-    # Matrice de tranziție
-    P = np.full((K, K), (1.0 - p_stay) / (K - 1))
-    np.fill_diagonal(P, p_stay)
+
+    P = _build_transition_matrix(p_stay_arr, K)
     
     # Prior uniform
     pi_t = np.full(K, 1.0 / K)
@@ -313,28 +319,27 @@ def calibrate_msm_advanced(
     # =========================================================================
     # METODA 1: Maximum Likelihood Estimation
     # =========================================================================
+    K = num_states
+
     if method == 'mle':
-        # Bounds pentru parametri
+        # K+2 params: [sigma_low, sigma_high, p_stay_1, ..., p_stay_K]
         bounds = [
-            (std_r * 0.1, std_r * 0.8),    # sigma_low: 10-80% din std
-            (std_r * 1.5, std_r * 5.0),    # sigma_high: 150-500% din std
-            (0.90, 0.995)                   # p_stay: 90-99.5%
-        ]
-        
-        # Start points multiple pentru a evita minime locale
+            (std_r * 0.1, std_r * 0.8),
+            (std_r * 1.5, std_r * 5.0),
+        ] + [(0.90, 0.995)] * K
+
         best_result = None
         best_ll = float('inf')
-        
+
+        base_ps = [0.95, 0.97, 0.93, 0.96]
         start_points = [
-            [std_r * 0.3, std_r * 2.5, 0.95],
-            [std_r * 0.4, std_r * 3.0, 0.97],
-            [std_r * 0.2, std_r * 2.0, 0.93],
-            [std_r * 0.5, std_r * 3.5, 0.96],
+            [std_r * 0.3, std_r * 2.5] + [ps] * K
+            for ps in base_ps
         ]
-        
+
         if verbose:
-            print(f"\n   Running MLE optimization with {len(start_points)} start points...")
-        
+            print(f"\n   Running MLE optimization ({K+2} params, {len(start_points)} starts)...")
+
         for i, x0 in enumerate(start_points):
             try:
                 result = minimize(
@@ -345,26 +350,25 @@ def calibrate_msm_advanced(
                     bounds=bounds,
                     options={'maxiter': 500, 'disp': False}
                 )
-                
                 if result.fun < best_ll:
                     best_ll = result.fun
                     best_result = result
-                    
             except Exception as e:
                 if verbose:
                     print(f"      Start point {i+1} failed: {e}")
-        
+
         if best_result is not None:
-            sigma_low, sigma_high, p_stay = best_result.x
-            
+            sigma_low = best_result.x[0]
+            sigma_high = best_result.x[1]
+            p_stay = best_result.x[2:].tolist()
             if verbose:
                 print(f"\n   ✓ MLE Converged!")
                 print(f"     Log-likelihood: {-best_ll:.2f}")
+                print(f"     p_stay per regime: {[f'{p:.4f}' for p in p_stay]}")
         else:
-            # Fallback to empirical
             sigma_low = std_r * 0.35
             sigma_high = std_r * 3.0
-            p_stay = 0.97
+            p_stay = [0.97] * K
             if verbose:
                 print(f"\n   ⚠ MLE failed, using empirical fallback")
     
@@ -536,25 +540,32 @@ def calibrate_msm_advanced(
     else:
         raise ValueError(f"Unknown calibration method: {method}")
     
+    # Normalize p_stay to list for all code paths
+    if isinstance(p_stay, (int, float, np.floating)):
+        p_stay = [float(p_stay)] * K
+    elif isinstance(p_stay, np.ndarray):
+        p_stay = p_stay.tolist()
+    p_stay = [float(p) for p in p_stay]
+
     # =========================================================================
-    # VALIDARE FINALĂ (folosim sigma_forecast - out-of-sample)
+    # FINAL VALIDATION
     # =========================================================================
     sigma_forecast_final, sigma_filtered_final, filter_probs_final, sigmas_final, P_final = msm_vol_forecast(
         returns, num_states, sigma_low, sigma_high, p_stay
     )
-    
+
     z_alpha = norm.ppf(target_var_breach)
-    var_5 = z_alpha * sigma_forecast_final  # CORECT: out-of-sample
+    var_5 = z_alpha * sigma_forecast_final
     final_breach = (returns < var_5).mean()
     final_corr = np.corrcoef(np.abs(r), sigma_forecast_final.values)[0, 1]
-    
-    # AIC/BIC pentru comparație modele
+
     n = len(r)
-    k = 3  # număr de parametri
-    ll = -msm_log_likelihood([sigma_low, sigma_high, p_stay], r, num_states)
-    aic = 2 * k - 2 * ll
-    bic = k * np.log(n) - 2 * ll
-    
+    num_params = 2 + len(p_stay)
+    ll_params = [sigma_low, sigma_high] + p_stay
+    ll = -msm_log_likelihood(ll_params, r, num_states)
+    aic = 2 * num_params - 2 * ll
+    bic = num_params * np.log(n) - 2 * ll
+
     result = {
         'sigma_low': sigma_low,
         'sigma_high': sigma_high,
@@ -570,14 +581,14 @@ def calibrate_msm_advanced(
             'bic': bic
         }
     }
-    
+
     if verbose:
         print(f"\n{'='*60}")
         print(f"   CALIBRATION RESULTS")
         print(f"{'='*60}")
         print(f"   σ_low:    {sigma_low:.4f}%")
         print(f"   σ_high:   {sigma_high:.4f}%")
-        print(f"   p_stay:   {p_stay:.4f}")
+        print(f"   p_stay:   {[f'{p:.4f}' for p in p_stay]}")
         print(f"   States:   {num_states}")
         print(f"\n   Sigma states: {np.round(sigmas_final, 3)}")
         print(f"\n   --- Quality Metrics ---")
@@ -587,7 +598,7 @@ def calibrate_msm_advanced(
         print(f"   AIC: {aic:.2f}")
         print(f"   BIC: {bic:.2f}")
         print(f"{'='*60}\n")
-    
+
     return result
 
 
@@ -678,44 +689,37 @@ def msm_tail_probs(
 
 
 
-from scipy.stats import norm
+def msm_var_forecast_next_day(
+    filter_probs, sigma_states, P_matrix,
+    alpha=0.05, mu=0.0,
+    use_student_t: bool = False, nu: float = 5.0,
+):
+    """
+    VaR(alpha) forecast for the next day using the transition matrix.
 
-def msm_var_forecast_next_day(filter_probs, sigma_states, P_matrix, alpha=0.05, mu=0.0):
+    When use_student_t=True, uses Student-t quantile with variance adjustment
+    sqrt((nu-2)/nu) so that the scaled distribution has variance = sigma^2.
     """
-    Returnează VaR(alpha) CORECT forecast pentru ziua următoare.
-    
-    IMPORTANT: Folosește matricea de tranziție pentru a prezice σ_{t+1|t}
-    
-    Parametri:
-    ----------
-    filter_probs : pd.DataFrame - probabilitățile filtrate pe stări
-    sigma_states : np.ndarray - volatilitățile pentru fiecare stare
-    P_matrix : np.ndarray - matricea de tranziție
-    alpha : float - nivelul VaR (default 0.05)
-    mu : float - media randamentelor (default 0.0)
-    
-    Returnează:
-    -----------
-    var_t1 : float - VaR forecast pentru t+1
-    sigma_t1_forecast : float - σ_{t+1|t} forecast
-    z_alpha : float - z-score pentru VaR(alpha)
-    pi_t1_given_t : np.ndarray - probabilitățile prezise pentru t+1
-    """
-    # Probabilitățile curente ale stărilor (după ce am văzut toate datele)
+    if use_student_t:
+        if nu <= 2:
+            raise ValueError("Student-t df (nu) must be > 2 for finite variance")
+
     pi_t = np.asarray(filter_probs.iloc[-1] if hasattr(filter_probs, 'iloc') else filter_probs[-1])
-    
-    # Predicție pentru t+1: π_{t+1|t} = π_t @ P
     pi_t1_given_t = pi_t @ P_matrix
-    
-    # Forecast volatilitate pentru t+1: σ_{t+1|t} = E[σ | info_t]
     sigma_t1_forecast = float(np.dot(pi_t1_given_t, sigma_states))
-    
-    # z-score pentru VaR(alpha)
-    z_alpha = norm.ppf(alpha)  # ex: -1.645 pentru 0.05
-    
-    # VaR forecast
-    var_t1 = mu + z_alpha * sigma_t1_forecast
-    
+
+    if use_student_t:
+        # For VaR quantile: use t-quantile directly with model sigma.
+        # The heavier tail of Student-t gives a more extreme quantile,
+        # producing wider (more conservative) VaR at any alpha level.
+        # (Variance adjustment sqrt((nu-2)/nu) is for probability calcs
+        # in msm_tail_probs, not quantile calcs.)
+        z_alpha = float(student_t.ppf(alpha, df=nu))
+        var_t1 = mu + z_alpha * sigma_t1_forecast
+    else:
+        z_alpha = float(norm.ppf(alpha))
+        var_t1 = mu + z_alpha * sigma_t1_forecast
+
     return var_t1, sigma_t1_forecast, z_alpha, pi_t1_given_t
 
 
