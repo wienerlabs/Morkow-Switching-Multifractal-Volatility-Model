@@ -22,6 +22,12 @@ from api.models import (
     CompareResponse,
     ComparisonReportResponse,
     ErrorResponse,
+    EVTBacktestResponse,
+    EVTBacktestRow,
+    EVTCalibrateRequest,
+    EVTCalibrateResponse,
+    EVTDiagnosticsResponse,
+    EVTVaRResponse,
     MarginalVaRResponse,
     ModelMetricsRow,
     NewsFeedResponse,
@@ -39,6 +45,7 @@ from api.models import (
     StressVaRResponse,
     TailProbResponse,
     TransitionAlertResponse,
+    VaRComparisonRow,
     VaRResponse,
     VolatilityForecastResponse,
     get_regime_name,
@@ -51,6 +58,7 @@ router = APIRouter()
 # In-memory model state (per-token)
 _model_store: dict[str, dict] = {}
 _portfolio_store: dict[str, dict] = {}
+_evt_store: dict[str, dict] = {}  # EVT calibration results per token
 
 
 def _get_model(token: str) -> dict:
@@ -75,8 +83,12 @@ def _load_returns(req: CalibrateRequest) -> pd.Series:
     df = yf.download(req.token, start=req.start_date, end=req.end_date, progress=False)
     if df.empty:
         raise HTTPException(status_code=400, detail=f"No yfinance data for '{req.token}'")
-    close = df["Close"].dropna()
-    rets = 100 * np.diff(np.log(close.values))
+    close = df["Close"]
+    if isinstance(close, pd.DataFrame):
+        close = close.squeeze()
+    close = close.dropna()
+    vals = close.values.flatten()
+    rets = 100 * np.diff(np.log(vals))
     return pd.Series(rets, index=close.index[1:], name="r")
 
 
@@ -177,6 +189,8 @@ def get_var(
     msm = import_module("MSM-VaR_MODEL")
     m = _get_model(token)
 
+    if confidence > 1.0:
+        confidence = confidence / 100.0
     alpha = 1.0 - confidence if confidence > 0.5 else confidence
     st = use_student_t if use_student_t is not None else m.get("use_student_t", False)
     df = nu if nu is not None else m.get("nu", 5.0)
@@ -681,5 +695,124 @@ def compute_stress_var(
         stress_multiplier=result["stress_multiplier"],
         regime_correlation=result["regime_correlation"],
         asset_stress=[AssetStressItem(**a) for a in result["asset_stress"]],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+# =========================================================================
+# EVT (Extreme Value Theory) Endpoints
+# =========================================================================
+
+
+@router.post("/evt/calibrate", response_model=EVTCalibrateResponse)
+def evt_calibrate(req: EVTCalibrateRequest):
+    """Fit GPD to historical losses from a calibrated MSM model."""
+    from extreme_value_theory import fit_gpd, select_threshold
+
+    m = _get_model(req.token)
+    returns = m["returns"]
+
+    try:
+        th_result = select_threshold(
+            returns,
+            method=req.threshold_method.value,
+            min_exceedances=req.min_exceedances,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Threshold selection failed: {exc}")
+
+    losses = -np.asarray(returns.values if hasattr(returns, "values") else returns, dtype=float)
+
+    try:
+        gpd = fit_gpd(losses, threshold=th_result["threshold"])
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"GPD fitting failed: {exc}")
+
+    _evt_store[req.token] = {
+        **gpd,
+        "threshold_method": req.threshold_method.value,
+    }
+
+    return EVTCalibrateResponse(
+        token=req.token,
+        xi=gpd["xi"],
+        beta=gpd["beta"],
+        threshold=gpd["threshold"],
+        n_total=gpd["n_total"],
+        n_exceedances=gpd["n_exceedances"],
+        log_likelihood=gpd["log_likelihood"],
+        aic=gpd["aic"],
+        bic=gpd["bic"],
+        threshold_method=req.threshold_method.value,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/evt/var/{confidence}", response_model=EVTVaRResponse)
+def get_evt_var(confidence: float, token: str = Query(...)):
+    """Compute EVT-VaR and CVaR for extreme tail quantiles."""
+    from extreme_value_theory import evt_cvar, evt_var
+
+    if token not in _evt_store:
+        raise HTTPException(404, f"No EVT calibration for '{token}'. Call POST /evt/calibrate first.")
+
+    e = _evt_store[token]
+    if confidence > 1.0:
+        confidence = confidence / 100.0
+    alpha = 1.0 - confidence if confidence > 0.5 else confidence
+
+    var_loss = evt_var(
+        xi=e["xi"], beta=e["beta"], threshold=e["threshold"],
+        n_total=e["n_total"], n_exceedances=e["n_exceedances"], alpha=alpha,
+    )
+    cvar_loss = evt_cvar(
+        xi=e["xi"], beta=e["beta"], threshold=e["threshold"],
+        var_value=var_loss, alpha=alpha,
+    )
+
+    return EVTVaRResponse(
+        timestamp=datetime.now(timezone.utc),
+        confidence=1.0 - alpha,
+        var_value=-var_loss,
+        cvar_value=-cvar_loss,
+        xi=e["xi"],
+        beta=e["beta"],
+        threshold=e["threshold"],
+    )
+
+
+@router.get("/evt/diagnostics", response_model=EVTDiagnosticsResponse)
+def get_evt_diagnostics(token: str = Query(...)):
+    """Return EVT backtest results and Normal/Student-t/EVT comparison."""
+    from extreme_value_theory import compare_var_methods, evt_backtest
+
+    m = _get_model(token)
+    if token not in _evt_store:
+        raise HTTPException(404, f"No EVT calibration for '{token}'. Call POST /evt/calibrate first.")
+
+    e = _evt_store[token]
+    returns = m["returns"]
+    sigma_forecast = float(m["sigma_forecast"].iloc[-1])
+    nu = m.get("nu", 5.0)
+
+    bt = evt_backtest(
+        returns, xi=e["xi"], beta=e["beta"], threshold=e["threshold"],
+        n_total=e["n_total"], n_exceedances=e["n_exceedances"],
+    )
+    cmp = compare_var_methods(
+        returns, sigma_forecast=sigma_forecast,
+        xi=e["xi"], beta=e["beta"], threshold=e["threshold"],
+        n_total=e["n_total"], n_exceedances=e["n_exceedances"], nu=nu,
+    )
+
+    return EVTDiagnosticsResponse(
+        token=token,
+        xi=e["xi"],
+        beta=e["beta"],
+        threshold=e["threshold"],
+        threshold_method=e["threshold_method"],
+        n_exceedances=e["n_exceedances"],
+        backtest=[EVTBacktestRow(**row) for row in bt],
+        comparison=[VaRComparisonRow(**row) for row in cmp],
         timestamp=datetime.now(timezone.utc),
     )

@@ -308,6 +308,7 @@ class PortfolioCalibrateRequest(BaseModel):
     method: str = Field("mle", pattern="^(mle|grid|empirical|hybrid)$")
     period: str = "2y"
     data_source: DataSource = DataSource.YFINANCE
+    copula_family: str | None = Field(None, description="Copula family: gaussian|student_t|clayton|gumbel|frank|auto")
 
 
 class RegimeBreakdownItem(BaseModel):
@@ -356,4 +357,154 @@ class StressVaRResponse(BaseModel):
     stress_multiplier: float
     regime_correlation: list[list[float]]
     asset_stress: list[AssetStressItem]
+    timestamp: datetime
+
+
+# --- Copula Portfolio VaR models ---
+
+
+class CopulaFamily(str, Enum):
+    GAUSSIAN = "gaussian"
+    STUDENT_T = "student_t"
+    CLAYTON = "clayton"
+    GUMBEL = "gumbel"
+    FRANK = "frank"
+    AUTO = "auto"
+
+
+class TailDependence(BaseModel):
+    lambda_lower: float
+    lambda_upper: float
+
+
+class CopulaFitResult(BaseModel):
+    family: str
+    params: dict
+    log_likelihood: float
+    aic: float
+    bic: float
+    n_obs: int
+    n_assets: int
+    n_params: int
+    tail_dependence: TailDependence
+
+
+class CopulaPortfolioVaRResponse(BaseModel):
+    copula_var: float
+    gaussian_var: float
+    var_ratio: float
+    copula_family: str
+    tail_dependence: TailDependence
+    n_simulations: int
+    alpha: float
+    timestamp: datetime
+
+
+class RegimeCopulaItem(BaseModel):
+    regime: int
+    n_obs: int
+    copula: CopulaFitResult
+
+
+class CopulaDiagnosticsResponse(BaseModel):
+    portfolio_key: str
+    copula_family: str
+    fit: CopulaFitResult
+    regime_copulas: list[RegimeCopulaItem]
+    timestamp: datetime
+
+
+class CopulaCompareItem(BaseModel):
+    family: str
+    log_likelihood: float
+    aic: float
+    bic: float
+    tail_dependence: TailDependence
+    rank: int
+    best: bool
+
+
+class CopulaCompareResponse(BaseModel):
+    portfolio_key: str
+    results: list[CopulaCompareItem]
+    timestamp: datetime
+
+
+# --- EVT (Extreme Value Theory) models ---
+
+
+class ThresholdMethod(str, Enum):
+    PERCENTILE = "percentile"
+    MEAN_EXCESS = "mean_excess"
+    VARIANCE_STABILITY = "variance_stability"
+
+
+class EVTCalibrateRequest(BaseModel):
+    token: str = Field(..., description="Token key from _model_store (must be calibrated)")
+    threshold_method: ThresholdMethod = ThresholdMethod.VARIANCE_STABILITY
+    min_exceedances: int = Field(50, ge=10, le=500)
+
+
+class EVTCalibrateResponse(BaseModel):
+    token: str
+    xi: float = Field(..., description="GPD shape parameter (ξ). >0 = heavy tail")
+    beta: float = Field(..., description="GPD scale parameter (β)")
+    threshold: float
+    n_total: int
+    n_exceedances: int
+    log_likelihood: float
+    aic: float
+    bic: float
+    threshold_method: str
+    timestamp: datetime
+
+
+class EVTVaRResponse(BaseModel):
+    timestamp: datetime
+    confidence: float
+    var_value: float = Field(..., description="VaR in return space (negative)")
+    cvar_value: float = Field(..., description="CVaR / Expected Shortfall (negative)")
+    distribution: str = "gpd"
+    xi: float
+    beta: float
+    threshold: float
+
+
+class EVTBacktestRow(BaseModel):
+    alpha: float
+    confidence: float
+    evt_var: float
+    breach_count: int
+    breach_rate: float
+    expected_rate: float
+    kupiec_lr: Optional[float]
+    kupiec_pvalue: Optional[float]
+    kupiec_pass: Optional[bool]
+
+
+class EVTBacktestResponse(BaseModel):
+    token: str
+    results: list[EVTBacktestRow]
+    timestamp: datetime
+
+
+class VaRComparisonRow(BaseModel):
+    method: str
+    alpha: float
+    confidence: float
+    var_value: float
+    breach_count: int
+    breach_rate: float
+    expected_rate: float
+
+
+class EVTDiagnosticsResponse(BaseModel):
+    token: str
+    xi: float
+    beta: float
+    threshold: float
+    threshold_method: str
+    n_exceedances: int
+    backtest: list[EVTBacktestRow]
+    comparison: list[VaRComparisonRow]
     timestamp: datetime

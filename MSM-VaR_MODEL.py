@@ -693,12 +693,17 @@ def msm_var_forecast_next_day(
     filter_probs, sigma_states, P_matrix,
     alpha=0.05, mu=0.0,
     use_student_t: bool = False, nu: float = 5.0,
+    use_evt: bool = False, evt_params: dict | None = None,
 ):
     """
     VaR(alpha) forecast for the next day using the transition matrix.
 
-    When use_student_t=True, uses Student-t quantile with variance adjustment
-    sqrt((nu-2)/nu) so that the scaled distribution has variance = sigma^2.
+    Distribution hierarchy (highest priority first):
+      1. use_evt=True and alpha < 0.01 → EVT-GPD tail estimate
+      2. use_student_t=True → Student-t quantile
+      3. default → Normal quantile
+
+    evt_params must contain: xi, beta, threshold, n_total, n_exceedances
     """
     if use_student_t:
         if nu <= 2:
@@ -708,12 +713,22 @@ def msm_var_forecast_next_day(
     pi_t1_given_t = pi_t @ P_matrix
     sigma_t1_forecast = float(np.dot(pi_t1_given_t, sigma_states))
 
+    # EVT for extreme tail (alpha < 0.01)
+    if use_evt and evt_params is not None and alpha < 0.01:
+        from extreme_value_theory import evt_var as _evt_var
+        var_loss = _evt_var(
+            xi=evt_params["xi"],
+            beta=evt_params["beta"],
+            threshold=evt_params["threshold"],
+            n_total=evt_params["n_total"],
+            n_exceedances=evt_params["n_exceedances"],
+            alpha=alpha,
+        )
+        var_t1 = mu - var_loss  # convert positive loss to negative return
+        z_alpha = var_t1 / sigma_t1_forecast if sigma_t1_forecast > 1e-12 else float("nan")
+        return var_t1, sigma_t1_forecast, z_alpha, pi_t1_given_t
+
     if use_student_t:
-        # For VaR quantile: use t-quantile directly with model sigma.
-        # The heavier tail of Student-t gives a more extreme quantile,
-        # producing wider (more conservative) VaR at any alpha level.
-        # (Variance adjustment sqrt((nu-2)/nu) is for probability calcs
-        # in msm_tail_probs, not quantile calcs.)
         z_alpha = float(student_t.ppf(alpha, df=nu))
         var_t1 = mu + z_alpha * sigma_t1_forecast
     else:

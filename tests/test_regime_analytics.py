@@ -33,25 +33,24 @@ class TestComputeExpectedDurations:
 
 
 class TestExtractRegimeHistory:
-    def test_returns_list_of_dicts(self, calibrated_model):
+    def test_returns_dataframe(self, calibrated_model):
         m = calibrated_model
-        history = ra.extract_regime_history(
-            m["filter_probs"], m["sigma_states"], m["returns"]
+        df = ra.extract_regime_history(
+            m["filter_probs"], m["returns"], m["sigma_states"]
         )
-        assert isinstance(history, list)
-        assert len(history) > 0
-        first = history[0]
-        assert "regime" in first
-        assert "start" in first
-        assert "end" in first
-        assert "duration_days" in first
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) > 0
+        assert "regime" in df.columns
+        assert "start" in df.columns
+        assert "end" in df.columns
+        assert "duration" in df.columns
 
     def test_regimes_cover_full_series(self, calibrated_model):
         m = calibrated_model
-        history = ra.extract_regime_history(
-            m["filter_probs"], m["sigma_states"], m["returns"]
+        df = ra.extract_regime_history(
+            m["filter_probs"], m["returns"], m["sigma_states"]
         )
-        total_days = sum(h["duration_days"] for h in history)
+        total_days = int(df["duration"].sum())
         assert total_days == len(m["returns"])
 
 
@@ -59,25 +58,24 @@ class TestDetectRegimeTransition:
     def test_returns_dict(self, calibrated_model):
         m = calibrated_model
         result = ra.detect_regime_transition(
-            m["filter_probs"], m["sigma_states"], lookback=5
+            m["filter_probs"], threshold=0.3
         )
         assert "current_regime" in result
-        assert "transition_detected" in result
+        assert "alert" in result
         assert isinstance(result["current_regime"], int)
-        assert isinstance(result["transition_detected"], bool)
+        assert isinstance(result["alert"], bool)
 
 
 class TestComputeRegimeStatistics:
-    def test_returns_list(self, calibrated_model):
+    def test_returns_dataframe(self, calibrated_model):
         m = calibrated_model
-        stats = ra.compute_regime_statistics(
-            m["filter_probs"], m["sigma_states"], m["returns"]
+        df = ra.compute_regime_statistics(
+            m["returns"], m["filter_probs"], m["sigma_states"]
         )
-        assert isinstance(stats, list)
-        assert len(stats) == len(m["sigma_states"])
-        first = stats[0]
-        assert "regime" in first
-        assert "mean_return" in first
-        assert "volatility" in first
-        assert "time_fraction" in first
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == len(m["sigma_states"])
+        assert "regime" in df.columns
+        assert "mean_return" in df.columns
+        assert "volatility" in df.columns
+        assert "frequency" in df.columns
 

@@ -22,9 +22,9 @@ class TestCalibrateAndVar:
     def _calibrate(self):
         """Calibrate once for all tests in this class."""
         r = client.post("/api/v1/calibrate", json={
-            "token": "TEST",
-            "ticker": "AAPL",
-            "period": "1y",
+            "token": "AAPL",
+            "start_date": "2024-01-01",
+            "end_date": "2025-01-01",
             "num_states": 5,
             "method": "empirical",
             "data_source": "yfinance",
@@ -32,62 +32,61 @@ class TestCalibrateAndVar:
         assert r.status_code == 200, r.text
         data = r.json()
         assert "p_stay" in data
-        # p_stay is now a list
         assert isinstance(data["p_stay"], list)
 
     def test_var_normal(self):
-        r = client.get("/api/v1/var/95", params={"token": "TEST"})
+        r = client.get("/api/v1/var/95", params={"token": "AAPL"})
         assert r.status_code == 200
         data = r.json()
-        assert data["var_pct"] < 0
+        assert data["var_value"] < 0
         assert data["distribution"] == "normal"
 
     def test_var_student_t(self):
         r = client.get("/api/v1/var/95", params={
-            "token": "TEST", "use_student_t": True, "nu": 5.0,
+            "token": "AAPL", "use_student_t": True, "nu": 5.0,
         })
         assert r.status_code == 200
         data = r.json()
         assert data["distribution"] == "student_t"
 
     def test_student_t_wider_than_normal(self):
-        r_n = client.get("/api/v1/var/95", params={"token": "TEST"})
+        r_n = client.get("/api/v1/var/95", params={"token": "AAPL"})
         r_t = client.get("/api/v1/var/95", params={
-            "token": "TEST", "use_student_t": True, "nu": 5.0,
+            "token": "AAPL", "use_student_t": True, "nu": 5.0,
         })
-        assert r_t.json()["var_pct"] < r_n.json()["var_pct"]
+        assert r_t.json()["var_value"] < r_n.json()["var_value"]
 
     def test_regime(self):
-        r = client.get("/api/v1/regime", params={"token": "TEST"})
+        r = client.get("/api/v1/regime/current", params={"token": "AAPL"})
         assert r.status_code == 200
-        assert "current_state" in r.json()
+        assert "regime_state" in r.json()
 
     def test_volatility(self):
-        r = client.get("/api/v1/volatility", params={"token": "TEST"})
+        r = client.get("/api/v1/volatility/forecast", params={"token": "AAPL"})
         assert r.status_code == 200
-        assert "current_sigma" in r.json()
+        assert "sigma_forecast" in r.json()
 
     def test_backtest(self):
-        r = client.get("/api/v1/backtest", params={"token": "TEST"})
+        r = client.get("/api/v1/backtest/summary", params={"token": "AAPL"})
         assert r.status_code == 200
         assert "breach_rate" in r.json()
 
     def test_regime_durations(self):
-        r = client.get("/api/v1/regime/durations", params={"token": "TEST"})
+        r = client.get("/api/v1/regime/durations", params={"token": "AAPL"})
         assert r.status_code == 200
         data = r.json()
         assert isinstance(data["p_stay"], list)
         assert len(data["durations"]) == 5
 
     def test_regime_history(self):
-        r = client.get("/api/v1/regime/history", params={"token": "TEST"})
+        r = client.get("/api/v1/regime/history", params={"token": "AAPL"})
         assert r.status_code == 200
         assert "periods" in r.json()
 
     def test_regime_statistics(self):
-        r = client.get("/api/v1/regime/statistics", params={"token": "TEST"})
+        r = client.get("/api/v1/regime/statistics", params={"token": "AAPL"})
         assert r.status_code == 200
-        assert "stats" in r.json()
+        assert "statistics" in r.json()
 
 
 class TestMissingToken:
@@ -96,6 +95,6 @@ class TestMissingToken:
         assert r.status_code == 404
 
     def test_regime_404(self):
-        r = client.get("/api/v1/regime", params={"token": "NONEXISTENT"})
+        r = client.get("/api/v1/regime/current", params={"token": "NONEXISTENT"})
         assert r.status_code == 404
 
