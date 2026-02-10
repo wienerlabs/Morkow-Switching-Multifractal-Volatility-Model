@@ -117,6 +117,13 @@ def hurst_rs(
         "H": float(slope),
         "H_se": float(std_err),
         "r_squared": float(r_value ** 2),
+        "intercept": float(intercept),
+        "p_value": float(p_value),
+        "window_sizes": [int(w) for w in valid_sizes],
+        "rs_values": [float(v) for v in rs_means],
+        "interpretation": interp,
+        "method": "rs",
+    }
 
 
 def hurst_dfa(
