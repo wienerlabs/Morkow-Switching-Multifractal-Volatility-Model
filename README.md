@@ -1,13 +1,18 @@
-# Cortex Risk Engine: A Multi-Model Volatility and Risk Management Framework
+# CortexAgent Risk Engine
 
-> **An integrated quantitative risk engine combining Markov-Switching Multifractal (MSM) regime detection, Extreme Value Theory, Hawkes self-exciting processes, Stochastic Volatility with Jumps, copula dependence modeling, rough volatility, and multifractal analysis — exposed via a production REST API for autonomous DeFi trading systems.**
+> **Multi-model volatility and risk management framework for autonomous DeFi trading agents on Solana.**
+>
+> Built by [Cortex AI](https://www.cortex-agent.xyz) — combining MSM regime detection, Extreme Value Theory, Hawkes processes, SVJ, copula dependence, rough volatility, multifractal analysis, and a unified Guardian risk veto layer. Exposed via a 45-endpoint REST API and a published [TypeScript SDK (`cortex-risk-sdk`)](https://www.npmjs.com/package/cortex-risk-sdk).
 
+[![npm](https://img.shields.io/npm/v/cortex-risk-sdk)](https://www.npmjs.com/package/cortex-risk-sdk)
+[![Tests](https://img.shields.io/badge/tests-261%20passing-brightgreen)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
 
 ## Abstract
 
-Financial markets exhibit non-stationary dynamics characterized by abrupt regime transitions, heavy-tailed return distributions, volatility clustering, and contagion-driven crash cascades. Traditional single-model risk frameworks — such as standalone GARCH or constant-volatility VaR — fail to capture these phenomena simultaneously, leading to systematic underestimation of tail risk during crisis periods. This paper presents the **Cortex Risk Engine**, a modular quantitative framework that integrates seven complementary stochastic models into a unified risk assessment pipeline. The core Markov-Switching Multifractal (MSM) model provides real-time regime detection via Bayesian filtering across K volatility states. This is augmented by Generalized Pareto Distribution (GPD) tail modeling, Hawkes self-exciting point processes for crash contagion, the Bates (1996) Stochastic Volatility with Jumps (SVJ) model, five-family copula dependence structures with regime-conditional selection, rough Bergomi volatility (H ≈ 0.1), and multifractal spectrum analysis. The system is validated through Kupiec and Christoffersen backtests and exposed via a 44-endpoint REST API designed for integration with autonomous trading agents on Solana.
+Financial markets exhibit non-stationary dynamics characterized by abrupt regime transitions, heavy-tailed return distributions, volatility clustering, and contagion-driven crash cascades. Traditional single-model risk frameworks — such as standalone GARCH or constant-volatility VaR — fail to capture these phenomena simultaneously, leading to systematic underestimation of tail risk during crisis periods. This paper presents the **CortexAgent Risk Engine**, a modular quantitative framework that integrates seven complementary stochastic models into a unified risk assessment pipeline. The core Markov-Switching Multifractal (MSM) model provides real-time regime detection via Bayesian filtering across K volatility states. This is augmented by Generalized Pareto Distribution (GPD) tail modeling, Hawkes self-exciting point processes for crash contagion, the Bates (1996) Stochastic Volatility with Jumps (SVJ) model, five-family copula dependence structures with regime-conditional selection, rough Bergomi volatility (H ≈ 0.1), and multifractal spectrum analysis. A Guardian integration layer consolidates all model outputs into a single composite risk score with circuit-breaker logic for autonomous trade veto. The system is validated through Kupiec and Christoffersen backtests and exposed via a 45-endpoint REST API with a published TypeScript SDK designed for integration with autonomous trading agents on Solana.
 
 ---
 
@@ -18,11 +23,12 @@ Financial markets exhibit non-stationary dynamics characterized by abrupt regime
 3. [Methodology](#3-methodology)
 4. [Implementation Architecture](#4-implementation-architecture)
 5. [API Reference](#5-api-reference)
-6. [Results and Validation](#6-results-and-validation)
-7. [Reproducibility](#7-reproducibility)
-8. [Limitations](#8-limitations)
-9. [References](#9-references)
-10. [License and Authors](#10-license-and-authors)
+6. [TypeScript SDK](#6-typescript-sdk)
+7. [Results and Validation](#7-results-and-validation)
+8. [Reproducibility](#8-reproducibility)
+9. [Limitations](#9-limitations)
+10. [References](#10-references)
+11. [License and Authors](#11-license-and-authors)
 
 ---
 
@@ -52,8 +58,10 @@ The Cortex Risk Engine resolves this through **model composition**: each module 
 This framework makes the following contributions:
 
 - A production-ready implementation of the Calvet & Fisher (2004) MSM model with K-state Bayesian filtering, asymmetric transition matrices, and Student-t VaR extensions.
-- Integration of seven complementary risk models into a single coherent pipeline with 248 passing unit tests.
-- A 44-endpoint REST API with WebSocket regime streaming, designed for sub-10ms query latency.
+- Integration of seven complementary risk models into a single coherent pipeline with 261 passing unit tests.
+- A Guardian risk veto layer that consolidates EVT (30%), SVJ (25%), Hawkes (25%), and Regime (20%) scores into a single composite risk assessment with circuit-breaker logic.
+- A 45-endpoint REST API with WebSocket regime streaming, designed for sub-10ms query latency.
+- A published TypeScript SDK ([`cortex-risk-sdk`](https://www.npmjs.com/package/cortex-risk-sdk)) with cockatiel resilience (retry, circuit breaker, timeout) and zod runtime validation.
 - Regime-dependent copula selection that dynamically switches between Gaussian (calm) and Student-t (crisis) dependence structures based on filtered regime probabilities.
 
 ---
@@ -294,12 +302,13 @@ graph TB
 | Regime Analytics | `regime_analytics.py` | ~200 | 4 | Duration, statistics, history, transitions |
 | Model Comparison | `model_comparison.py` | 346 | 2 | 9-model benchmark framework |
 | News Intelligence | `news_intelligence.py` | ~300 | 3 | Sentiment scoring, market signals |
+| Guardian | `guardian.py` | 241 | 5 | Unified risk veto, composite scoring |
 | Solana Adapter | `solana_data_adapter.py` | ~250 | 3 | Birdeye, Drift, Raydium data fetching |
 
 ### 4.3 Project Structure
 
 ```
-cortex-risk-engine/
+cortexagent/
 ├── MSM-VaR_MODEL.py              # Core MSM model
 ├── extreme_value_theory.py       # EVT / GPD
 ├── hawkes_process.py             # Hawkes self-exciting process
@@ -311,12 +320,27 @@ cortex-risk-engine/
 ├── regime_analytics.py           # Regime temporal analysis
 ├── model_comparison.py           # 9-model benchmark
 ├── news_intelligence.py          # News sentiment engine
+├── guardian.py                   # Unified risk veto layer
 ├── solana_data_adapter.py        # Solana DeFi data adapter
 ├── demo_run.py                   # End-to-end demonstration script
 ├── api/
 │   ├── main.py                   # FastAPI application entry point
 │   ├── models.py                 # Pydantic request/response schemas
-│   └── routes.py                 # 44 API endpoint handlers
+│   └── routes.py                 # 45 API endpoint handlers
+├── sdk/                          # TypeScript SDK (cortex-risk-sdk on npm)
+│   ├── src/
+│   │   ├── client.ts             # RiskEngineClient — 45 typed methods
+│   │   ├── types.ts              # Interfaces + zod schemas
+│   │   ├── errors.ts             # Error hierarchy
+│   │   ├── utils.ts              # Cockatiel resilience policies
+│   │   ├── websocket.ts          # RegimeStreamClient
+│   │   └── index.ts              # Public exports
+│   ├── tests/
+│   │   └── client.test.ts        # 12 SDK tests
+│   ├── examples/
+│   │   └── cortex-agent.ts       # Example trading agent
+│   ├── package.json
+│   └── tsconfig.json
 ├── tests/
 │   ├── conftest.py               # Shared fixtures (returns, filter_probs)
 │   ├── test_msm_core.py          # 17 tests
@@ -329,7 +353,8 @@ cortex-risk-engine/
 │   ├── test_portfolio_var.py     # 11 tests
 │   ├── test_regime_analytics.py  # 8 tests
 │   ├── test_model_comparison.py  # 6 tests
-│   └── test_api_endpoints.py     # 12 tests
+│   ├── test_api_endpoints.py     # 12 tests
+│   └── test_guardian.py          # 13 tests
 ├── requirements.txt
 └── LICENSE
 ```
@@ -439,7 +464,15 @@ The REST API is served via FastAPI at `http://localhost:8000/api/v1`. Interactiv
 | `GET` | `/news/sentiment` | Filtered sentiment analysis |
 | `GET` | `/news/signal` | Market signal from news aggregation |
 
-### 5.12 Example: Calibrate and Query VaR
+### 5.12 Guardian Endpoint
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/guardian/assess` | Unified risk veto — composite score from EVT (30%), SVJ (25%), Hawkes (25%), Regime (20%) |
+
+The Guardian returns `approved` (bool), `risk_score` (0–100), `veto_reasons`, `recommended_size`, and per-component breakdowns. Score ≥ 70 or any component > 90 triggers automatic veto.
+
+### 5.13 Example: Calibrate and Query VaR
 
 ```bash
 # 1. Calibrate MSM model
@@ -463,9 +496,50 @@ curl "http://localhost:8000/api/v1/evt/var/0.99?token=BTC-USD"
 
 ---
 
-## 6. Results and Validation
+## 6. TypeScript SDK
 
-### 6.1 End-to-End Demonstration Output
+The Risk Engine is accessible via the published npm package [`cortex-risk-sdk`](https://www.npmjs.com/package/cortex-risk-sdk).
+
+```bash
+npm install cortex-risk-sdk
+```
+
+```typescript
+import { RiskEngineClient, RegimeStreamClient } from "cortex-risk-sdk";
+
+const risk = new RiskEngineClient({
+  baseUrl: "http://localhost:8000",
+  timeout: 15_000,
+  retries: 3,
+  validateResponses: true,  // zod runtime validation
+});
+
+// Calibrate → check regime → Guardian veto → trade
+const cal = await risk.calibrate({ token: "SOL-USD", num_states: 5 });
+const regime = await risk.regime("SOL-USD");
+const assessment = await risk.guardianAssess({
+  token: "SOL-USD",
+  trade_size_usd: 50_000,
+  direction: "long",
+});
+
+if (assessment.approved) {
+  console.log(`Trade approved — size $${assessment.recommended_size}`);
+}
+```
+
+**SDK features:**
+- 45 typed methods covering all API endpoints
+- **cockatiel** resilience: retry with exponential backoff, circuit breaker, timeout
+- **zod** runtime validation for critical responses (Guardian, VaR, Regime)
+- `RegimeStreamClient` for real-time WebSocket regime monitoring
+- Zero external HTTP dependencies (native `fetch`, Node 18+)
+
+---
+
+## 7. Results and Validation
+
+### 7.1 End-to-End Demonstration Output
 
 The following results were produced by `demo_run.py` on 300 synthetic observations (3 assets) with a regime-switching DGP:
 
@@ -483,7 +557,7 @@ The following results were produced by `demo_run.py` on 300 synthetic observatio
 | Rough Volatility | H = 0.153 | Confirms rough vol (H < 0.5) |
 | SVJ (Bates) | Jump share | 76.4%, SVJ VaR 99% = −9.75% |
 
-### 6.2 Model Comparison Results
+### 7.2 Model Comparison Results
 
 Nine volatility models benchmarked on identical data:
 
@@ -500,9 +574,9 @@ Nine volatility models benchmarked on identical data:
 
 MSM achieves the closest breach rate to the 5% target, confirming proper calibration. SVJ is conservative (2.33% breaches at 5% level), consistent with its jump-augmented tail modeling.
 
-### 6.3 Test Suite
+### 7.3 Test Suite
 
-248 unit tests across 11 test files, all passing:
+261 unit tests across 12 Python test files + 12 TypeScript SDK tests, all passing:
 
 | Test File | Count | Coverage |
 |-----------|-------|----------|
@@ -513,32 +587,34 @@ MSM achieves the closest breach rate to the 5% target, confirming proper calibra
 | `test_multifractal_analysis.py` | 27 | Hurst, DFA, spectrum, LRD |
 | `test_extreme_value_theory.py` | 19 | GPD fit, EVT VaR, ES, diagnostics |
 | `test_msm_core.py` | 17 | Calibration, filtering, VaR, backtests |
+| `test_guardian.py` | 13 | Guardian veto, composite scoring, cache |
 | `test_api_endpoints.py` | 12 | HTTP endpoint integration tests |
 | `test_portfolio_var.py` | 11 | Multi-asset, marginal, stress VaR |
 | `test_regime_analytics.py` | 8 | Durations, statistics, history |
 | `test_model_comparison.py` | 6 | 9-model benchmark, ranking |
-| **Total** | **248** | **100% pass rate** |
+| `sdk/tests/client.test.ts` | 12 | SDK client, errors, resilience |
+| **Total** | **261 + 12** | **100% pass rate** |
 
 ---
 
-## 7. Reproducibility
+## 8. Reproducibility
 
-### 7.1 Environment
+### 8.1 Environment
 
 - **Python**: 3.11+ (tested on 3.11.9, macOS ARM64)
 - **OS**: macOS 14+ / Linux (Ubuntu 22.04+)
 - **Hardware**: Apple M-series or x86_64; no GPU required
 
-### 7.2 Installation
+### 8.2 Installation
 
 ```bash
-git clone https://github.com/Johan948/Morkow-Switching-Multifractal-Volatility-Model.git
-cd Morkow-Switching-Multifractal-Volatility-Model
+git clone https://github.com/cortex-agent/cortexagent.git
+cd cortexagent
 
 pip install -r requirements.txt
 ```
 
-### 7.3 Dependencies
+### 8.3 Dependencies
 
 | Package | Version | Purpose |
 |---------|---------|---------|
@@ -555,7 +631,7 @@ pip install -r requirements.txt
 | websockets | ≥11.0 | WebSocket support |
 | pytest | ≥7.0 | Test framework |
 
-### 7.4 Running
+### 8.4 Running
 
 ```bash
 # Run the full test suite
@@ -568,13 +644,13 @@ python demo_run.py
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 7.5 Seed Values
+### 8.5 Seed Values
 
 The demo script uses `np.random.seed(42)` for reproducible synthetic data generation. All Monte Carlo simulations (SVJ VaR, Hawkes simulation) accept optional seed parameters for deterministic output.
 
 ---
 
-## 8. Limitations
+## 9. Limitations
 
 1. **Regime count selection**: The number of states K is fixed a priori (default 5). Model selection criteria (BIC) can guide this choice, but no automatic K-selection is implemented.
 2. **Stationarity assumption**: The MSM transition matrix is time-homogeneous. Structural breaks in the data-generating process (e.g., protocol upgrades) may require recalibration.
@@ -587,7 +663,7 @@ The demo script uses `np.random.seed(42)` for reproducible synthetic data genera
 
 ---
 
-## 9. References
+## 10. References
 
 1. Calvet, L. E., & Fisher, A. J. (2004). "How to Forecast Long-Run Volatility: Regime Switching and the Estimation of Multifractal Processes." *Journal of Financial Econometrics*, 2(1), 49–83.
 
@@ -615,22 +691,19 @@ The demo script uses `np.random.seed(42)` for reproducible synthetic data genera
 
 ---
 
-## 10. License and Authors
+## 11. License and Authors
 
 ### License
 
 MIT License — see [LICENSE](LICENSE) for full text.
 
-### Authors
+### Developed by
 
-**Tontici Sergiu**
-- Email: tonticisergiu236@gmail.com
-- LinkedIn: [linkedin.com/in/sergiu-tontici-71aa96361](https://www.linkedin.com/in/sergiu-tontici-71aa96361/)
-- GitHub: [github.com/Johan948](https://github.com/Johan948)
+**[Cortex AI](https://www.cortex-agent.xyz)**
 
 ### Disclaimer
 
-This software is provided for educational and research purposes only. It does not constitute financial advice. Past performance does not guarantee future results. Any investment decision should be made in consultation with a qualified financial professional.
+This software is provided for research and educational purposes. It does not constitute financial advice. Use at your own risk.
 
 ---
 

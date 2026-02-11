@@ -1,16 +1,16 @@
 {
   "name": "cortex-risk-sdk",
-  "version": "1.0.0",
-  "description": "Production-grade TypeScript SDK for the Cortex Risk Engine — MSM-VaR, EVT, SVJ, Hawkes, Rough Volatility, Copula VaR, and Guardian risk veto for autonomous DeFi agents on Solana.",
-  "author": "Cortex Labs",
+  "version": "1.0.1",
+  "description": "TypeScript SDK for the CortexAgent Risk Engine — MSM-VaR, EVT, SVJ, Hawkes, Rough Volatility, Copula VaR, and Guardian risk veto for autonomous DeFi agents on Solana.",
+  "author": "Cortex AI <dev@cortex-agent.xyz> (https://www.cortex-agent.xyz)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cortex-labs/risk-sdk.git"
+    "url": "git+https://github.com/cortex-agent/cortexagent.git"
   },
-  "homepage": "https://github.com/cortex-labs/risk-sdk#readme",
+  "homepage": "https://www.cortex-agent.xyz",
   "bugs": {
-    "url": "https://github.com/cortex-labs/risk-sdk/issues"
+    "url": "https://github.com/cortex-agent/cortexagent/issues"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

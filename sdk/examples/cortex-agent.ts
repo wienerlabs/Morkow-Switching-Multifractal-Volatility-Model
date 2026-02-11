@@ -1,5 +1,5 @@
 /**
- * Example: Cortex trading agent using @cortex/risk-sdk
+ * Example: Cortex trading agent using cortex-risk-sdk
  *
  * Flow: calibrate → check regime → Guardian assess → execute or abort
  */
