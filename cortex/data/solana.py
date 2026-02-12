@@ -354,3 +354,85 @@ def get_market_depth(
         "participation_rate": float(trade_size_usd / volume_24h) if volume_24h > 0 else None,
     }
 
+
+
+
+# ── Axiom-enhanced price feeds ──
+
+
+def get_axiom_price(token: str) -> dict | None:
+    """Fetch token price from Axiom Trade as alternative source.
+
+    Returns dict with price, source, timestamp or None if unavailable.
+    """
+    try:
+        from cortex.data.axiom import get_token_price, is_available
+
+        if not is_available():
+            return None
+
+        address = _resolve_token_address(token)
+        data = get_token_price(address)
+        raw = data.get("raw") or {}
+        price = float(raw.get("price", 0) or raw.get("priceUsd", 0) or 0)
+        if price <= 0:
+            return None
+
+        return {
+            "price": price,
+            "source": "axiom",
+            "token": token,
+            "address": address,
+            "timestamp": data.get("timestamp"),
+        }
+    except Exception as e:
+        logger.warning("Axiom price fetch failed for %s: %s", token, e)
+        return None
+
+
+def get_multi_source_price(token: str) -> dict:
+    """Fetch price from multiple sources (Birdeye + Axiom) and return best.
+
+    Returns dict with price, source, all_sources for cross-validation.
+    Prefers Birdeye as primary, uses Axiom for validation/fallback.
+    """
+    address = _resolve_token_address(token)
+    sources: list[dict] = []
+
+    # Primary: Birdeye
+    try:
+        resp = _pool.get(
+            f"{BIRDEYE_BASE}/defi/price",
+            headers=_birdeye_headers(),
+            params={"address": address},
+        )
+        resp.raise_for_status()
+        birdeye_price = float(resp.json().get("data", {}).get("value", 0))
+        if birdeye_price > 0:
+            sources.append({"source": "birdeye", "price": birdeye_price})
+    except Exception as e:
+        logger.warning("Birdeye price failed for %s: %s", token, e)
+
+    # Secondary: Axiom
+    axiom_data = get_axiom_price(token)
+    if axiom_data:
+        sources.append({"source": "axiom", "price": axiom_data["price"]})
+
+    if not sources:
+        raise ValueError(f"No price data available for {token} from any source")
+
+    primary = sources[0]
+    deviation = None
+    if len(sources) > 1:
+        prices = [s["price"] for s in sources]
+        mean_price = sum(prices) / len(prices)
+        deviation = max(abs(p - mean_price) / mean_price * 100 for p in prices) if mean_price > 0 else None
+
+    return {
+        "token": token,
+        "price": primary["price"],
+        "source": primary["source"],
+        "all_sources": sources,
+        "price_deviation_pct": deviation,
+        "cross_validated": len(sources) > 1,
+    }

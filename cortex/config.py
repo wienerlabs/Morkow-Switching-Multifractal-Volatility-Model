@@ -128,6 +128,27 @@ CB_STRATEGIES = json.loads(os.environ.get("CB_STRATEGIES", '["lp", "arb", "perp"
 DEBATE_MAX_ROUNDS = int(os.environ.get("DEBATE_MAX_ROUNDS", "3"))
 DEBATE_TIMEOUT_MS = int(os.environ.get("DEBATE_TIMEOUT_MS", "5000"))
 
+# ── Axiom Trade DEX Aggregator ──
+# Auth: email/password + OTP → access_token/refresh_token (no API key)
+
+AXIOM_EMAIL = os.environ.get("AXIOM_EMAIL", "")
+AXIOM_PASSWORD = os.environ.get("AXIOM_PASSWORD", "")
+AXIOM_AUTH_TOKEN = os.environ.get("AXIOM_AUTH_TOKEN", "")
+AXIOM_REFRESH_TOKEN = os.environ.get("AXIOM_REFRESH_TOKEN", "")
+AXIOM_TIMEOUT = int(os.environ.get("AXIOM_TIMEOUT", "30"))
+AXIOM_MAX_RETRIES = int(os.environ.get("AXIOM_MAX_RETRIES", "3"))
+AXIOM_WS_RECONNECT_DELAY = int(os.environ.get("AXIOM_WS_RECONNECT_DELAY", "5"))
+AXIOM_NEW_TOKEN_BUFFER = int(os.environ.get("AXIOM_NEW_TOKEN_BUFFER", "100"))
+AXIOM_MIN_LIQUIDITY_SOL = float(os.environ.get("AXIOM_MIN_LIQUIDITY_SOL", "10.0"))
+
+# ── Execution Layer (Wave 9) ──
+
+EXECUTION_ENABLED = os.environ.get("EXECUTION_ENABLED", "false").lower() == "true"
+EXECUTION_MAX_SLIPPAGE_BPS = int(os.environ.get("EXECUTION_MAX_SLIPPAGE_BPS", "100"))
+EXECUTION_MEV_PROTECTION = os.environ.get("EXECUTION_MEV_PROTECTION", "true").lower() == "true"
+SIMULATION_MODE = os.environ.get("SIMULATION_MODE", "true").lower() != "false"
+TRADING_MODE = os.environ.get("TRADING_MODE", "NORMAL")
+
 # ── API ──
 
 API_VERSION = os.environ.get("API_VERSION", "1.1.0")

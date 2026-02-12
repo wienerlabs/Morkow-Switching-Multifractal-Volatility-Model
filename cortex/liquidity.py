@@ -457,3 +457,94 @@ def compute_lvar_with_regime(
     result["regime_breakdown"] = regime_lvars
     result["regime_weighted_spread_pct"] = float(weighted_spread)
     return result
+
+
+
+# ── Axiom-enhanced LVaR ──
+
+
+def fetch_axiom_spread(pair_address: str) -> dict | None:
+    """Fetch spread estimate from Axiom Trade liquidity data.
+
+    Returns dict with spread_pct and spread_vol_pct compatible with
+    liquidity_adjusted_var(), or None if Axiom is unavailable.
+    """
+    try:
+        from cortex.data.axiom import extract_liquidity_metrics, is_available
+
+        if not is_available():
+            logger.debug("Axiom not available, skipping spread fetch")
+            return None
+
+        metrics = extract_liquidity_metrics(pair_address)
+        if metrics.get("error") or metrics.get("spread_pct") is None:
+            return None
+
+        return {
+            "spread_pct": metrics["spread_pct"],
+            "spread_vol_pct": metrics["spread_vol_pct"],
+            "source": "axiom",
+            "volume_24h": metrics.get("volume_24h"),
+            "liquidity": metrics.get("liquidity"),
+        }
+    except Exception as e:
+        logger.warning("Axiom spread fetch failed: %s", e)
+        return None
+
+
+def liquidity_adjusted_var_with_axiom(
+    var_value: float,
+    pair_address: str | None = None,
+    prices: np.ndarray | pd.Series | None = None,
+    position_value: float = 1.0,
+    alpha: float = 0.05,
+    holding_period: int = 1,
+    prefer_axiom: bool = True,
+) -> dict:
+    """Compute LVaR using Axiom liquidity data with Roll estimator fallback.
+
+    Tries Axiom first for real-time DEX spread data. Falls back to Roll
+    estimator from price series if Axiom is unavailable.
+
+    Args:
+        var_value: Base VaR (negative, e.g. -3.2%).
+        pair_address: Axiom pair address for live spread data.
+        prices: Price series for Roll estimator fallback.
+        position_value: Position notional in USD.
+        alpha: VaR confidence level.
+        holding_period: Holding period in days.
+        prefer_axiom: Try Axiom first (default True).
+    """
+    spread_data = None
+    source_used = "none"
+
+    if prefer_axiom and pair_address:
+        spread_data = fetch_axiom_spread(pair_address)
+        if spread_data:
+            source_used = "axiom"
+
+    if spread_data is None and prices is not None:
+        p = np.asarray(prices, dtype=float)
+        if len(p) >= 10:
+            roll = estimate_spread(p, method="roll")
+            spread_data = {
+                "spread_pct": roll["spread_pct"],
+                "spread_vol_pct": roll.get("spread_vol_pct", 0.0),
+            }
+            source_used = "roll"
+
+    if spread_data is None:
+        spread_data = {"spread_pct": 0.5, "spread_vol_pct": 0.15}
+        source_used = "default"
+        logger.warning("No spread data available, using conservative defaults")
+
+    result = liquidity_adjusted_var(
+        var_value=var_value,
+        spread_pct=spread_data["spread_pct"],
+        spread_vol_pct=spread_data["spread_vol_pct"],
+        position_value=position_value,
+        alpha=alpha,
+        holding_period=holding_period,
+    )
+    result["spread_source"] = source_used
+    return result
