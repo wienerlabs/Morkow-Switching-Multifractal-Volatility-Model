@@ -251,3 +251,95 @@ def ohlcv_to_returns(df: pd.DataFrame) -> pd.Series:
     rets = 100 * np.diff(np.log(close.values))
     return pd.Series(rets, index=close.index[1:], name="r")
 
+
+
+def get_pool_liquidity(pool_address: str) -> dict:
+    """
+    Fetch detailed liquidity metrics from a Raydium pool for LVaR calculations.
+
+    Returns TVL, volume, fee tier, and derived liquidity depth metrics
+    needed for market impact and spread estimation.
+
+    Args:
+        pool_address: Raydium AMM pool address.
+    """
+    raw = get_liquidity_metrics(pool_address)
+
+    tvl = raw["tvl"]
+    volume_24h = raw["volume_24h"]
+
+    depth_ratio = tvl / volume_24h if volume_24h > 0 else float("inf")
+    depth_score = min(100.0, depth_ratio * 10.0)
+
+    fee_rate = raw["fee_24h"] / volume_24h if volume_24h > 0 else 0.003
+    estimated_spread_pct = fee_rate * 100.0 + (1.0 / (1.0 + tvl / 1e6)) * 0.5
+
+    return {
+        "pool_address": pool_address,
+        "tvl": tvl,
+        "volume_24h": volume_24h,
+        "depth_ratio": float(depth_ratio) if depth_ratio != float("inf") else None,
+        "depth_score": float(depth_score),
+        "fee_rate": float(fee_rate),
+        "estimated_spread_pct": float(estimated_spread_pct),
+        "mint_a": raw["mint_a"],
+        "mint_b": raw["mint_b"],
+    }
+
+
+def get_market_depth(
+    token: str,
+    trade_size_usd: float = 10_000.0,
+) -> dict:
+    """
+    Estimate market depth and price impact for a given trade size.
+
+    Uses Birdeye price + volume data to estimate how much a trade
+    would move the price. For AMM pools, impact ≈ trade_size / (2 * TVL).
+
+    Args:
+        token: Token symbol or mint address.
+        trade_size_usd: Proposed trade size in USD.
+    """
+    address = _resolve_token_address(token)
+
+    with httpx.Client(timeout=30) as client:
+        resp = client.get(
+            f"{BIRDEYE_BASE}/defi/price",
+            headers=_birdeye_headers(),
+            params={"address": address},
+        )
+        resp.raise_for_status()
+        price_data = resp.json().get("data", {})
+        current_price = float(price_data.get("value", 0))
+
+        resp2 = client.get(
+            f"{BIRDEYE_BASE}/defi/token_overview",
+            headers=_birdeye_headers(),
+            params={"address": address},
+        )
+        resp2.raise_for_status()
+        overview = resp2.json().get("data", {})
+
+    volume_24h = float(overview.get("v24hUSD", 0))
+    liquidity = float(overview.get("liquidity", 0))
+
+    if liquidity > 0:
+        impact_pct = (trade_size_usd / (2.0 * liquidity)) * 100.0
+    elif volume_24h > 0:
+        participation = trade_size_usd / volume_24h
+        impact_pct = np.sqrt(participation) * 100.0
+    else:
+        impact_pct = float("nan")
+
+    return {
+        "token": token,
+        "current_price": current_price,
+        "volume_24h_usd": volume_24h,
+        "liquidity_usd": liquidity,
+        "trade_size_usd": trade_size_usd,
+        "estimated_impact_pct": float(impact_pct),
+        "estimated_impact_usd": float(impact_pct / 100.0 * trade_size_usd) if not np.isnan(impact_pct) else None,
+        "participation_rate": float(trade_size_usd / volume_24h) if volume_24h > 0 else None,
+    }
+
