@@ -1,15 +1,10 @@
 import asyncio
 import logging
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
-
-# Add project root to path so we can import the MSM model
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 
 from api.models import (
     AssetDecompositionItem,
@@ -95,9 +90,11 @@ from api.models import (
     get_regime_name,
 )
 
+from api.middleware import verify_api_key
+
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 # In-memory model state (per-token)
 _model_store: dict[str, dict] = {}
@@ -121,7 +118,7 @@ def _get_model(token: str) -> dict:
 def _load_returns(req: CalibrateRequest) -> pd.Series:
     """Fetch data and convert to log-returns in %."""
     if req.data_source.value == "solana":
-        from solana_data_adapter import get_token_ohlcv, ohlcv_to_returns
+        from cortex.data.solana import get_token_ohlcv, ohlcv_to_returns
 
         df = get_token_ohlcv(req.token, req.start_date, req.end_date, req.interval)
         return ohlcv_to_returns(df)
@@ -142,9 +139,7 @@ def _load_returns(req: CalibrateRequest) -> pd.Series:
 
 @router.post("/calibrate", response_model=CalibrateResponse)
 def calibrate(req: CalibrateRequest):
-    from importlib import import_module
-
-    msm = import_module("MSM-VaR_MODEL")
+    from cortex import msm
 
     try:
         returns = _load_returns(req)
@@ -198,9 +193,7 @@ def calibrate(req: CalibrateRequest):
 
 @router.get("/regime/current", response_model=RegimeResponse)
 def get_current_regime(token: str = Query(...)):
-    from importlib import import_module
-
-    msm = import_module("MSM-VaR_MODEL")
+    from cortex import msm
     m = _get_model(token)
 
     probs = np.asarray(m["filter_probs"].iloc[-1])
@@ -232,9 +225,7 @@ def get_var(
     use_student_t: bool = Query(None, description="Override distribution. Defaults to calibration setting."),
     nu: float = Query(None, gt=2.0, description="Override Student-t df."),
 ):
-    from importlib import import_module
-
-    msm = import_module("MSM-VaR_MODEL")
+    from cortex import msm
     m = _get_model(token)
 
     if confidence > 1.0:
@@ -261,9 +252,7 @@ def get_var(
 
 @router.get("/volatility/forecast", response_model=VolatilityForecastResponse)
 def get_volatility_forecast(token: str = Query(...)):
-    from importlib import import_module
-
-    msm = import_module("MSM-VaR_MODEL")
+    from cortex import msm
     m = _get_model(token)
 
     _, sigma_t1, _, pi_t1 = msm.msm_var_forecast_next_day(
@@ -281,10 +270,9 @@ def get_volatility_forecast(token: str = Query(...)):
 
 @router.get("/backtest/summary", response_model=BacktestSummaryResponse)
 def get_backtest_summary(token: str = Query(...), alpha: float = Query(0.05)):
-    from importlib import import_module
     from scipy.stats import norm
 
-    msm = import_module("MSM-VaR_MODEL")
+    from cortex import msm
     m = _get_model(token)
 
     returns = m["returns"]
@@ -318,9 +306,7 @@ def get_tail_probs(
     use_student_t: bool = Query(False),
     nu: float = Query(5.0),
 ):
-    from importlib import import_module
-
-    msm = import_module("MSM-VaR_MODEL")
+    from cortex import msm
     m = _get_model(token)
 
     result = msm.msm_tail_probs(
@@ -344,9 +330,7 @@ def get_tail_probs(
 @router.websocket("/stream/regime")
 async def stream_regime(ws: WebSocket, token: str = Query(...)):
     """Stream regime updates every 5 seconds for a calibrated token."""
-    from importlib import import_module
-
-    msm = import_module("MSM-VaR_MODEL")
+    from cortex import msm
     await ws.accept()
 
     try:
@@ -402,7 +386,7 @@ def get_news_feed(
     Full news intelligence feed: fetch from all sources, score, deduplicate, aggregate.
     If a model is calibrated, uses its regime state for impact amplification.
     """
-    from news_intelligence import fetch_news_intelligence
+    from cortex.news import fetch_news_intelligence
 
     rs = regime_state if regime_state is not None else _current_regime_state()
     try:
@@ -425,7 +409,7 @@ def get_news_sentiment(
     Same as /news/feed but with smaller default page size — intended for
     quick sentiment checks without the full feed.
     """
-    from news_intelligence import fetch_news_intelligence
+    from cortex.news import fetch_news_intelligence
 
     rs = regime_state if regime_state is not None else _current_regime_state()
     try:
@@ -447,7 +431,7 @@ def get_news_signal(
     Returns only the aggregate MarketSignal — direction, strength, EWMA,
     momentum, entropy, confidence. Lightweight endpoint for trading bots.
     """
-    from news_intelligence import fetch_news_intelligence
+    from cortex.news import fetch_news_intelligence
 
     rs = regime_state if regime_state is not None else _current_regime_state()
     try:
@@ -467,7 +451,7 @@ def get_news_signal(
 @router.get("/regime/durations", response_model=RegimeDurationsResponse)
 def get_regime_durations(token: str = Query(...)):
     """Expected duration (in days) for each regime state."""
-    from regime_analytics import compute_expected_durations
+    from cortex.regime import compute_expected_durations
 
     m = _get_model(token)
     cal = m["calibration"]
@@ -485,7 +469,7 @@ def get_regime_durations(token: str = Query(...)):
 @router.get("/regime/history", response_model=RegimeHistoryResponse)
 def get_regime_history(token: str = Query(...)):
     """Historical timeline of consecutive regime periods."""
-    from regime_analytics import extract_regime_history
+    from cortex.regime import extract_regime_history
 
     m = _get_model(token)
     df = extract_regime_history(m["filter_probs"], m["returns"], m["sigma_states"])
@@ -517,7 +501,7 @@ def get_transition_alert(
     threshold: float = Query(0.3, gt=0.0, lt=1.0),
 ):
     """Alert when probability of leaving current regime exceeds threshold."""
-    from regime_analytics import detect_regime_transition
+    from cortex.regime import detect_regime_transition
 
     m = _get_model(token)
     result = detect_regime_transition(m["filter_probs"], threshold=threshold)
@@ -537,7 +521,7 @@ def get_transition_alert(
 @router.get("/regime/statistics", response_model=RegimeStatisticsResponse)
 def get_regime_statistics(token: str = Query(...)):
     """Per-regime conditional statistics (mean return, vol, Sharpe, drawdown)."""
-    from regime_analytics import compute_regime_statistics
+    from cortex.regime import compute_regime_statistics
 
     m = _get_model(token)
     df = compute_regime_statistics(m["returns"], m["filter_probs"], m["sigma_states"])
@@ -573,7 +557,7 @@ _comparison_cache: dict[str, tuple[pd.DataFrame, float]] = {}
 @router.post("/compare", response_model=CompareResponse)
 def run_model_comparison(req: CompareRequest):
     """Run volatility model comparison on a calibrated token's returns."""
-    from model_comparison import compare_models, _MODEL_REGISTRY
+    from cortex.comparison import compare_models, _MODEL_REGISTRY
 
     m = _get_model(req.token)
     returns = m["returns"]
@@ -612,7 +596,7 @@ def run_model_comparison(req: CompareRequest):
 @router.get("/compare/report/{token}", response_model=ComparisonReportResponse)
 def get_comparison_report(token: str, alpha: float = Query(0.05)):
     """Generate a structured report from a previous comparison run."""
-    from model_comparison import generate_comparison_report
+    from cortex.comparison import generate_comparison_report
 
     if token not in _comparison_cache:
         raise HTTPException(
@@ -645,7 +629,7 @@ def _load_portfolio_returns(req: PortfolioCalibrateRequest) -> pd.DataFrame:
     """Fetch multi-asset returns and return a DataFrame of log-returns in %."""
     if req.data_source.value == "solana":
         from datetime import timedelta
-        from solana_data_adapter import get_token_ohlcv, ohlcv_to_returns
+        from cortex.data.solana import get_token_ohlcv, ohlcv_to_returns
 
         period = req.period
         now = datetime.now(timezone.utc)
@@ -689,7 +673,7 @@ def _load_portfolio_returns(req: PortfolioCalibrateRequest) -> pd.DataFrame:
 @router.post("/portfolio/calibrate", response_model=PortfolioVaRResponse)
 def calibrate_portfolio(req: PortfolioCalibrateRequest):
     """Calibrate multi-asset MSM and compute portfolio VaR. Optionally fit copula."""
-    from portfolio_var import calibrate_multivariate, portfolio_var as pvar_fn
+    from cortex.portfolio import calibrate_multivariate, portfolio_var as pvar_fn
 
     returns_df = _load_portfolio_returns(req)
     model = calibrate_multivariate(returns_df, num_states=req.num_states, method=req.method)
@@ -697,7 +681,7 @@ def calibrate_portfolio(req: PortfolioCalibrateRequest):
 
     # Optionally fit copula during calibration
     if req.copula_family:
-        from copula_portfolio_var import compare_copulas, fit_copula
+        from cortex.copula import compare_copulas, fit_copula
 
         family = req.copula_family.lower()
         if family == "auto":
@@ -724,7 +708,7 @@ def compute_portfolio_var(
     alpha: float = Query(0.05, gt=0.0, lt=1.0),
 ):
     """Compute portfolio VaR with custom weights/alpha on a previously calibrated model."""
-    from portfolio_var import portfolio_var as pvar_fn
+    from cortex.portfolio import portfolio_var as pvar_fn
 
     if _PORTFOLIO_KEY not in _portfolio_store:
         raise HTTPException(404, "No calibrated portfolio. Call POST /portfolio/calibrate first.")
@@ -746,7 +730,7 @@ def compute_marginal_var(
     alpha: float = Query(0.05, gt=0.0, lt=1.0),
 ):
     """Marginal VaR and Euler risk decomposition."""
-    from portfolio_var import marginal_var as mvar_fn
+    from cortex.portfolio import marginal_var as mvar_fn
 
     if _PORTFOLIO_KEY not in _portfolio_store:
         raise HTTPException(404, "No calibrated portfolio. Call POST /portfolio/calibrate first.")
@@ -767,7 +751,7 @@ def compute_stress_var(
     alpha: float = Query(0.05, gt=0.0, lt=1.0),
 ):
     """Stressed VaR by forcing the model into a specific regime."""
-    from portfolio_var import stress_var as svar_fn
+    from cortex.portfolio import stress_var as svar_fn
 
     if _PORTFOLIO_KEY not in _portfolio_store:
         raise HTTPException(404, "No calibrated portfolio. Call POST /portfolio/calibrate first.")
@@ -794,7 +778,7 @@ def compute_stress_var(
 @router.post("/evt/calibrate", response_model=EVTCalibrateResponse)
 def evt_calibrate(req: EVTCalibrateRequest):
     """Fit GPD to historical losses from a calibrated MSM model."""
-    from extreme_value_theory import fit_gpd, select_threshold
+    from cortex.evt import fit_gpd, select_threshold
 
     m = _get_model(req.token)
     returns = m["returns"]
@@ -838,7 +822,7 @@ def evt_calibrate(req: EVTCalibrateRequest):
 @router.get("/evt/var/{confidence}", response_model=EVTVaRResponse)
 def get_evt_var(confidence: float, token: str = Query(...)):
     """Compute EVT-VaR and CVaR for extreme tail quantiles."""
-    from extreme_value_theory import evt_cvar, evt_var
+    from cortex.evt import evt_cvar, evt_var
 
     if token not in _evt_store:
         raise HTTPException(404, f"No EVT calibration for '{token}'. Call POST /evt/calibrate first.")
@@ -871,7 +855,7 @@ def get_evt_var(confidence: float, token: str = Query(...)):
 @router.get("/evt/diagnostics", response_model=EVTDiagnosticsResponse)
 def get_evt_diagnostics(token: str = Query(...)):
     """Return EVT backtest results and Normal/Student-t/EVT comparison."""
-    from extreme_value_theory import compare_var_methods, evt_backtest
+    from cortex.evt import compare_var_methods, evt_backtest
 
     m = _get_model(token)
     if token not in _evt_store:
@@ -948,7 +932,7 @@ def compute_copula_portfolio_var(
     n_simulations: int = Query(10_000, ge=1000, le=100_000),
 ):
     """Portfolio VaR using copula-based Monte Carlo simulation."""
-    from copula_portfolio_var import copula_portfolio_var as cpvar_fn
+    from cortex.copula import copula_portfolio_var as cpvar_fn
 
     model = _get_portfolio_model()
     copula_fit = _get_copula_fit()
@@ -969,7 +953,7 @@ def compute_copula_portfolio_var(
 @router.get("/portfolio/copula/diagnostics", response_model=CopulaDiagnosticsResponse)
 def get_copula_diagnostics():
     """Return copula fit details and regime-conditional copulas."""
-    from copula_portfolio_var import regime_conditional_copulas
+    from cortex.copula import regime_conditional_copulas
 
     model = _get_portfolio_model()
     copula_fit = _get_copula_fit()
@@ -995,7 +979,7 @@ def get_copula_diagnostics():
 @router.post("/portfolio/copula/compare", response_model=CopulaCompareResponse)
 def compare_portfolio_copulas():
     """Compare all copula families on the calibrated portfolio data."""
-    from copula_portfolio_var import compare_copulas
+    from cortex.copula import compare_copulas
 
     model = _get_portfolio_model()
     returns_df = model["returns_df"]
@@ -1026,8 +1010,9 @@ def compare_portfolio_copulas():
     )
 
 
-@router.get("/portfolio/copula/regime-var", response_model=RegimeDependentCopulaVaRResponse)
+@router.post("/portfolio/copula/regime-var", response_model=RegimeDependentCopulaVaRResponse)
 def compute_regime_dependent_copula_var(
+    weights: dict[str, float] | None = None,
     alpha: float = Query(0.05, gt=0.0, lt=1.0),
     n_simulations: int = Query(10_000, ge=1000, le=100_000),
 ):
@@ -1037,12 +1022,13 @@ def compute_regime_dependent_copula_var(
     calm regimes use Gaussian copula (no tail dependence).
     Samples are blended proportionally to current regime probabilities.
     """
-    from copula_portfolio_var import regime_dependent_copula_var as rdcv_fn
+    from cortex.copula import regime_dependent_copula_var as rdcv_fn
 
     model = _get_portfolio_model()
-    assets = model["assets"]
-    equal_w = {a: 1.0 / len(assets) for a in assets}
-    result = rdcv_fn(model, equal_w, alpha=alpha, n_simulations=n_simulations)
+    if not weights:
+        assets = model["assets"]
+        weights = {a: 1.0 / len(assets) for a in assets}
+    result = rdcv_fn(model, weights, alpha=alpha, n_simulations=n_simulations)
 
     rc = result["current_regime_copula"]
     td_rc = rc["tail_dependence"]
@@ -1088,7 +1074,7 @@ def compute_regime_dependent_copula_var(
 @router.post("/hawkes/calibrate", response_model=HawkesCalibrateResponse)
 async def hawkes_calibrate(req: HawkesCalibrateRequest):
     """Fit Hawkes self-exciting process to extreme events from calibrated model."""
-    from hawkes_process import extract_events, fit_hawkes
+    from cortex.hawkes import extract_events, fit_hawkes
 
     m = _get_model(req.token)
     returns = m["returns"]
@@ -1135,7 +1121,7 @@ async def hawkes_calibrate(req: HawkesCalibrateRequest):
 @router.get("/hawkes/intensity", response_model=HawkesIntensityResponse)
 async def hawkes_intensity_endpoint(token: str = Query(...)):
     """Get current Hawkes intensity, crash clustering metrics, and contagion risk score."""
-    from hawkes_process import detect_flash_crash_risk, hawkes_intensity
+    from cortex.hawkes import detect_flash_crash_risk, hawkes_intensity
 
     _get_model(token)
     if token not in _hawkes_store:
@@ -1162,7 +1148,7 @@ async def hawkes_intensity_endpoint(token: str = Query(...)):
 @router.get("/hawkes/clusters", response_model=HawkesClustersResponse)
 async def hawkes_clusters_endpoint(token: str = Query(...)):
     """Detect temporal clusters of extreme events."""
-    from hawkes_process import detect_clusters
+    from cortex.hawkes import detect_clusters
 
     _get_model(token)
     if token not in _hawkes_store:
@@ -1182,7 +1168,7 @@ async def hawkes_clusters_endpoint(token: str = Query(...)):
 @router.post("/hawkes/var", response_model=HawkesVaRResponse)
 async def hawkes_var_endpoint(req: HawkesVaRRequest):
     """Compute Hawkes intensity-adjusted VaR."""
-    from hawkes_process import hawkes_intensity, hawkes_var_adjustment
+    from cortex.hawkes import hawkes_intensity, hawkes_var_adjustment
 
     m = _get_model(req.token)
     if req.token not in _hawkes_store:
@@ -1206,7 +1192,7 @@ async def hawkes_var_endpoint(req: HawkesVaRRequest):
         max_multiplier=req.max_multiplier,
     )
 
-    from hawkes_process import detect_flash_crash_risk
+    from cortex.hawkes import detect_flash_crash_risk
     risk = detect_flash_crash_risk(h["event_times"], h)
 
     return HawkesVaRResponse(
@@ -1224,7 +1210,7 @@ async def hawkes_var_endpoint(req: HawkesVaRRequest):
 @router.post("/hawkes/simulate", response_model=HawkesSimulateResponse)
 async def hawkes_simulate_endpoint(req: HawkesSimulateRequest):
     """Simulate Hawkes process to generate synthetic crash scenarios."""
-    from hawkes_process import simulate_hawkes
+    from cortex.hawkes import simulate_hawkes
 
     if req.token is not None:
         if req.token not in _hawkes_store:
@@ -1264,7 +1250,7 @@ def get_fractal_hurst(
     token: str = Query(...),
     method: str = Query("rs", pattern="^(rs|dfa)$"),
 ):
-    from multifractal_analysis import hurst_dfa, hurst_rs
+    from cortex.multifractal import hurst_dfa, hurst_rs
 
     m = _get_model(token)
     ret = m["returns"]
@@ -1289,7 +1275,7 @@ def get_fractal_hurst(
     summary="Multifractal spectrum f(α)",
 )
 def get_fractal_spectrum(token: str = Query(...)):
-    from multifractal_analysis import multifractal_spectrum
+    from cortex.multifractal import multifractal_spectrum
 
     m = _get_model(token)
     spec = multifractal_spectrum(m["returns"])
@@ -1315,7 +1301,7 @@ def get_fractal_spectrum(token: str = Query(...)):
     summary="Per-regime Hurst analysis",
 )
 def get_fractal_regime_hurst(token: str = Query(...)):
-    from multifractal_analysis import compare_fractal_regimes
+    from cortex.multifractal import compare_fractal_regimes
 
     m = _get_model(token)
     result = compare_fractal_regimes(
@@ -1340,7 +1326,7 @@ def get_fractal_regime_hurst(token: str = Query(...)):
     summary="Full fractal diagnostics",
 )
 def get_fractal_diagnostics(token: str = Query(...)):
-    from multifractal_analysis import (
+    from cortex.multifractal import (
         hurst_dfa,
         hurst_rs,
         long_range_dependence_test,
@@ -1378,7 +1364,7 @@ def get_fractal_diagnostics(token: str = Query(...)):
     summary="Calibrate rough volatility model (rBergomi or rHeston)",
 )
 def post_rough_calibrate(req: RoughCalibrateRequest):
-    from rough_volatility import calibrate_rough_bergomi, calibrate_rough_heston
+    from cortex.rough_vol import calibrate_rough_bergomi, calibrate_rough_heston
 
     m = _get_model(req.token)
 
@@ -1417,7 +1403,7 @@ def get_rough_forecast(
     horizon: int = Query(10, ge=1, le=252),
     n_paths: int = Query(500, ge=100, le=5000),
 ):
-    from rough_volatility import rough_vol_forecast
+    from cortex.rough_vol import rough_vol_forecast
 
     m = _get_model(token)
     if token not in _rough_store:
@@ -1450,7 +1436,7 @@ def get_rough_diagnostics(
     window: int = Query(5, ge=2, le=60),
     max_lag: int = Query(50, ge=10, le=200),
 ):
-    from rough_volatility import estimate_roughness
+    from cortex.rough_vol import estimate_roughness
 
     m = _get_model(token)
     result = estimate_roughness(m["returns"], window=window, max_lag=max_lag)
@@ -1475,7 +1461,7 @@ def get_rough_diagnostics(
     summary="Compare Rough Bergomi vs MSM volatility models",
 )
 def get_rough_compare_msm(token: str = Query(...)):
-    from rough_volatility import compare_rough_vs_msm
+    from cortex.rough_vol import compare_rough_vs_msm
 
     m = _get_model(token)
     result = compare_rough_vs_msm(m["returns"], m["calibration"])
@@ -1505,7 +1491,7 @@ def get_rough_compare_msm(token: str = Query(...)):
 
 @router.post("/svj/calibrate", response_model=SVJCalibrateResponse)
 def svj_calibrate(req: SVJCalibrateRequest):
-    from svj_model import calibrate_svj
+    from cortex.svj import calibrate_svj
 
     m = _get_model(req.token)
     cal = calibrate_svj(
@@ -1552,7 +1538,7 @@ def svj_var_endpoint(
     alpha: float = Query(0.05, ge=0.001, le=0.5),
     n_simulations: int = Query(50000, ge=1000, le=500000),
 ):
-    from svj_model import svj_var
+    from cortex.svj import svj_var
 
     if token not in _svj_store:
         raise HTTPException(status_code=404, detail=f"SVJ not calibrated for {token}. POST /svj/calibrate first.")
@@ -1565,7 +1551,7 @@ def svj_var_endpoint(
 
 @router.get("/svj/jump-risk", response_model=SVJJumpRiskResponse)
 def svj_jump_risk(token: str = Query(...)):
-    from svj_model import decompose_risk
+    from cortex.svj import decompose_risk
 
     if token not in _svj_store:
         raise HTTPException(status_code=404, detail=f"SVJ not calibrated for {token}. POST /svj/calibrate first.")
@@ -1578,7 +1564,7 @@ def svj_jump_risk(token: str = Query(...)):
 
 @router.get("/svj/diagnostics", response_model=SVJDiagnosticsResponse)
 def svj_diagnostics_endpoint(token: str = Query(...)):
-    from svj_model import svj_diagnostics
+    from cortex.svj import svj_diagnostics
 
     if token not in _svj_store:
         raise HTTPException(status_code=404, detail=f"SVJ not calibrated for {token}. POST /svj/calibrate first.")
@@ -1609,8 +1595,8 @@ def svj_diagnostics_endpoint(token: str = Query(...)):
 @router.post("/guardian/assess", response_model=GuardianAssessResponse)
 def guardian_assess(req: GuardianAssessRequest):
     """Unified risk veto endpoint for Cortex autonomous trading agents."""
-    from guardian import _cache as guardian_cache
-    from guardian import assess_trade
+    from cortex.guardian import _cache as guardian_cache
+    from cortex.guardian import assess_trade
 
     # Urgency flag bypasses cache
     if req.urgency:
@@ -1632,7 +1618,7 @@ def guardian_assess(req: GuardianAssessRequest):
     # Fetch news intelligence signal (best-effort, non-blocking)
     news_data = None
     try:
-        from news_intelligence import fetch_news_intelligence
+        from cortex.news import fetch_news_intelligence
         regime_state = _current_regime_state()
         news_result = fetch_news_intelligence(
             regime_state=regime_state, max_items=30, timeout=10.0,

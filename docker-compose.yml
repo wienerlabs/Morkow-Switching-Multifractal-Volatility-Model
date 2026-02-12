@@ -9,6 +9,10 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=info
+      - CORTEX_API_KEYS=${CORTEX_API_KEYS:-}
+      - CORTEX_ALLOWED_ORIGINS=${CORTEX_ALLOWED_ORIGINS:-http://localhost:8000}
+      - CORTEX_RATE_LIMIT_READ=${CORTEX_RATE_LIMIT_READ:-60}
+      - CORTEX_RATE_LIMIT_WRITE=${CORTEX_RATE_LIMIT_WRITE:-10}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -44,6 +48,10 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=debug
+      - CORTEX_API_KEYS=${CORTEX_API_KEYS:-}
+      - CORTEX_ALLOWED_ORIGINS=${CORTEX_ALLOWED_ORIGINS:-*}
+      - CORTEX_RATE_LIMIT_READ=${CORTEX_RATE_LIMIT_READ:-120}
+      - CORTEX_RATE_LIMIT_WRITE=${CORTEX_RATE_LIMIT_WRITE:-30}
     command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     profiles:
       - dev
