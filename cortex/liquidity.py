@@ -28,6 +28,8 @@ def estimate_spread(
     prices: np.ndarray | pd.Series,
     method: str = "roll",
     window: int | None = None,
+    highs: np.ndarray | pd.Series | None = None,
+    lows: np.ndarray | pd.Series | None = None,
 ) -> dict:
     """
     Estimate effective bid-ask spread from price series.
@@ -35,13 +37,17 @@ def estimate_spread(
     Roll (1984) estimator:
         spread = 2 * sqrt(max(0, -Cov(Δp_t, Δp_{t-1})))
 
-    The intuition: bid-ask bounce creates negative serial covariance
-    in price changes. The magnitude of this covariance reveals the spread.
+    Corwin-Schultz (2012) high-low estimator:
+        Derives bid-ask spreads from daily high and low prices.
+        High prices are buyer-initiated, lows are seller-initiated.
+        The ratio of high-to-low reflects both volatility and spread.
 
     Args:
         prices: Price series (Close prices).
         method: Estimation method — "roll" (default) or "high_low" (Corwin-Schultz 2012).
         window: Rolling window size. None = full-sample estimate.
+        highs: High price series (required for "high_low" method).
+        lows: Low price series (required for "high_low" method).
 
     Returns:
         Dict with spread_pct (as % of price), spread_abs, method, and
@@ -54,7 +60,16 @@ def estimate_spread(
     if method == "roll":
         return _roll_spread(prices, window)
     elif method == "high_low":
-        raise NotImplementedError("Corwin-Schultz high-low estimator not yet implemented")
+        if highs is None or lows is None:
+            raise ValueError("high_low method requires 'highs' and 'lows' arrays")
+        h = np.asarray(highs, dtype=float)
+        l = np.asarray(lows, dtype=float)
+        if len(h) != len(prices) or len(l) != len(prices):
+            raise ValueError(
+                f"highs ({len(h)}), lows ({len(l)}), and prices ({len(prices)}) "
+                "must have the same length"
+            )
+        return _corwin_schultz_spread(prices, h, l, window)
     else:
         raise ValueError(f"Unknown method '{method}'. Use 'roll' or 'high_low'.")
 
@@ -103,6 +118,72 @@ def _roll_spread(prices: np.ndarray, window: int | None) -> dict:
         "window": window,
         "n_obs": len(prices),
         "rolling_spreads": spreads.tolist(),
+    }
+
+
+def _corwin_schultz_spread(
+    prices: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    window: int | None,
+) -> dict:
+    """Corwin-Schultz (2012) high-low spread estimator.
+
+    Formulas:
+        β = Σ [ln(H_t / L_t)]²  for each day in a 2-day window
+        γ = [ln(H_{t,t+1} / L_{t,t+1})]²  using 2-day high and low
+        α = (√(2β) - √β) / (3 - 2√2) - √(γ / (3 - 2√2))
+        spread = 2(e^α - 1) / (1 + e^α)
+    """
+    n = len(prices)
+    k1 = 3.0 - 2.0 * np.sqrt(2.0)  # ≈ 0.17157
+
+    log_hl = np.log(highs / lows)
+    beta = log_hl[:-1] ** 2 + log_hl[1:] ** 2
+    high_2d = np.maximum(highs[:-1], highs[1:])
+    low_2d = np.minimum(lows[:-1], lows[1:])
+    gamma = np.log(high_2d / low_2d) ** 2
+
+    alpha = (np.sqrt(2.0 * beta) - np.sqrt(beta)) / k1 - np.sqrt(gamma / k1)
+    alpha_clamped = np.maximum(alpha, 0.0)
+    spread_frac = 2.0 * (np.exp(alpha_clamped) - 1.0) / (1.0 + np.exp(alpha_clamped))
+
+    if window is None:
+        mean_spread_frac = float(np.nanmean(spread_frac))
+        mean_price = float(np.mean(prices))
+        return {
+            "spread_pct": float(mean_spread_frac * 100.0),
+            "spread_abs": float(mean_spread_frac * mean_price),
+            "spread_vol_pct": 0.0,
+            "method": "high_low",
+            "n_obs": n,
+            "n_pairs": len(spread_frac),
+            "mean_alpha": float(np.nanmean(alpha)),
+            "pct_negative_alpha": float(np.mean(alpha < 0) * 100.0),
+        }
+
+    if window < 5:
+        raise ValueError("Rolling window must be ≥5")
+
+    rolling = np.full(len(spread_frac), np.nan)
+    for i in range(window - 1, len(spread_frac)):
+        rolling[i] = np.nanmean(spread_frac[i - window + 1 : i + 1])
+
+    valid = rolling[~np.isnan(rolling)]
+    mean_price = float(np.mean(prices))
+    mean_spread_frac = float(np.nanmean(valid)) if len(valid) > 0 else 0.0
+    spread_vol_frac = float(np.nanstd(valid)) if len(valid) > 1 else 0.0
+
+    return {
+        "spread_pct": float(mean_spread_frac * 100.0),
+        "spread_abs": float(mean_spread_frac * mean_price),
+        "spread_vol_pct": float(spread_vol_frac * 100.0),
+        "spread_vol_abs": float(spread_vol_frac * mean_price),
+        "method": "high_low",
+        "window": window,
+        "n_obs": n,
+        "n_pairs": len(spread_frac),
+        "rolling_spreads": (rolling * 100.0).tolist(),
     }
 
 
