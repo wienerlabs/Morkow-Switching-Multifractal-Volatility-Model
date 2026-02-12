@@ -6,10 +6,10 @@ Safety hierarchy (all gates must pass):
   3. Guardian approval (assess_trade must approve)
   4. Slippage cap (EXECUTION_MAX_SLIPPAGE_BPS)
   5. MEV protection (EXECUTION_MEV_PROTECTION)
-  6. Axiom DEX aggregator execution (buy/sell)
+  6. Jupiter Swap API execution (buy/sell)
 
-This module never touches private keys directly — they are passed through
-from the caller (API layer or agent) and forwarded to Axiom SDK.
+Private keys never leave the local process — they are passed through
+from the caller (API layer or agent) and used only for local signing.
 """
 
 import logging
@@ -163,9 +163,9 @@ def execute_trade(
         logger.info("[SIM] %s %s %.4f (slippage=%dbps)", direction, token_short, amount, slippage)
         return entry
 
-    # Execute via Axiom
+    # Execute via Jupiter Swap API
     try:
-        from cortex.data.axiom import execute_buy, execute_sell
+        from cortex.data.jupiter import execute_buy, execute_sell
 
         if direction == "buy":
             result = execute_buy(private_key, token_mint, amount, slippage_bps=slippage, mev_protection=EXECUTION_MEV_PROTECTION)
@@ -174,7 +174,7 @@ def execute_trade(
         else:
             raise ValueError(f"Invalid direction: {direction}")
 
-        entry.update({"status": "executed", "axiom_result": result})
+        entry.update({"status": "executed", "jupiter_result": result})
         logger.info("Trade executed: %s %s %.4f", direction, token_short, amount)
     except Exception as e:
         entry.update({"status": "failed", "error": str(e)})

@@ -281,45 +281,9 @@ def get_token_balance(wallet_address: str, token_mint: str) -> dict[str, Any]:
     return {"source": "axiom", "wallet": wallet_address, "token_mint": token_mint, "balance": balance, "timestamp": time.time()}
 
 
-# ── 6. Trade Execution (Wave 9) ──
-
-
-def execute_buy(
-    private_key: str,
-    token_mint: str,
-    amount_sol: float,
-    slippage_bps: int = 100,
-    mev_protection: bool = True,
-) -> dict[str, Any]:
-    """Execute a buy order via Axiom DEX aggregator."""
-    client = _get_client()
-    result = _retry(
-        client.buy_token,
-        private_key,
-        token_mint,
-        amount_sol,
-        slippage=slippage_bps,
-    )
-    return {"source": "axiom", "action": "buy", "token_mint": token_mint, "amount_sol": amount_sol, "result": result, "timestamp": time.time()}
-
-
-def execute_sell(
-    private_key: str,
-    token_mint: str,
-    amount_pct: float = 100.0,
-    slippage_bps: int = 100,
-    mev_protection: bool = True,
-) -> dict[str, Any]:
-    """Execute a sell order via Axiom DEX aggregator."""
-    client = _get_client()
-    result = _retry(
-        client.sell_token,
-        private_key,
-        token_mint,
-        amount_pct,
-        slippage=slippage_bps,
-    )
-    return {"source": "axiom", "action": "sell", "token_mint": token_mint, "amount_pct": amount_pct, "result": result, "timestamp": time.time()}
+# ── 6. Trade Execution — REMOVED ──
+# Trade execution moved to cortex/data/jupiter.py (Jupiter Swap API).
+# Axiom SDK is read-only: price, liquidity, holder data, new token stream.
 
 
 # ── 7. Cache Accessors ──
