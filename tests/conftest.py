@@ -1,14 +1,8 @@
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
 
-# Ensure project root is importable
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-msm = __import__("MSM-VaR_MODEL")
+from cortex import msm
 
 
 @pytest.fixture(scope="session")

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from rough_volatility import (
+from cortex.rough_vol import (
     calibrate_rough_bergomi,
     calibrate_rough_heston,
     compare_rough_vs_msm,
@@ -250,11 +250,11 @@ class TestRoughBergomiVolSeries:
 
 class TestModelComparisonIntegration:
     def test_rough_bergomi_in_registry(self):
-        from model_comparison import _MODEL_REGISTRY
+        from cortex.comparison import _MODEL_REGISTRY
         assert "rough_bergomi" in _MODEL_REGISTRY
 
     def test_compare_includes_rough(self, sample_returns):
-        from model_comparison import compare_models
+        from cortex.comparison import compare_models
         df = compare_models(sample_returns, models=["rough_bergomi", "ewma"])
         assert len(df) == 2
         assert "Rough-Bergomi" in df["model"].values

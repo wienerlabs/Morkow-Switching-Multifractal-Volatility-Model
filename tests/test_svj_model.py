@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from svj_model import (
+from cortex.svj import (
     calibrate_svj,
     decompose_risk,
     detect_jumps,
@@ -242,11 +242,11 @@ class TestSVJVolSeries:
 
 class TestModelComparisonIntegration:
     def test_svj_in_registry(self):
-        from model_comparison import _MODEL_REGISTRY
+        from cortex.comparison import _MODEL_REGISTRY
         assert "svj" in _MODEL_REGISTRY
         assert _MODEL_REGISTRY["svj"] == ("SVJ-Bates", 7)
 
     def test_compare_models_includes_svj(self, returns_normal):
-        from model_comparison import compare_models
+        from cortex.comparison import compare_models
         df = compare_models(returns_normal, models=["msm", "svj"])
         assert "svj" in df.index.str.lower().values or "SVJ-Bates" in df.index.values

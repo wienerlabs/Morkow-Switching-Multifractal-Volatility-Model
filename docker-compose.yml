@@ -32,19 +32,7 @@ services:
     volumes:
       - ./api:/app/api
       - ./frontend:/app/frontend
-      - ./MSM-VaR_MODEL.py:/app/MSM-VaR_MODEL.py
-      - ./extreme_value_theory.py:/app/extreme_value_theory.py
-      - ./hawkes_process.py:/app/hawkes_process.py
-      - ./svj_model.py:/app/svj_model.py
-      - ./copula_portfolio_var.py:/app/copula_portfolio_var.py
-      - ./rough_volatility.py:/app/rough_volatility.py
-      - ./multifractal_analysis.py:/app/multifractal_analysis.py
-      - ./portfolio_var.py:/app/portfolio_var.py
-      - ./regime_analytics.py:/app/regime_analytics.py
-      - ./model_comparison.py:/app/model_comparison.py
-      - ./news_intelligence.py:/app/news_intelligence.py
-      - ./guardian.py:/app/guardian.py
-      - ./solana_data_adapter.py:/app/solana_data_adapter.py
+      - ./cortex:/app/cortex
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=debug

@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from hawkes_process import (
+from cortex.hawkes import (
     detect_clusters,
     detect_flash_crash_risk,
     extract_events,
@@ -268,10 +268,7 @@ class TestMSMIntegration:
         fit = fit_hawkes(ev["event_times"], ev["T"])
         intens = hawkes_intensity(ev["event_times"], fit)
 
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-        msm = __import__("MSM-VaR_MODEL")
+        from cortex import msm
 
         m = calibrated_model
         var_t1, _, _, _ = msm.msm_var_forecast_next_day(

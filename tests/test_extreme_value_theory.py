@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import extreme_value_theory as evt
+from cortex import evt
 
 
 @pytest.fixture(scope="module")

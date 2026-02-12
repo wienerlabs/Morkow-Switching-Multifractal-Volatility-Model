@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from multifractal_analysis import (
+from cortex.multifractal import (
     compare_fractal_regimes,
     hurst_dfa,
     hurst_rs,

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import regime_analytics as ra
+from cortex import regime as ra
 
 
 class TestComputeExpectedDurations:

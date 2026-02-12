@@ -8,16 +8,15 @@ Rolling Window, and EWMA (RiskMetrics) using standardized backtesting.
 import logging
 import math
 import warnings
-from importlib import import_module
 
 import numpy as np
 import pandas as pd
 from arch import arch_model
 from scipy.stats import norm
 
-logger = logging.getLogger(__name__)
+from cortex import msm as msm_module
 
-msm_module = import_module("MSM-VaR_MODEL")
+logger = logging.getLogger(__name__)
 
 MIN_OBS = 30
 
@@ -213,10 +212,10 @@ def _generate_all_forecasts(
         elif key == "ewma":
             out[key] = ewma_vol_forecast(returns)
         elif key == "rough_bergomi":
-            from rough_volatility import rough_bergomi_vol_series
+            from cortex.rough_vol import rough_bergomi_vol_series
             out[key] = rough_bergomi_vol_series(returns)
         elif key == "svj":
-            from svj_model import svj_vol_series
+            from cortex.svj import svj_vol_series
             out[key] = svj_vol_series(returns)
         else:
             raise ValueError(f"Unknown model key: {key}")

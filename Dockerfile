@@ -22,19 +22,7 @@ COPY --from=builder /install /usr/local
 COPY api/ ./api/
 COPY frontend/ ./frontend/
 COPY tests/ ./tests/
-COPY MSM-VaR_MODEL.py .
-COPY extreme_value_theory.py .
-COPY hawkes_process.py .
-COPY svj_model.py .
-COPY copula_portfolio_var.py .
-COPY rough_volatility.py .
-COPY multifractal_analysis.py .
-COPY portfolio_var.py .
-COPY regime_analytics.py .
-COPY model_comparison.py .
-COPY news_intelligence.py .
-COPY guardian.py .
-COPY solana_data_adapter.py .
+COPY cortex/ ./cortex/
 COPY pytest.ini .
 
 ENV PYTHONUNBUFFERED=1

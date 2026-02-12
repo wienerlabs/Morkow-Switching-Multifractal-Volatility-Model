@@ -4,9 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import model_comparison as mc
-
-msm = __import__("MSM-VaR_MODEL")
+from cortex import comparison as mc
+from cortex import msm
 
 
 @pytest.fixture(scope="module")

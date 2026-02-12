@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-msm = __import__("MSM-VaR_MODEL")
+from cortex import msm
 
 
 class TestBuildTransitionMatrix:
@@ -126,3 +126,99 @@ class TestLogLikelihood:
         assert msm.msm_log_likelihood([-1, 3.0, 0.95], sample_returns.values, 5) == 1e10
         assert msm.msm_log_likelihood([3.0, 0.5, 0.95], sample_returns.values, 5) == 1e10
 
+
+
+class TestAsymmetricLeverage:
+    """Tests for asymmetric leverage transitions (leverage_gamma)."""
+
+    def test_transition_matrix_negative_return_increases_upward(self):
+        """Negative return + gamma < 0 should increase P(i→j) for j > i."""
+        K = 3
+        P_sym = msm._build_transition_matrix(0.95, K)
+        P_asym = msm._build_transition_matrix(0.95, K, leverage_gamma=-1.0, current_return=-2.0)
+
+        # Off-diagonal upward transitions (j > i) should be larger
+        for i in range(K):
+            for j in range(i + 1, K):
+                assert P_asym[i, j] >= P_sym[i, j], (
+                    f"P_asym[{i},{j}]={P_asym[i,j]:.6f} should be >= P_sym[{i},{j}]={P_sym[i,j]:.6f}"
+                )
+
+        # Rows must still sum to 1
+        np.testing.assert_allclose(P_asym.sum(axis=1), 1.0, atol=1e-10)
+
+    def test_transition_matrix_positive_return_increases_downward(self):
+        """Positive return + gamma < 0 should increase P(i→j) for j < i."""
+        K = 3
+        P_sym = msm._build_transition_matrix(0.95, K)
+        P_asym = msm._build_transition_matrix(0.95, K, leverage_gamma=-1.0, current_return=2.0)
+
+        # Off-diagonal downward transitions (j < i) should be larger
+        for i in range(1, K):
+            for j in range(i):
+                assert P_asym[i, j] >= P_sym[i, j], (
+                    f"P_asym[{i},{j}]={P_asym[i,j]:.6f} should be >= P_sym[{i},{j}]={P_sym[i,j]:.6f}"
+                )
+
+        np.testing.assert_allclose(P_asym.sum(axis=1), 1.0, atol=1e-10)
+
+    def test_gamma_zero_preserves_symmetric(self):
+        """leverage_gamma=0 should produce the same matrix as no leverage."""
+        K = 5
+        P_base = msm._build_transition_matrix(0.95, K)
+        P_zero = msm._build_transition_matrix(0.95, K, leverage_gamma=0.0, current_return=-3.0)
+        np.testing.assert_allclose(P_zero, P_base)
+
+    def test_vol_forecast_with_leverage_differs(self, sample_returns):
+        """msm_vol_forecast with leverage_gamma != 0 should produce different results."""
+        sf_sym, _, _, _, _ = msm.msm_vol_forecast(
+            sample_returns, num_states=3, sigma_low=0.5, sigma_high=3.0, p_stay=0.95,
+        )
+        sf_asym, _, _, _, _ = msm.msm_vol_forecast(
+            sample_returns, num_states=3, sigma_low=0.5, sigma_high=3.0, p_stay=0.95,
+            leverage_gamma=-0.5,
+        )
+        # They should not be identical
+        assert not np.allclose(sf_sym.values, sf_asym.values), (
+            "Symmetric and asymmetric forecasts should differ"
+        )
+
+    def test_vol_forecast_backward_compat(self, sample_returns):
+        """Default leverage_gamma=0 should match the original output."""
+        sf1, sfi1, fp1, ss1, P1 = msm.msm_vol_forecast(
+            sample_returns, num_states=3, sigma_low=0.5, sigma_high=3.0, p_stay=0.95,
+        )
+        sf2, sfi2, fp2, ss2, P2 = msm.msm_vol_forecast(
+            sample_returns, num_states=3, sigma_low=0.5, sigma_high=3.0, p_stay=0.95,
+            leverage_gamma=0.0,
+        )
+        np.testing.assert_allclose(sf1.values, sf2.values)
+        np.testing.assert_allclose(sfi1.values, sfi2.values)
+
+    def test_log_likelihood_with_leverage(self, sample_returns):
+        """msm_log_likelihood should accept leverage_gamma and return finite value."""
+        ll_sym = msm.msm_log_likelihood([0.5, 3.0, 0.95], sample_returns.values, 5)
+        ll_asym = msm.msm_log_likelihood(
+            [0.5, 3.0, 0.95], sample_returns.values, 5, leverage_gamma=-0.5,
+        )
+        assert np.isfinite(ll_sym)
+        assert np.isfinite(ll_asym)
+        assert ll_sym != ll_asym
+
+    def test_calibrate_returns_leverage_gamma(self, sample_returns):
+        """calibrate_msm_advanced should include leverage_gamma in result."""
+        cal = msm.calibrate_msm_advanced(
+            sample_returns, num_states=5, method="empirical", verbose=False,
+            leverage_gamma=-0.3,
+        )
+        assert "leverage_gamma" in cal
+        assert cal["leverage_gamma"] == pytest.approx(-0.3)
+
+    def test_calibrate_estimate_gamma(self, sample_returns):
+        """calibrate_msm_advanced with leverage_gamma='estimate' should find a value."""
+        cal = msm.calibrate_msm_advanced(
+            sample_returns, num_states=3, method="empirical", verbose=False,
+            leverage_gamma="estimate",
+        )
+        assert "leverage_gamma" in cal
+        assert -2.0 <= cal["leverage_gamma"] <= 0.0

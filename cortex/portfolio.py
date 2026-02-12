@@ -5,7 +5,6 @@ Extends the single-asset MSM model to multi-asset portfolios with
 regime-conditional correlations (correlations spike in crisis regimes).
 """
 
-import importlib
 import logging
 from typing import Optional
 
@@ -13,9 +12,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
-logger = logging.getLogger(__name__)
+from cortex import msm
 
-msm = importlib.import_module("MSM-VaR_MODEL")
+logger = logging.getLogger(__name__)
 
 
 def _weighted_correlation(returns: np.ndarray, weights: np.ndarray) -> np.ndarray:

@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import copula_portfolio_var as cpv
-import portfolio_var as pv
+from cortex import copula as cpv
+from cortex import portfolio as pv
 
 
 @pytest.fixture(scope="module")

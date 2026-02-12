@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import portfolio_var as pv
+from cortex import portfolio as pv
 
 
 @pytest.fixture(scope="module")

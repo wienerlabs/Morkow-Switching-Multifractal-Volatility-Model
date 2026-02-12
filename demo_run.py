@@ -41,8 +41,7 @@ def kv(key: str, val, indent: int = 4):
 
 # ─── 1. MSM Regime Detection ───────────────────────────────────────
 header("1. MSM REGIME DETECTION (5-state Markov Switching)")
-from importlib import import_module
-msm = import_module("MSM-VaR_MODEL")
+from cortex import msm
 
 t0 = time.time()
 cal = msm.calibrate_msm_advanced(single_returns, num_states=5, method="empirical", verbose=False)
@@ -71,7 +70,7 @@ kv("σ_forecast (next day)", sig_99)
 
 # ─── 3. Regime Analytics ───────────────────────────────────────────
 header("3. REGIME ANALYTICS")
-import regime_analytics as ra
+from cortex import regime as ra
 
 durations = ra.compute_expected_durations(cal["p_stay"], num_states=5)
 kv("Expected regime durations", durations)
@@ -80,7 +79,7 @@ print(f"    Regime statistics:\n{stats_df.to_string(index=True)}")
 
 # ─── 4. EVT Tail Risk ──────────────────────────────────────────────
 header("4. EXTREME VALUE THEORY (GPD Tail Risk)")
-import extreme_value_theory as evt
+from cortex import evt
 
 losses = np.abs(single_returns.values)
 t0 = time.time()
@@ -103,7 +102,7 @@ kv("EVT time", f"{dt*1000:.1f}ms")
 
 # ─── 5. Portfolio VaR ──────────────────────────────────────────────
 header("5. PORTFOLIO VAR (Multi-asset MSM)")
-import portfolio_var as pv
+from cortex import portfolio as pv
 
 t0 = time.time()
 model = pv.calibrate_multivariate(returns_df, num_states=5, method="empirical")
@@ -116,7 +115,7 @@ kv("Calibration time", f"{dt*1000:.1f}ms")
 
 # ─── 6. Copula VaR ─────────────────────────────────────────────────
 header("6. COPULA PORTFOLIO VAR (Static + Regime-Dependent)")
-import copula_portfolio_var as cpv
+from cortex import copula as cpv
 
 t0 = time.time()
 gauss_fit = cpv.fit_copula(returns_df, family="gaussian")
@@ -148,7 +147,7 @@ kv("Copula total time", f"{dt*1000:.1f}ms")
 
 # ─── 7. Hawkes Process ──────────────────────────────────────────────
 header("7. HAWKES PROCESS (Event Clustering + Flash Crash)")
-import hawkes_process as hp
+from cortex import hawkes as hp
 
 t0 = time.time()
 events = np.sort(np.cumsum(np.random.exponential(0.5, size=80)))
@@ -169,7 +168,7 @@ kv("Hawkes time", f"{dt*1000:.1f}ms")
 
 # ─── 8. Multifractal Analysis ──────────────────────────────────────
 header("8. MULTIFRACTAL ANALYSIS (Hurst + MMAR)")
-import multifractal_analysis as mfa
+from cortex import multifractal as mfa
 
 t0 = time.time()
 h_rs = mfa.hurst_rs(single_returns)
@@ -186,7 +185,7 @@ kv("Multifractal time", f"{dt*1000:.1f}ms")
 
 # ─── 9. Rough Volatility ───────────────────────────────────────────
 header("9. ROUGH VOLATILITY (fBm, H ≈ 0.1)")
-import rough_volatility as rv
+from cortex import rough_vol as rv
 
 t0 = time.time()
 roughness = rv.estimate_roughness(single_returns)
@@ -206,7 +205,7 @@ kv("Rough vol time", f"{dt*1000:.1f}ms")
 
 # ─── 10. SVJ (Stochastic Volatility with Jumps) ────────────────────
 header("10. SVJ MODEL (Bates 1996 — Jump Detection + Risk)")
-import svj_model as svj
+from cortex import svj
 
 jumpy = single_returns.copy()
 jump_idx = np.random.choice(len(jumpy), size=8, replace=False)
@@ -241,7 +240,7 @@ kv("SVJ time", f"{dt*1000:.1f}ms")
 
 # ─── 11. Model Comparison ──────────────────────────────────────────
 header("11. MODEL COMPARISON (All Volatility Models)")
-import model_comparison as mc
+from cortex import comparison as mc
 
 t0 = time.time()
 comp = mc.compare_models(single_returns)
