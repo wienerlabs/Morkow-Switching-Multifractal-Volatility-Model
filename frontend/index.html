@@ -174,7 +174,8 @@ const SECTIONS = [
     { method:'GET', path:'/portfolio/copula/diagnostics', desc:'Copula diagnostics', fields:[]},
     { method:'POST', path:'/portfolio/copula/compare', desc:'Compare copula families', fields:[]},
     { method:'GET', path:'/portfolio/copula/regime-var', desc:'Regime-dependent copula VaR',
-      fields:[field('alpha','0.05','number'), field('n_simulations','10000','number')]},
+      fields:[field('weights','{"SOL":0.4,"RAY":0.3,"JUP":0.3}','textarea'),
+        field('alpha','0.05','number'), field('n_simulations','10000','number')]},
   ]},
   { id:'hawkes', title:'Hawkes Process', desc:'Self-exciting crash clustering — requires MSM calibration first', endpoints:[
     { method:'POST', path:'/hawkes/calibrate', desc:'Fit Hawkes process',
@@ -268,6 +269,14 @@ SECTIONS.forEach(sec => {
     });
 
     form.appendChild(el('button', {type:'submit'}, 'Run ▸'));
+    const clearBtn = el('button', {type:'button', style:'background:var(--bg);color:var(--fg);border:1px solid var(--border);margin-left:8px;', onClick: () => {
+      document.getElementById(`${uid}-result`).style.display = 'none';
+      document.getElementById(`${uid}-result`).querySelector('pre').textContent = '';
+      document.getElementById(`${uid}-result`).className = 'result';
+      document.getElementById(`${uid}-status`).textContent = '';
+      document.getElementById(`${uid}-status`).className = 'status';
+    }}, 'Clear');
+    form.appendChild(clearBtn);
     const statusEl = el('div', {className:'status', id:`${uid}-status`});
     const resultEl = el('div', {className:'result', id:`${uid}-result`, style:'display:none'},
       el('pre', null, ''));
@@ -327,7 +336,12 @@ async function runEndpoint(uid, ep) {
 
     // Parse JSON fields
     if (typeof data.weights === 'string') {
-      try { data.weights = JSON.parse(data.weights); } catch {}
+      try { data.weights = JSON.parse(data.weights); } catch {
+        statusEl.textContent = 'Invalid JSON in weights field. Example: {"AAPL":0.4,"MSFT":0.6}';
+        statusEl.className = 'status err';
+        btn.disabled = false;
+        return;
+      }
     }
     if (typeof data.tokens === 'string') {
       data.tokens = data.tokens.split(',').map(s => s.trim()).filter(Boolean);
