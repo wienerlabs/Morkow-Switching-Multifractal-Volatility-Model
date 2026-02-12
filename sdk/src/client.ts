@@ -52,6 +52,31 @@ import type {
   NewsMarketSignal,
   GuardianAssessRequest,
   GuardianAssessResponse,
+  AsyncTaskResponse,
+  TaskStatusResponse,
+  LVaREstimateRequest,
+  LVaREstimateResponse,
+  RegimeLVaRResponse,
+  MarketImpactRequest,
+  MarketImpactResponse,
+  RegimeLiquidityProfileResponse,
+  PythFeedListResponse,
+  OraclePricesResponse,
+  OracleHistoricalResponse,
+  OracleBufferResponse,
+  OracleStatusResponse,
+  StreamEventsResponse,
+  StreamStatusResponse,
+  SocialSentimentResponse,
+  MacroIndicatorsResponse,
+  UpdatePositionRequest,
+  ClosePositionRequest,
+  SetPortfolioValueRequest,
+  PositionsResponse,
+  DrawdownResponse,
+  PortfolioLimitsResponse,
+  PreflightRequest,
+  ExecuteTradeRequest,
 } from "./types";
 import {
   GuardianAssessResponseSchema,
@@ -334,5 +359,174 @@ export class RiskEngineClient {
 
   async guardianAssess(req: GuardianAssessRequest): Promise<GuardianAssessResponse> {
     return this.post("/api/v1/guardian/assess", req, GuardianAssessResponseSchema);
+  }
+
+  // ── Async Calibration ──
+
+  async calibrateAsync(req: CalibrateRequest): Promise<AsyncTaskResponse> {
+    return this.post("/api/v1/calibrate?async_mode=true", req);
+  }
+
+  async calibrationStatus(taskId: string): Promise<TaskStatusResponse> {
+    return this.get(`/api/v1/calibrate/status/${encodeURIComponent(taskId)}`);
+  }
+
+  async pollCalibration(taskId: string, opts?: { intervalMs?: number; maxAttempts?: number }): Promise<TaskStatusResponse> {
+    const interval = opts?.intervalMs ?? 500;
+    const maxAttempts = opts?.maxAttempts ?? 120;
+    for (let i = 0; i < maxAttempts; i++) {
+      const status = await this.calibrationStatus(taskId);
+      if (status.status === "completed" || status.status === "failed") return status;
+      await new Promise((r) => setTimeout(r, interval));
+    }
+    throw new Error(`Calibration task ${taskId} did not complete within ${maxAttempts} attempts`);
+  }
+
+  // ── LVaR (Liquidity-Adjusted VaR) ──
+
+  async lvarEstimate(req: LVaREstimateRequest): Promise<LVaREstimateResponse> {
+    return this.post("/api/v1/lvar/estimate", req);
+  }
+
+  async lvarRegimeVar(token: string, opts?: { confidence?: number; position_value?: number; holding_period?: number }): Promise<RegimeLVaRResponse> {
+    return this.get(`/api/v1/lvar/regime-var${this.qs({ token, ...opts })}`);
+  }
+
+  async lvarImpact(req: MarketImpactRequest): Promise<MarketImpactResponse> {
+    return this.post("/api/v1/lvar/impact", req);
+  }
+
+  async lvarRegimeProfile(token: string): Promise<RegimeLiquidityProfileResponse> {
+    return this.get(`/api/v1/lvar/regime-profile${this.qs({ token })}`);
+  }
+
+  // ── Oracle (Pyth) ──
+
+  async oracleFeeds(opts?: { query?: string; asset_type?: string }): Promise<PythFeedListResponse> {
+    return this.get(`/api/v1/oracle/feeds${this.qs(opts ?? {})}`);
+  }
+
+  async oracleSearch(q: string): Promise<PythFeedListResponse> {
+    return this.get(`/api/v1/oracle/search${this.qs({ q })}`);
+  }
+
+  async oraclePrices(opts?: { symbols?: string; ids?: string }): Promise<OraclePricesResponse> {
+    return this.get(`/api/v1/oracle/prices${this.qs(opts ?? {})}`);
+  }
+
+  async oracleHistory(timestamp: number, opts?: { symbols?: string; ids?: string }): Promise<OracleHistoricalResponse> {
+    return this.get(`/api/v1/oracle/history${this.qs({ timestamp, ...opts })}`);
+  }
+
+  async oracleBuffer(feedId: string): Promise<OracleBufferResponse> {
+    return this.get(`/api/v1/oracle/buffer${this.qs({ feed_id: feedId })}`);
+  }
+
+  async oracleStatus(): Promise<OracleStatusResponse> {
+    return this.get("/api/v1/oracle/status");
+  }
+
+  // ── Streams (Helius) ──
+
+  async streamEvents(opts?: { limit?: number; severity?: string }): Promise<StreamEventsResponse> {
+    return this.get(`/api/v1/streams/events${this.qs(opts ?? {})}`);
+  }
+
+  async streamStatus(): Promise<StreamStatusResponse> {
+    return this.get("/api/v1/streams/status");
+  }
+
+  // ── Social ──
+
+  async socialSentiment(token: string): Promise<SocialSentimentResponse> {
+    return this.get(`/api/v1/social/sentiment${this.qs({ token })}`);
+  }
+
+  // ── Macro ──
+
+  async macroIndicators(): Promise<MacroIndicatorsResponse> {
+    return this.get("/api/v1/macro/indicators");
+  }
+
+  // ── Portfolio Risk ──
+
+  async portfolioPositions(): Promise<PositionsResponse> {
+    return this.get("/api/v1/portfolio/positions");
+  }
+
+  async updatePosition(req: UpdatePositionRequest): Promise<Record<string, unknown>> {
+    return this.post("/api/v1/portfolio/positions", req);
+  }
+
+  async closePosition(req: ClosePositionRequest): Promise<Record<string, unknown>> {
+    return this.post("/api/v1/portfolio/positions/close", req);
+  }
+
+  async setPortfolioValue(req: SetPortfolioValueRequest): Promise<Record<string, unknown>> {
+    return this.post("/api/v1/portfolio/value", req);
+  }
+
+  async portfolioDrawdown(): Promise<DrawdownResponse> {
+    return this.get("/api/v1/portfolio/drawdown");
+  }
+
+  async portfolioLimits(token?: string): Promise<PortfolioLimitsResponse> {
+    return this.get(`/api/v1/portfolio/limits${this.qs({ token })}`);
+  }
+
+  // ── Execution ──
+
+  async executionPreflight(req: PreflightRequest): Promise<Record<string, unknown>> {
+    return this.post("/api/v1/execution/preflight", req);
+  }
+
+  async executeTrade(req: ExecuteTradeRequest): Promise<Record<string, unknown>> {
+    return this.post("/api/v1/execution/trade", req);
+  }
+
+  async executionLog(limit?: number): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/execution/log${this.qs({ limit })}`);
+  }
+
+  async executionStats(): Promise<Record<string, unknown>> {
+    return this.get("/api/v1/execution/stats");
+  }
+
+  // ── Axiom DEX ──
+
+  async axiomPrice(tokenAddress: string): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/axiom/price/${encodeURIComponent(tokenAddress)}`);
+  }
+
+  async axiomPair(pairAddress: string): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/axiom/pair/${encodeURIComponent(pairAddress)}`);
+  }
+
+  async axiomLiquidityMetrics(pairAddress: string): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/axiom/liquidity-metrics/${encodeURIComponent(pairAddress)}`);
+  }
+
+  async axiomHolders(pairAddress: string): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/axiom/holders/${encodeURIComponent(pairAddress)}`);
+  }
+
+  async axiomTokenAnalysis(devAddress: string, tokenTicker: string): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/axiom/token-analysis${this.qs({ dev_address: devAddress, token_ticker: tokenTicker })}`);
+  }
+
+  async axiomNewTokens(opts?: { limit?: number; min_liquidity?: boolean }): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/axiom/new-tokens${this.qs(opts ?? {})}`);
+  }
+
+  async axiomWsStatus(): Promise<Record<string, unknown>> {
+    return this.get("/api/v1/axiom/ws-status");
+  }
+
+  async axiomWalletBalance(walletAddress: string): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/axiom/wallet/${encodeURIComponent(walletAddress)}`);
+  }
+
+  async axiomStatus(): Promise<Record<string, unknown>> {
+    return this.get("/api/v1/axiom/status");
   }
 }
