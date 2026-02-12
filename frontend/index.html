@@ -125,6 +125,11 @@ button:disabled{opacity:.4;cursor:not-allowed;transform:none}
 <a href="#fractal">Fractal</a>
 <a href="#rough">Rough Vol</a>
 <a href="#svj">SVJ</a>
+<a href="#lvar">LVaR</a>
+<a href="#oracle">Oracle</a>
+<a href="#social">Social</a>
+<a href="#macro">Macro</a>
+<a href="#streams">Streams</a>
 <a href="#guardian">Guardian</a>
 </nav>
 
@@ -273,6 +278,48 @@ const SECTIONS = [
         field('n_simulations','50000','number')]},
     { method:'GET', path:'/svj/jump-risk', fields:[field('token','SOL')]},
     { method:'GET', path:'/svj/diagnostics', fields:[field('token','SOL')]},
+  ]},
+  { id:'lvar', title:'Liquidity-Adjusted VaR', badge:'Requires calibration', desc:'LVaR — adds bid-ask spread and market impact costs to VaR', endpoints:[
+    { method:'POST', path:'/lvar/estimate', desc:'Compute LVaR with spread estimation',
+      fields:[field('token','SOL'), field('confidence','95','number'),
+        field('position_value','100000','number'), field('holding_period','1','number'),
+        field('window','','number')]},
+    { method:'GET', path:'/lvar/regime-var', desc:'Regime-aware LVaR',
+      fields:[field('token','SOL'), field('confidence','95','number'),
+        field('position_value','100000','number'), field('holding_period','1','number')]},
+    { method:'POST', path:'/lvar/impact', desc:'Market impact cost estimation',
+      fields:[field('token','SOL'), field('trade_size_usd','50000','number'),
+        field('adv_usd','1000000','number'), field('participation_rate','0.1','number')]},
+    { method:'GET', path:'/lvar/regime-profile', desc:'Regime liquidity profile',
+      fields:[field('token','SOL')]},
+  ]},
+  { id:'oracle', title:'Pyth Oracle', badge:'Independent', desc:'Live Pyth Network price feeds — 585+ crypto assets, no calibration needed', endpoints:[
+    { method:'GET', path:'/oracle/feeds', desc:'List all available feeds',
+      fields:[field('query','','text',{placeholder:'Filter: SOL, bitcoin, etc.'}),
+        field('asset_type','crypto')]},
+    { method:'GET', path:'/oracle/search', desc:'Search feeds by name',
+      fields:[field('q','SOL','text',{placeholder:'SOL, ethereum, BONK...'})]},
+    { method:'GET', path:'/oracle/prices', desc:'Fetch live prices',
+      fields:[field('symbols','SOL,BTC,ETH','text',{placeholder:'Comma-separated: SOL,BTC,ETH'}),
+        field('ids','','text',{placeholder:'Or Pyth feed IDs (hex)'})]},
+    { method:'GET', path:'/oracle/history', desc:'Historical prices at a timestamp',
+      fields:[field('timestamp','','number'), field('symbols','SOL,BTC','text',{placeholder:'SOL,BTC'})]},
+    { method:'GET', path:'/oracle/buffer', desc:'Price ring-buffer for a feed',
+      fields:[field('feed_id','','text',{placeholder:'Pyth feed ID'})]},
+    { method:'GET', path:'/oracle/status', desc:'Oracle subsystem health', fields:[]},
+  ]},
+  { id:'social', title:'Social Sentiment', badge:'Independent', desc:'Aggregated social media sentiment analysis', endpoints:[
+    { method:'GET', path:'/social/sentiment', desc:'Social sentiment for a token',
+      fields:[field('token','solana','text',{placeholder:'Token or topic'})]},
+  ]},
+  { id:'macro', title:'Macro Indicators', badge:'Independent', desc:'Fear/Greed index, BTC dominance, market risk level', endpoints:[
+    { method:'GET', path:'/macro/indicators', desc:'Current macro market indicators', fields:[]},
+  ]},
+  { id:'streams', title:'Transaction Streams', badge:'Independent', desc:'Helius Enhanced WebSocket — classified on-chain events', endpoints:[
+    { method:'GET', path:'/streams/events', desc:'Recent classified events',
+      fields:[field('limit','50','number'),
+        field('severity','','select',{options:['','info','warning','critical']})]},
+    { method:'GET', path:'/streams/status', desc:'Stream connection status', fields:[]},
   ]},
   { id:'guardian', title:'Guardian Risk Veto', badge:'Decision engine', desc:'Unified risk assessment — aggregates all models into a GO/NO-GO signal', endpoints:[
     { method:'POST', path:'/guardian/assess', desc:'Assess trade risk',
@@ -493,12 +540,13 @@ async function runEndpoint(uid, ep) {
 
     // Parse special fields
     ['num_states','threshold_percentile','min_exceedances','forced_regime',
-     'n_simulations','horizon','n_paths','window','max_lag','seed'].forEach(k => {
+     'n_simulations','horizon','n_paths','window','max_lag','seed',
+     'holding_period','limit','timestamp'].forEach(k => {
       if (data[k] !== undefined) data[k] = parseInt(data[k], 10);
     });
     ['alpha','confidence','target_var_breach','nu','threshold','T',
      'trade_size_usd','max_slippage_pct','max_multiplier','mu',
-     'jump_threshold_multiplier'].forEach(k => {
+     'jump_threshold_multiplier','position_value','adv_usd','participation_rate'].forEach(k => {
       if (data[k] !== undefined) data[k] = parseFloat(data[k]);
     });
     ['use_student_t','use_absolute','urgency','use_hawkes'].forEach(k => {
