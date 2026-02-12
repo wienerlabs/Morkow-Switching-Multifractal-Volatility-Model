@@ -16,5 +16,9 @@ Submodules:
     guardian    — Unified risk veto layer
     liquidity   — Liquidity-Adjusted VaR (LVaR)
     data.solana — Solana DeFi data adapter
+    data.oracle — Pyth Network oracle price feeds
+    data.streams— Helius WebSocket transaction monitor
+    data.social — Social sentiment aggregation
+    data.macro  — Macro market indicators
 """
 

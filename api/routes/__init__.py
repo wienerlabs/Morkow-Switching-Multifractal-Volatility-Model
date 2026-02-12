@@ -15,6 +15,10 @@ from api.routes.portfolio import router as portfolio_router
 from api.routes.regime import router as regime_router
 from api.routes.rough import router as rough_router
 from api.routes.svj import router as svj_router
+from api.routes.oracle import router as oracle_router
+from api.routes.streams import router as streams_router
+from api.routes.social import router as social_router
+from api.routes.macro import router as macro_router
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -30,4 +34,8 @@ router.include_router(rough_router)
 router.include_router(svj_router)
 router.include_router(guardian_router)
 router.include_router(lvar_router)
+router.include_router(oracle_router)
+router.include_router(streams_router)
+router.include_router(social_router)
+router.include_router(macro_router)
 

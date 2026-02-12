@@ -17,6 +17,16 @@ from dataclasses import dataclass, field
 import httpx
 import numpy as np
 
+from cortex.config import (
+    NEWSDATA_BASE,
+    CC_BASE,
+    CP_BASE,
+    SOURCE_CREDIBILITY,
+    DEFAULT_CREDIBILITY,
+    HALF_LIFE_HOURS,
+    DECAY_LAMBDA,
+)
+
 logger = logging.getLogger(__name__)
 
 # ── API Configuration ──
@@ -25,29 +35,11 @@ NEWSDATA_API_KEY = os.environ.get("NEWSDATA_API_KEY", "")
 CC_API_KEY = os.environ.get("CC_API_KEY", "")
 CP_TOKEN = os.environ.get("CRYPTOPANIC_TOKEN", "")
 
-NEWSDATA_BASE = "https://newsdata.io/api/1/crypto"
-CC_BASE = "https://data-api.cryptocompare.com/news/v1/article/list"
-CP_BASE = "https://cryptopanic.com/api/developer/v2/posts/"
-
 CC_SOURCES = (
     "coindesk,coingape,bitcoinmagazine,blockworks,dailyhodl,cryptoslate,"
     "decrypt,cryptopotato,theblock,cryptobriefing,bitcoin.com,newsbtc,"
     "utoday,investing_comcryptonews,bitcoinist,coinpedia,cryptonomist"
 )
-
-# Source credibility priors c_s ∈ [0, 1] — higher = more trustworthy signal
-SOURCE_CREDIBILITY: dict[str, float] = {
-    "coindesk": 0.92, "theblock": 0.90, "blockworks": 0.88,
-    "decrypt": 0.85, "bitcoinmagazine": 0.84, "cryptoslate": 0.80,
-    "cryptobriefing": 0.78, "coinpedia": 0.72, "cryptopotato": 0.70,
-    "dailyhodl": 0.68, "newsbtc": 0.65, "utoday": 0.65,
-    "bitcoinist": 0.64, "coingape": 0.62, "cryptonomist": 0.60,
-    "bitcoin.com": 0.75, "investing_comcryptonews": 0.70,
-}
-DEFAULT_CREDIBILITY = 0.55
-
-HALF_LIFE_HOURS = 4.0
-DECAY_LAMBDA = math.log(2) / HALF_LIFE_HOURS
 
 # ── Sentiment Lexicon with TF-IDF-inspired weights ──
 # Weight reflects term specificity: rare/strong terms get higher weight.

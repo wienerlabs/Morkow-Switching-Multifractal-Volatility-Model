@@ -1020,3 +1020,97 @@ class MarketImpactResponse(BaseModel):
     trade_size_usd: float
     adv_usd: float
     timestamp: datetime
+
+
+
+# ── Oracle (Pyth) models ──
+
+
+class OraclePriceItem(BaseModel):
+    token: str
+    price: float
+    confidence: float
+    ema_price: float
+    publish_time: int
+    feed_id: str
+    timestamp: float
+
+
+class OraclePricesResponse(BaseModel):
+    prices: dict[str, OraclePriceItem]
+    source: str = "pyth"
+    timestamp: datetime
+
+
+class OracleStatusResponse(BaseModel):
+    tracked_tokens: list[str]
+    buffer_depth: int
+    prices_cached: int
+    buffer_sizes: dict[str, int]
+    hermes_url: str
+    timestamp: float
+
+
+# ── Stream (Helius) models ──
+
+
+class StreamEvent(BaseModel):
+    event_type: str
+    severity: str
+    signature: str
+    slot: int
+    timestamp: float
+    details: dict = Field(default_factory=dict)
+
+
+class StreamEventsResponse(BaseModel):
+    events: list[StreamEvent]
+    total: int
+    timestamp: datetime
+
+
+class StreamStatusResponse(BaseModel):
+    connected: bool
+    last_event_time: float | None
+    events_received: int
+    started_at: float | None
+
+
+# ── Social sentiment models ──
+
+
+class SocialSourceItem(BaseModel):
+    source: str
+    sentiment: float
+    count: int
+
+
+class SocialSentimentResponse(BaseModel):
+    token: str
+    overall_sentiment: float
+    sources: list[SocialSourceItem]
+    timestamp: float
+
+
+# ── Macro indicator models ──
+
+
+class FearGreedItem(BaseModel):
+    value: int
+    classification: str
+    timestamp: int
+
+
+class BtcDominanceItem(BaseModel):
+    btc_dominance: float
+    eth_dominance: float
+    total_market_cap_usd: float
+    total_volume_24h_usd: float
+    active_cryptocurrencies: int
+
+
+class MacroIndicatorsResponse(BaseModel):
+    fear_greed: FearGreedItem
+    btc_dominance: BtcDominanceItem
+    risk_level: str
+    timestamp: float

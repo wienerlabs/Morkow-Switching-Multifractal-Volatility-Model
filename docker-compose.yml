@@ -6,6 +6,8 @@ services:
     container_name: cortex-risk-engine
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=info
@@ -33,6 +35,8 @@ services:
       - ./api:/app/api
       - ./frontend:/app/frontend
       - ./cortex:/app/cortex
+    env_file:
+      - .env
     environment:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=debug

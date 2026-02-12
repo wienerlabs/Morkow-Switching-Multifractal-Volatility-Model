@@ -14,12 +14,28 @@ from typing import Any
 
 import numpy as np
 
+from cortex.config import (
+    GUARDIAN_WEIGHTS,
+    CIRCUIT_BREAKER_THRESHOLD,
+    CACHE_TTL_SECONDS,
+    DECISION_VALIDITY_SECONDS,
+    APPROVAL_THRESHOLD,
+    EVT_SCORE_FLOOR,
+    EVT_SCORE_RANGE,
+    SVJ_BASE_CAP,
+    SVJ_BASE_MULT,
+    SVJ_INTENSITY_FLOOR,
+    SVJ_INTENSITY_RANGE,
+    SVJ_INTENSITY_CAP,
+    REGIME_BASE_MAX,
+    REGIME_CRISIS_BONUS_MAX,
+    CRISIS_REGIME_HAIRCUT,
+    NEAR_CRISIS_REGIME_HAIRCUT,
+)
+
 logger = logging.getLogger(__name__)
 
-WEIGHTS = {"evt": 0.25, "svj": 0.20, "hawkes": 0.20, "regime": 0.20, "news": 0.15}
-CIRCUIT_BREAKER_THRESHOLD = 90
-CACHE_TTL_SECONDS = 5.0
-DECISION_VALIDITY_SECONDS = 30.0
+WEIGHTS = GUARDIAN_WEIGHTS
 
 _cache: dict[str, dict[str, Any]] = {}
 
@@ -36,7 +52,7 @@ def _score_evt(evt_data: dict, alpha: float = 0.005) -> dict:
         alpha=alpha,
     )
     # Score: map VaR loss to 0-100. VaR < 5% → low risk, VaR > 15% → extreme
-    score = min(100.0, max(0.0, (var_loss - 2.0) / 13.0 * 100.0))
+    score = min(100.0, max(0.0, (var_loss - EVT_SCORE_FLOOR) / EVT_SCORE_RANGE * 100.0))
     return {
         "component": "evt",
         "score": round(score, 2),
@@ -57,9 +73,8 @@ def _score_svj(svj_data: dict) -> dict:
     lambda_ = svj_data["calibration"]["lambda_"]
 
     # Base score from jump share: 0% → 0, 100% → 80
-    base = min(80.0, jump_share * 0.8)
-    # Bonus if jump intensity is high (λ > 50 jumps/year)
-    intensity_bonus = min(20.0, max(0.0, (lambda_ - 20) / 80 * 20))
+    base = min(SVJ_BASE_CAP, jump_share * SVJ_BASE_MULT)
+    intensity_bonus = min(SVJ_INTENSITY_CAP, max(0.0, (lambda_ - SVJ_INTENSITY_FLOOR) / SVJ_INTENSITY_RANGE * SVJ_INTENSITY_CAP))
     score = min(100.0, base + intensity_bonus)
 
     return {
@@ -106,8 +121,8 @@ def _score_regime(model_data: dict) -> dict:
 
     # Score: weighted by regime position and crisis probability
     # Regime 1 → 0, Regime K → 80, plus crisis_prob bonus up to 20
-    regime_base = (current_regime - 1) / max(num_states - 1, 1) * 80.0
-    crisis_bonus = crisis_prob * 20.0
+    regime_base = (current_regime - 1) / max(num_states - 1, 1) * REGIME_BASE_MAX
+    crisis_bonus = crisis_prob * REGIME_CRISIS_BONUS_MAX
     score = min(100.0, regime_base + crisis_bonus)
 
     return {
@@ -200,9 +215,9 @@ def _recommend_size(
     scale = max(0.0, 1.0 - risk_score / 100.0)
     # Regime penalty: crisis regime gets additional 50% haircut
     if current_regime >= num_states:
-        scale *= 0.5
+        scale *= CRISIS_REGIME_HAIRCUT
     elif current_regime >= num_states - 1:
-        scale *= 0.75
+        scale *= NEAR_CRISIS_REGIME_HAIRCUT
     return round(requested_size * scale, 2)
 
 
@@ -290,7 +305,7 @@ def assess_trade(
         risk_score = 50.0
 
     risk_score = round(min(100.0, max(0.0, risk_score)), 2)
-    approved = len(veto_reasons) == 0 and risk_score < 75.0
+    approved = len(veto_reasons) == 0 and risk_score < APPROVAL_THRESHOLD
     confidence = round(available_weights / sum(WEIGHTS.values()), 4)
     recommended_size = _recommend_size(
         trade_size_usd, risk_score, current_regime, num_states
