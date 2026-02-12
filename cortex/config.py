@@ -75,21 +75,12 @@ SOLANA_MAX_KEEPALIVE = int(os.environ.get("SOLANA_MAX_KEEPALIVE", "10"))
 # ── Pyth Oracle ──
 
 PYTH_HERMES_URL = os.environ.get("PYTH_HERMES_URL", "https://hermes.pyth.network")
-PYTH_PRICE_FEEDS: dict[str, str] = json.loads(
-    os.environ.get(
-        "PYTH_PRICE_FEEDS",
-        json.dumps({
-            "SOL": "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
-            "BTC": "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
-            "ETH": "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
-            "RAY": "0x91568baa8beb53db23eb3fb7f22c6e8bd303d103919e19733f2bb642d3e7987a",
-            "JUP": "0x0a0408d619e9380abad35060f9192039ed5042fa6f82301d0e48bb52be830996",
-            "BONK": "0x72b021217ca3fe68922a19aaf990109cb9d84e9ad004b4d2025ad6f529314419",
-        }),
-    )
-)
 PYTH_BUFFER_DEPTH = int(os.environ.get("PYTH_BUFFER_DEPTH", "100"))
 PYTH_SSE_TIMEOUT = float(os.environ.get("PYTH_SSE_TIMEOUT", "60"))
+PYTH_FEED_CACHE_TTL = float(os.environ.get("PYTH_FEED_CACHE_TTL", "600"))
+PYTH_DEFAULT_WATCHLIST: list[str] = json.loads(
+    os.environ.get("PYTH_DEFAULT_WATCHLIST", json.dumps(["SOL", "BTC", "ETH"]))
+)
 
 # ── Helius Transaction Streams ──
 

@@ -1026,28 +1026,69 @@ class MarketImpactResponse(BaseModel):
 # ── Oracle (Pyth) models ──
 
 
+class PythFeedAttributes(BaseModel):
+    asset_type: str = ""
+    base: str = ""
+    description: str = ""
+    display_symbol: str = ""
+    generic_symbol: str = ""
+    quote_currency: str = ""
+    symbol: str = ""
+
+
+class PythFeedItem(BaseModel):
+    id: str
+    attributes: PythFeedAttributes
+
+
+class PythFeedListResponse(BaseModel):
+    feeds: list[PythFeedItem]
+    total: int
+    query: str | None = None
+    timestamp: datetime
+
+
 class OraclePriceItem(BaseModel):
-    token: str
     price: float
     confidence: float
     ema_price: float
+    expo: int = 0
     publish_time: int
     feed_id: str
+    symbol: str = ""
+    description: str = ""
     timestamp: float
 
 
 class OraclePricesResponse(BaseModel):
-    prices: dict[str, OraclePriceItem]
+    prices: list[OraclePriceItem]
+    count: int
     source: str = "pyth"
     timestamp: datetime
 
 
+class OracleHistoricalResponse(BaseModel):
+    prices: list[OraclePriceItem]
+    query_timestamp: int
+    count: int
+    timestamp: datetime
+
+
+class OracleStreamStatus(BaseModel):
+    active: bool
+    feed_ids: list[str]
+    events_received: int
+    started_at: float | None
+
+
 class OracleStatusResponse(BaseModel):
-    tracked_tokens: list[str]
-    buffer_depth: int
-    prices_cached: int
-    buffer_sizes: dict[str, int]
     hermes_url: str
+    total_feeds_known: int
+    feed_cache_age_s: float | None
+    prices_cached: int
+    buffers_active: int
+    buffer_depth: int
+    stream: OracleStreamStatus
     timestamp: float
 
 
