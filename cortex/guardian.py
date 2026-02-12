@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from datetime import datetime, timezone
 from typing import Any
 
@@ -31,6 +32,8 @@ from cortex.config import (
     REGIME_CRISIS_BONUS_MAX,
     CRISIS_REGIME_HAIRCUT,
     NEAR_CRISIS_REGIME_HAIRCUT,
+    GUARDIAN_KELLY_FRACTION,
+    GUARDIAN_KELLY_MIN_TRADES,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,6 +41,7 @@ logger = logging.getLogger(__name__)
 WEIGHTS = GUARDIAN_WEIGHTS
 
 _cache: dict[str, dict[str, Any]] = {}
+_trade_history: deque[dict] = deque(maxlen=500)
 
 
 def _score_evt(evt_data: dict, alpha: float = 0.005) -> dict:
@@ -207,18 +211,70 @@ def _score_news(news_signal: dict, direction: str) -> dict:
     }
 
 
+def record_trade_outcome(pnl: float, size: float, token: str = "") -> None:
+    """Record a completed trade for Kelly Criterion calculation."""
+    _trade_history.append({"pnl": pnl, "size": size, "token": token, "ts": time.time()})
+
+
+def _compute_kelly() -> dict[str, Any]:
+    """Compute Kelly fraction from trade history."""
+    n = len(_trade_history)
+    if n < GUARDIAN_KELLY_MIN_TRADES:
+        return {"active": False, "n_trades": n, "reason": f"need {GUARDIAN_KELLY_MIN_TRADES} trades, have {n}"}
+
+    wins = [t for t in _trade_history if t["pnl"] > 0]
+    losses = [t for t in _trade_history if t["pnl"] <= 0]
+
+    if not losses:
+        return {"active": False, "n_trades": n, "reason": "no losses yet"}
+
+    p = len(wins) / n
+    avg_win = sum(t["pnl"] for t in wins) / len(wins) if wins else 0.0
+    avg_loss = abs(sum(t["pnl"] for t in losses) / len(losses))
+
+    if avg_loss == 0:
+        return {"active": False, "n_trades": n, "reason": "avg_loss is zero"}
+
+    b = avg_win / avg_loss
+    q = 1.0 - p
+    kelly_full = (p * b - q) / b if b > 0 else 0.0
+    kelly_fraction = max(0.0, kelly_full * GUARDIAN_KELLY_FRACTION)
+
+    return {
+        "active": True,
+        "n_trades": n,
+        "win_rate": round(p, 4),
+        "win_loss_ratio": round(b, 4),
+        "kelly_full": round(kelly_full, 4),
+        "kelly_fraction": round(kelly_fraction, 4),
+        "fraction_used": GUARDIAN_KELLY_FRACTION,
+    }
+
+
+def get_kelly_stats() -> dict[str, Any]:
+    """Public accessor for Kelly stats."""
+    return _compute_kelly()
+
+
 def _recommend_size(
     requested_size: float, risk_score: float, current_regime: int, num_states: int
 ) -> float:
-    """Scale position size down based on risk score and regime."""
-    # Linear scaling: risk_score 0 → 100% of requested, risk_score 100 → 0%
-    scale = max(0.0, 1.0 - risk_score / 100.0)
-    # Regime penalty: crisis regime gets additional 50% haircut
+    """Scale position size using Kelly fraction (if active) or linear fallback."""
+    kelly = _compute_kelly()
+
+    if kelly["active"]:
+        kelly_f = kelly["kelly_fraction"]
+        risk_scale = max(0.0, 1.0 - risk_score / 100.0)
+        scale = kelly_f * risk_scale
+    else:
+        scale = max(0.0, 1.0 - risk_score / 100.0)
+
     if current_regime >= num_states:
         scale *= CRISIS_REGIME_HAIRCUT
     elif current_regime >= num_states - 1:
         scale *= NEAR_CRISIS_REGIME_HAIRCUT
-    return round(requested_size * scale, 2)
+
+    return round(requested_size * max(0.0, scale), 2)
 
 
 def assess_trade(
@@ -230,6 +286,8 @@ def assess_trade(
     svj_data: dict | None,
     hawkes_data: dict | None,
     news_data: dict | None = None,
+    strategy: str | None = None,
+    run_debate: bool = False,
 ) -> dict:
     """Run all risk components and return composite Guardian assessment."""
     cache_key = f"{token}:{direction}"
@@ -305,6 +363,25 @@ def assess_trade(
         risk_score = 50.0
 
     risk_score = round(min(100.0, max(0.0, risk_score)), 2)
+
+    # ── Circuit breaker check ──
+    from cortex.circuit_breaker import is_blocked, record_score
+
+    cb_states = record_score(risk_score, strategy=strategy)
+    blocked, blockers = is_blocked(strategy=strategy)
+    if blocked:
+        veto_reasons.extend(f"circuit_breaker_{b}" for b in blockers)
+
+    # ── Portfolio risk check ──
+    try:
+        from cortex.portfolio_risk import check_limits
+        limits = check_limits(token)
+        if limits["blocked"]:
+            veto_reasons.extend(f"portfolio_{b}" for b in limits["blockers"])
+    except Exception:
+        limits = None
+        logger.debug("Portfolio risk check unavailable", exc_info=True)
+
     approved = len(veto_reasons) == 0 and risk_score < APPROVAL_THRESHOLD
     confidence = round(available_weights / sum(WEIGHTS.values()), 4)
     recommended_size = _recommend_size(
@@ -313,6 +390,24 @@ def assess_trade(
     expires_at = datetime.fromtimestamp(
         now + DECISION_VALIDITY_SECONDS, tz=timezone.utc
     )
+
+    # ── Adversarial debate (optional) ──
+    debate_result = None
+    if run_debate:
+        try:
+            from cortex.debate import run_debate as _run_debate
+            debate_result = _run_debate(
+                risk_score=risk_score,
+                component_scores=scores,
+                veto_reasons=list(set(veto_reasons)),
+                direction=direction,
+                trade_size_usd=trade_size_usd,
+                original_approved=approved,
+            )
+            if debate_result["decision_changed"]:
+                approved = debate_result["final_decision"] == "approve"
+        except Exception:
+            logger.debug("Debate system unavailable", exc_info=True)
 
     result = {
         "approved": approved,
@@ -323,6 +418,9 @@ def assess_trade(
         "confidence": confidence,
         "expires_at": expires_at.isoformat(),
         "component_scores": scores,
+        "circuit_breaker": cb_states,
+        "portfolio_limits": limits,
+        "debate": debate_result,
         "from_cache": False,
     }
 

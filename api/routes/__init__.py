@@ -19,6 +19,7 @@ from api.routes.oracle import router as oracle_router
 from api.routes.streams import router as streams_router
 from api.routes.social import router as social_router
 from api.routes.macro import router as macro_router
+from api.routes.portfolio_risk import router as portfolio_risk_router
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -38,4 +39,5 @@ router.include_router(oracle_router)
 router.include_router(streams_router)
 router.include_router(social_router)
 router.include_router(macro_router)
+router.include_router(portfolio_risk_router)
 

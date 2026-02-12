@@ -104,6 +104,30 @@ COINGECKO_BASE = os.environ.get("COINGECKO_BASE", "https://api.coingecko.com/api
 FEAR_GREED_URL = os.environ.get("FEAR_GREED_URL", "https://api.alternative.me/fng/")
 MACRO_CACHE_TTL = float(os.environ.get("MACRO_CACHE_TTL", "300"))
 
+# ── Kelly Criterion ──
+
+GUARDIAN_KELLY_FRACTION = float(os.environ.get("GUARDIAN_KELLY_FRACTION", "0.25"))
+GUARDIAN_KELLY_MIN_TRADES = int(os.environ.get("GUARDIAN_KELLY_MIN_TRADES", "50"))
+
+# ── Portfolio Risk ──
+
+MAX_DAILY_DRAWDOWN = float(os.environ.get("MAX_DAILY_DRAWDOWN", "0.05"))
+MAX_WEEKLY_DRAWDOWN = float(os.environ.get("MAX_WEEKLY_DRAWDOWN", "0.10"))
+MAX_CORRELATED_EXPOSURE = float(os.environ.get("MAX_CORRELATED_EXPOSURE", "0.15"))
+PORTFOLIO_HISTORY_DAYS = int(os.environ.get("PORTFOLIO_HISTORY_DAYS", "30"))
+
+# ── Circuit Breaker ──
+
+CB_THRESHOLD = float(os.environ.get("CB_THRESHOLD", "90"))
+CB_CONSECUTIVE_CHECKS = int(os.environ.get("CB_CONSECUTIVE_CHECKS", "3"))
+CB_COOLDOWN_SECONDS = float(os.environ.get("CB_COOLDOWN_SECONDS", "300"))
+CB_STRATEGIES = json.loads(os.environ.get("CB_STRATEGIES", '["lp", "arb", "perp"]'))
+
+# ── Adversarial Debate ──
+
+DEBATE_MAX_ROUNDS = int(os.environ.get("DEBATE_MAX_ROUNDS", "3"))
+DEBATE_TIMEOUT_MS = int(os.environ.get("DEBATE_TIMEOUT_MS", "5000"))
+
 # ── API ──
 
 API_VERSION = os.environ.get("API_VERSION", "1.1.0")
