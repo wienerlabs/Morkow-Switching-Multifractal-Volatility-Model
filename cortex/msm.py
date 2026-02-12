@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 MSM-based volatility forecast + VaR(5%) + Kupiec & Christoffersen backtests
-+ Tail probabilities (1, 3, 5 zile) condiționat pe regimul curent.
++ Tail probabilities (1, 3, 5 days) conditional on the current regime.
 """
 
 import logging
@@ -16,13 +16,14 @@ from scipy.stats import norm, chi2, t as student_t
 logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------
-# 1. Helper: extragere prețuri din yfinance
+# 1. Helper: extract close prices from yfinance
 # -------------------------------------------------------
 
 def _extract_close(df: pd.DataFrame, symbol: str) -> pd.Series:
-    """
-    Extrage coloana de prețuri de închidere (Adj Close sau Close)
-    din DataFrame-ul yfinance, indiferent dacă are MultiIndex sau nu.
+    """Extract the closing price column from a yfinance DataFrame.
+
+    Handles both MultiIndex and flat column layouts, preferring
+    'Adj Close' over 'Close'.
     """
     if isinstance(df.columns, pd.MultiIndex):
         price_level = df.columns.get_level_values(0)
@@ -52,19 +53,23 @@ def _extract_close(df: pd.DataFrame, symbol: str) -> pd.Series:
 # -------------------------------------------------------
 
 def kupiec_test(breach_series, alpha=0.05):
-    """
-    Kupiec Unconditional Coverage Test
-    breach_series: 0/1 (1 = VaR breach)
-    alpha: nivel VaR (ex: 0.05)
+    """Kupiec Unconditional Coverage test.
+
+    Args:
+        breach_series: Binary series (1 = VaR breach).
+        alpha: VaR confidence level (e.g. 0.05).
+
+    Returns:
+        Tuple of (LR statistic, p-value, num_breaches, num_observations).
     """
     b = np.asarray(breach_series, dtype=int)
     n = len(b)
-    x = b.sum()  # număr de breach-uri observate
+    x = b.sum()
     if n == 0:
         return np.nan, np.nan, x, n
 
-    pi_hat = x / n        # frecvența empirică
-    pi_0 = alpha          # frecvența teoretică
+    pi_hat = x / n
+    pi_0 = alpha
 
     if pi_hat in (0, 1):
         return np.nan, np.nan, x, n
@@ -79,9 +84,15 @@ def kupiec_test(breach_series, alpha=0.05):
 
 
 def christoffersen_independence_test(breach_series):
-    """
-    Christoffersen Independence Test.
-    Testează dacă breach-urile sunt independente în timp (nu vin în clustere).
+    """Christoffersen Independence test for VaR breaches.
+
+    Tests whether breaches are independent over time (no clustering).
+
+    Args:
+        breach_series: Binary series (1 = VaR breach).
+
+    Returns:
+        Tuple of (LR statistic, p-value, transition_counts).
     """
     b = np.asarray(breach_series, dtype=int)
     if len(b) < 2:
@@ -123,7 +134,7 @@ def christoffersen_independence_test(breach_series):
 
 
 # -------------------------------------------------------
-# 3. MSM: model simplu cu K stări + filter bayesian
+# 3. MSM: K-state model + Bayesian filter
 # -------------------------------------------------------
 
 
@@ -199,12 +210,10 @@ def msm_vol_forecast(
     P = _build_transition_matrix(p_stay, K)
     use_leverage = (leverage_gamma != 0.0)
 
-    # prior inițial: uniform
     pi_t = np.full(K, 1.0 / K)
 
-    # Storage pentru ambele tipuri de volatilitate
-    sigma_forecast = np.zeros(n)  # σ_{t|t-1} - FORECAST (out-of-sample)
-    sigma_filtered = np.zeros(n)  # σ_t - FILTERED (in-sample)
+    sigma_forecast = np.zeros(n)  # σ_{t|t-1} (out-of-sample)
+    sigma_filtered = np.zeros(n)  # σ_t (in-sample)
     filter_probs = np.zeros((n, K))
 
     eps = 1e-12
@@ -213,12 +222,12 @@ def msm_vol_forecast(
         # 1) FORECAST: σ_{t|t-1} = E[σ | info_{t-1}]
         sigma_forecast[t] = np.sum(pi_t * sigmas)
 
-        # 2) UPDATE cu observația r_t (likelihood)
+        # 2) UPDATE with observation r_t (likelihood)
         like = (1.0 / (sigmas + eps)) * np.exp(
             -0.5 * (r[t] / (sigmas + eps)) ** 2
         )
 
-        # 3) Actualizare posterior: π_t ∝ π_{t|t-1} * likelihood
+        # 3) Posterior update: π_t ∝ π_{t|t-1} * likelihood
         pi_unnorm = pi_t * like
         s = pi_unnorm.sum()
         if s > eps and np.isfinite(s):
@@ -226,7 +235,7 @@ def msm_vol_forecast(
         else:
             pi_t = np.full(K, 1.0 / K)
 
-        # 4) FILTERED: σ_t = E[σ | info_t] (după ce vedem r_t)
+        # 4) FILTERED: σ_t = E[σ | info_t] (after observing r_t)
         sigma_filtered[t] = np.sum(pi_t * sigmas)
         filter_probs[t, :] = pi_t
 
@@ -250,7 +259,7 @@ def msm_vol_forecast(
 
 
 # -------------------------------------------------------
-# 3b. CALIBRARE AVANSATĂ MSM - Maximum Likelihood Estimation
+# 3b. Advanced MSM calibration - Maximum Likelihood Estimation
 # -------------------------------------------------------
 
 def msm_log_likelihood(params, returns, num_states=5, leverage_gamma=0.0):
@@ -324,33 +333,20 @@ def calibrate_msm_advanced(
     verbose: bool = True,
     leverage_gamma=None,
 ):
-    """
-    Calibrare avansată a parametrilor MSM.
+    """Advanced MSM parameter calibration.
 
-    Metode disponibile:
-    -------------------
-    1. 'mle' - Maximum Likelihood Estimation (optimizare numerică)
-    2. 'grid' - Grid search cu cross-validation
-    3. 'empirical' - Bazat pe quantile empirice + optimizare VaR breach
-    4. 'hybrid' - Combinație MLE + ajustare VaR breach
+    Args:
+        returns: Daily returns in %.
+        num_states: Number of MSM volatility states.
+        method: Calibration method ('mle', 'grid', 'empirical', 'hybrid').
+        target_var_breach: Target VaR breach rate (default 5%).
+        verbose: Print progress information.
+        leverage_gamma: Asymmetric leverage parameter for the transition matrix.
+            None (default) means no leverage effect. Float uses a fixed value.
+            "estimate" estimates gamma via MLE (search range [-2.0, 0.0]).
 
-    Parametri:
-    ----------
-    returns : pd.Series - randamente în %
-    num_states : int - numărul de stări MSM
-    method : str - metoda de calibrare ('mle', 'grid', 'empirical', 'hybrid')
-    target_var_breach : float - rata țintă de VaR breach (default 5%)
-    verbose : bool - afișează progresul
-    leverage_gamma : float | str | None
-        Asymmetric leverage parameter for the transition matrix.
-        - None (default): no leverage effect, equivalent to 0.0
-        - float: use this fixed value (γ < 0 means negative returns
-          increase probability of transitioning to higher-vol states)
-        - "estimate": estimate γ via MLE (search range [-2.0, 0.0])
-
-    Returnează:
-    -----------
-    dict cu parametrii calibrați și metrici de calitate
+    Returns:
+        Dict with calibrated parameters and quality metrics.
     """
     from scipy.optimize import minimize, differential_evolution
 
@@ -375,7 +371,7 @@ def calibrate_msm_advanced(
         print(f"   Target VaR breach: {target_var_breach*100:.1f}%")
     
     # =========================================================================
-    # METODA 1: Maximum Likelihood Estimation
+    # METHOD 1: Maximum Likelihood Estimation
     # =========================================================================
     K = num_states
 
@@ -433,13 +429,12 @@ def calibrate_msm_advanced(
 
     
     # =========================================================================
-    # METODA 2: Grid Search cu evaluare VaR
+    # METHOD 2: Grid Search with VaR evaluation
     # =========================================================================
     elif method == 'grid':
         if verbose:
             print(f"\n   Running grid search...")
-        
-        # Grid de parametri
+
         sigma_low_grid = np.array([0.2, 0.3, 0.4, 0.5]) * std_r
         sigma_high_grid = np.array([2.0, 2.5, 3.0, 3.5, 4.0]) * std_r
         p_stay_grid = [0.93, 0.95, 0.97, 0.98]
@@ -455,22 +450,18 @@ def calibrate_msm_advanced(
                 for ps in p_stay_grid:
                     combo_count += 1
                     
-                    # Run MSM - folosim sigma_forecast (out-of-sample)
                     sigma_forecast, _, _, _, _ = msm_vol_forecast(
                         returns, num_states, sl, sh, ps,
                         leverage_gamma=leverage_gamma_val,
                     )
                     
-                    # Calculate VaR breach rate (OUT-OF-SAMPLE corect)
                     z_alpha = norm.ppf(target_var_breach)
                     var_5 = z_alpha * sigma_forecast
                     breaches = (returns < var_5).mean()
                     
-                    # Score: distanța de la target + penalizare pentru volatilitate prea mică
                     breach_error = abs(breaches - target_var_breach)
                     vol_correlation = np.corrcoef(np.abs(r), sigma_forecast.values)[0, 1]
                     
-                    # Score combinat: breach error + (1 - correlation)
                     score = breach_error + 0.1 * (1 - vol_correlation)
                     
                     if score < best_score:
@@ -487,24 +478,21 @@ def calibrate_msm_advanced(
             print(f"     Best correlation: {best_corr:.3f}")
     
     # =========================================================================
-    # METODA 3: Empirical (bazat pe quantile)
+    # METHOD 3: Empirical (quantile-based)
     # =========================================================================
     elif method == 'empirical':
         if verbose:
             print(f"\n   Using empirical quantile-based calibration...")
-        
-        # Sigma states bazate pe quantile empirice ale |r|
+
         abs_r = np.abs(r)
-        
-        # Quantile pentru stări: 10%, 30%, 50%, 70%, 90%
+
         quantiles = [0.10, 0.30, 0.50, 0.70, 0.90]
         sigma_quantiles = np.quantile(abs_r, quantiles)
         
         sigma_low = sigma_quantiles[0]   # 10th percentile
         sigma_high = sigma_quantiles[-1]  # 90th percentile
         
-        # p_stay calibrat pentru persistență empirică
-        # Estimăm din autocorrelația |r|
+        # Estimate p_stay from |r| autocorrelation (empirical persistence)
         autocorr = pd.Series(abs_r).autocorr(lag=1)
         p_stay = max(0.90, min(0.99, 0.5 + 0.5 * autocorr))
         
@@ -513,13 +501,13 @@ def calibrate_msm_advanced(
             print(f"     Autocorrelation |r|: {autocorr:.3f}")
     
     # =========================================================================
-    # METODA 4: Hybrid (MLE + ajustare VaR ITERATIVĂ)
+    # METHOD 4: Hybrid (MLE + iterative VaR adjustment)
     # =========================================================================
     elif method == 'hybrid':
         if verbose:
             print(f"\n   Running hybrid calibration (MLE + iterative VaR adjustment)...")
         
-        # Pas 1: MLE pentru parametri inițiali
+        # Step 1: MLE for initial parameters
         bounds = [
             (std_r * 0.1, std_r * 0.8),
             (std_r * 1.5, std_r * 5.0),
@@ -544,21 +532,18 @@ def calibrate_msm_advanced(
             logger.warning("MLE optimization failed, using empirical fallback: %s", e)
             sigma_low, sigma_high, p_stay = std_r * 0.35, std_r * 3.0, 0.97
         
-        # Pas 2: Ajustare ITERATIVĂ pentru VaR breach rate
-        # Folosim bisection pentru a găsi factorul de scalare optim
+        # Step 2: Bisection search for optimal sigma scale factor
         if verbose:
             print(f"     Fine-tuning for target breach rate {target_var_breach*100:.1f}%...")
         
         best_scale = 1.0
         best_breach_error = float('inf')
         
-        # Căutare binară pentru factorul de scalare
         scale_low, scale_high = 0.5, 1.5
-        
-        for iteration in range(15):  # Max 15 iterații
+
+        for iteration in range(15):
             scale_mid = (scale_low + scale_high) / 2
-            
-            # Testăm cu acest factor de scalare
+
             test_sigma_low = sigma_low * scale_mid
             test_sigma_high = sigma_high * scale_mid
             
@@ -576,22 +561,18 @@ def calibrate_msm_advanced(
                 best_breach_error = breach_error
                 best_scale = scale_mid
             
-            # Dacă breach e prea mic, reducem sigma (scale down)
-            # Dacă breach e prea mare, creștem sigma (scale up)
+            # Bisect: too few breaches → shrink sigma, too many → grow sigma
             if current_breach < target_var_breach:
-                scale_high = scale_mid  # Reducem sigma
+                scale_high = scale_mid
             else:
-                scale_low = scale_mid   # Creștem sigma
-            
-            # Stop dacă suntem suficient de aproape
-            if breach_error < 0.002:  # 0.2% tolerance
+                scale_low = scale_mid
+
+            if breach_error < 0.002:
                 break
         
-        # Aplicăm cel mai bun factor de scalare
         sigma_low *= best_scale
         sigma_high *= best_scale
-        
-        # Verificare finală
+
         sigma_forecast, _, _, _, _ = msm_vol_forecast(
             returns, num_states, sigma_low, sigma_high, p_stay,
             leverage_gamma=leverage_gamma_val,
@@ -704,7 +685,7 @@ def calibrate_msm_advanced(
 
 
 # -------------------------------------------------------
-# 4. Probabilități de tail bazate pe MSM
+# 4. MSM-based tail probabilities
 # -------------------------------------------------------
 
 def msm_tail_probs(
@@ -716,67 +697,50 @@ def msm_tail_probs(
     use_student_t: bool = False,
     nu: float = 5.0
 ):
-    """
-    Calculează probabilitatea ca randamentul să cadă sub L1 (empirical tail)
-    în următoarele H zile, condiționat pe regimul curent MSM.
+    """Compute tail probability conditional on the current MSM regime.
 
-    Parametri:
-    ----------
-    rets_series      : pd.Series cu randamente zilnice (în %).
-    msm_filter_probs : array-like (T, K) – probabilități filtrate pe stări.
-                       Poate fi np.ndarray sau pd.DataFrame.
-    sigma_states     : array-like (K,) – vol. zilnică în % pentru fiecare stare.
-    alpha            : tail empiric (default 0.05 = 5%).
-    horizons         : tuple de orizonturi (zile) pentru care vrem P(tail).
-    use_student_t    : dacă True, folosește Student-t în loc de Normal.
-    nu               : df pentru Student-t (dacă use_student_t=True). Trebuie > 2.
+    Calculates P(return < L1) over multiple horizons, where L1 is the
+    empirical tail threshold.
 
-    Return:
-    -------
-    dict cu:
-      "L1": pragul empiric
-      "p1": P(tail într-o singură zi t+1)
-      "horizon_probs": {H: P(at least one tail in H days)}
+    Args:
+        rets_series: Daily returns in %.
+        msm_filter_probs: (T, K) filtered state probabilities (ndarray or DataFrame).
+        sigma_states: (K,) daily volatility in % per state.
+        alpha: Empirical tail quantile (default 0.05 = 5%).
+        horizons: Tuple of horizons (days) for tail probability.
+        use_student_t: Use Student-t instead of Normal distribution.
+        nu: Degrees of freedom for Student-t (must be > 2).
+
+    Returns:
+        Dict with keys: "L1" (threshold), "p1" (1-day tail prob),
+        "horizon_probs" ({H: P(at least one tail in H days)}),
+        "distribution" (distribution used).
     """
-    # 1) Prag empiric L1 (5% quantile)
     L1 = float(rets_series.quantile(alpha))
 
-    # 2) Ultimul vector de probabilități MSM (condiționat pe info curentă)
     P_filtered = np.asarray(msm_filter_probs)
-    P_last = P_filtered[-1]   # shape (K,)
+    P_last = P_filtered[-1]
 
     sigma_states = np.asarray(sigma_states, dtype=float)
 
-    # 3) Probabilitate tail condiționată pe fiecare stare
-    # r | state k ~ distribuție cu media 0 și deviația standard sigma_k
-    
     if use_student_t:
-        # Student-t scalată: dacă T ~ t_nu (standard), atunci
-        # X = sigma * T * sqrt((nu-2)/nu) are Var(X) = sigma²
-        # Echivalent: X ~ t_nu cu scale = sigma * sqrt((nu-2)/nu)
-        # 
-        # Pentru a calcula P(X < L1), folosim:
-        # P(X < L1) = P(T < L1 / scale) = student_t.cdf(L1/scale, df=nu)
-        
+        # Scale Student-t so that Var(X) = sigma^2:
+        # X = sigma * T * sqrt((nu-2)/nu), then P(X < L1) = t_cdf(L1/scale, df=nu)
         if nu <= 2:
             raise ValueError("Student-t df (nu) must be > 2 for finite variance")
-        
-        # Factorul de scalare pentru a avea varianța = sigma²
+
         variance_adjustment = np.sqrt((nu - 2) / nu)
         scale = sigma_states * variance_adjustment
-        
+
         z = (L1 - 0.0) / scale
         p_k = student_t.cdf(z, df=nu)
     else:
-        # Normal: r | state k ~ N(0, sigma_k²)
         z = (L1 - 0.0) / sigma_states
         p_k = norm.cdf(z)
 
-    # 4) Probabilitatea 1-day tail cond. pe regimul curent
     p1 = float(np.dot(P_last, p_k))
 
-    # 5) Probabilități pe 1, 3, 5 zile:
-    # P(at least one tail in H zile) ≈ 1 - (1 - p1)^H
+    # P(at least one tail in H days) = 1 - (1 - p1)^H
     horizon_probs = {}
     for H in horizons:
         horizon_probs[H] = 1.0 - (1.0 - p1)**H
@@ -866,29 +830,26 @@ def msm_var_forecast_next_day(
 
 if __name__ == "__main__":
     # ----------------------------
-    # 5.1. Download date și randamente
+    # 5.1. Download data and compute returns
     # ----------------------------
-    ticker = "Financial_asset"  # Schimbă simbolul după nevoie
+    ticker = "Financial_asset"
     start = "Y-M-D"
-    
+
     # ========================================
-    # SETEAZĂ DATA PENTRU CARE VREI FORECAST
+    # SET THE FORECAST TARGET DATE
     # ========================================
-    # Pentru forecast pe ziua X, ai nevoie de lumânarea închisă din ziua X-1
-    # Exemplu: pentru forecast pe 12 decembrie, ai nevoie de date până în 11 decembrie
-    FORECAST_DATE = "Y-M-D"  # Schimbă această dată după nevoie
+    # Forecast for day X requires the closed candle from day X-1
+    FORECAST_DATE = "Y-M-D"
     
     from datetime import datetime, timedelta
     forecast_dt = datetime.strptime(FORECAST_DATE, "%Y-%m-%d")
     
-    # Descarcă date cu marjă pentru a ne asigura că avem tot ce trebuie
     end = (forecast_dt + timedelta(days=2)).strftime("%Y-%m-%d")
 
     data = yf.download(ticker, start=start, end=end, auto_adjust=False, group_by='column')
     close_raw = _extract_close(data, ticker)
     
-    # IMPORTANT: Păstrăm doar lumânările ÎNCHISE (strict înainte de FORECAST_DATE)
-    # Excludem lumânarea curentă care e încă în curs
+    # Only keep closed candles (strictly before FORECAST_DATE)
     close = close_raw[close_raw.index < FORECAST_DATE]
     
     last_candle_date = close.index[-1]
@@ -899,12 +860,11 @@ if __name__ == "__main__":
     print(f"FORECAST TARGET: {FORECAST_DATE}")
     
     if last_candle_date.date() < expected_last.date():
-        print(f"\n⚠️  WARNING: Lipsește lumânarea din {expected_last.strftime('%Y-%m-%d')}")
-        print(f"    Yahoo Finance are un delay. Încearcă mai târziu sau folosește Binance API.")
+        print(f"\n⚠️  WARNING: Missing candle for {expected_last.strftime('%Y-%m-%d')}")
+        print(f"    Yahoo Finance may be delayed. Try later or use Binance API.")
         actual_forecast = (last_candle_date + timedelta(days=1)).strftime('%Y-%m-%d')
-        print(f"    Forecast-ul va fi pentru: {actual_forecast}")
+        print(f"    Forecast will be for: {actual_forecast}")
 
-    # log-returns zilnice în %
     rets = 100 * np.diff(np.log(close.values))
     dates = close.index[1:]
     rets_series = pd.Series(rets, index=dates, name="r")
@@ -913,9 +873,8 @@ if __name__ == "__main__":
     print(f"Mean(|r|) = {np.abs(rets_series).mean():.3f} %")
 
     # ----------------------------
-    # 5.2. CALIBRARE AVANSATĂ MSM
+    # 5.2. Advanced MSM calibration
     # ----------------------------
-    # Alege metoda de calibrare: 'mle', 'grid', 'empirical', 'hybrid'
     CALIBRATION_METHOD = 'hybrid'
     
     calibration_result = calibrate_msm_advanced(
@@ -926,13 +885,12 @@ if __name__ == "__main__":
         verbose=True
     )
     
-    # Extrage parametrii calibrați
     sigma_low = calibration_result['sigma_low']
     sigma_high = calibration_result['sigma_high']
     p_stay = calibration_result['p_stay']
     
     # ----------------------------
-    # 5.3. Forecast volatilitate cu MSM (CORECT: out-of-sample)
+    # 5.3. MSM volatility forecast (out-of-sample)
     # ----------------------------
     sigma_forecast, sigma_filtered, msm_filter_probs, sigma_states, P_matrix = msm_vol_forecast(
         rets_series,
@@ -952,24 +910,22 @@ if __name__ == "__main__":
     print(f"Corr(|r_t|, σ_filtered_t) = {corr_filtered:.3f}  (in-sample)")
 
 
-    # VaR forecast CORECT pentru ziua următoare
     VaR_t1, sigma_t1, z, pi_t1 = msm_var_forecast_next_day(
         msm_filter_probs, sigma_states, P_matrix
     )
 
-    # Data ultimei observații și data forecast-ului
     last_data_date = rets_series.index[-1]
-    
-    # Crypto tradează 24/7 - nu sărim weekendul
+
+    # Crypto trades 24/7 — no weekend skip needed
     is_crypto = ticker.endswith("-USD") and ticker not in ["^SPX", "^GSPC", "SPY"]
-    
+
     forecast_date = last_data_date + pd.Timedelta(days=1)
-    
+
     if not is_crypto:
-        # Doar pentru acțiuni: ajustare pentru weekend
-        if forecast_date.weekday() == 5:  # Sâmbătă
+        # Equities only: skip weekends
+        if forecast_date.weekday() == 5:  # Saturday
             forecast_date += pd.Timedelta(days=2)
-        elif forecast_date.weekday() == 6:  # Duminică
+        elif forecast_date.weekday() == 6:  # Sunday
             forecast_date += pd.Timedelta(days=1)
 
     print("\n=== MSM VaR(5%) Forecast for Tomorrow ===")
@@ -984,15 +940,15 @@ if __name__ == "__main__":
     
 
     # ----------------------------
-    # 5.4. Tail probabilities (1,3,5 zile)
+    # 5.4. Tail probabilities (1, 3, 5 days)
     # ----------------------------
     tail_info = msm_tail_probs(
         rets_series=rets_series,
-        msm_filter_probs=msm_filter_probs.values,  # (T, K)
+        msm_filter_probs=msm_filter_probs.values,
         sigma_states=sigma_states,
-        alpha=0.05,          # P_emp = 5%
-        horizons=(1, 3, 5),  # 1, 3, 5 zile
-        use_student_t=True  # poți pune True dacă vrei cozi mai groase
+        alpha=0.05,
+        horizons=(1, 3, 5),
+        use_student_t=True
     )
 
     L1 = tail_info["L1"]
@@ -1008,29 +964,28 @@ if __name__ == "__main__":
         print(f"P(tail in {H:1d} days) ~ {pH*100:5.2f}%  (at least one r <= L1)")
 
     # ----------------------------
-    # 5.5. Construim VaR(5%) pe baza MSM - CORECT OUT-OF-SAMPLE
+    # 5.5. Build VaR(5%) from MSM (out-of-sample)
     # ----------------------------
     alpha = 0.05
-    z_alpha = norm.ppf(alpha)   # ≈ -1.645
+    z_alpha = norm.ppf(alpha)
 
-    # VaR_t = μ_t + z_alpha * sigma_{t|t-1} (FORECAST, nu filtered!)
-    # Acum comparăm r_t cu VaR calculat din σ_{t|t-1} (făcut ÎNAINTE de a vedea r_t)
-    var_5 = z_alpha * sigma_forecast  # CORECT: out-of-sample
+    # Compare r_t with VaR computed from σ_{t|t-1} (forecast BEFORE observing r_t)
+    var_5 = z_alpha * sigma_forecast
 
     df_msm_var = pd.DataFrame({
         "r_realized": rets_series,
-        "sigma_forecast": sigma_forecast,  # σ_{t|t-1}
-        "sigma_filtered": sigma_filtered,  # σ_t (pentru comparație)
+        "sigma_forecast": sigma_forecast,
+        "sigma_filtered": sigma_filtered,
         "VaR_5": var_5
     }).dropna()
 
     df_msm_var["breach"] = (df_msm_var["r_realized"] < df_msm_var["VaR_5"]).astype(int)
     breach_rate = df_msm_var["breach"].mean()
 
-    print("\n=== MSM–VaR(5%) Backtest (OUT-OF-SAMPLE CORECT) ===")
-    print(f"Număr de zile testate: {len(df_msm_var)}")
-    print(f"Număr de breach-uri:  {df_msm_var['breach'].sum()}")
-    print(f"Rată empirică breach: {breach_rate*100:.2f}% (teoretic: 5%)")
+    print("\n=== MSM-VaR(5%) Backtest (OUT-OF-SAMPLE) ===")
+    print(f"Days tested: {len(df_msm_var)}")
+    print(f"Breaches:    {df_msm_var['breach'].sum()}")
+    print(f"Empirical breach rate: {breach_rate*100:.2f}% (theoretical: 5%)")
 
     # ----------------------------
     # 5.6. Kupiec & Christoffersen pe MSM–VaR (OUT-OF-SAMPLE)
@@ -1051,29 +1006,27 @@ if __name__ == "__main__":
     print(f"Christoffersen IND: LR={LR_ind:.3f} | p-value={p_ind:.4f} | transitions n00={n00}, n01={n01}, n10={n10}, n11={n11}")
     print(f"Conditional Coverage (UC+IND): LR={LR_cc:.3f} | p-value={p_cc:.4f}")
     
-    # Interpretare
-    print("\n--- Interpretare ---")
+    print("\n--- Interpretation ---")
     if p_uc >= 0.05:
-        print(f"✅ Kupiec UC: PASS (p={p_uc:.4f} >= 0.05) - Breach rate e consistent cu 5%")
+        print(f"✅ Kupiec UC: PASS (p={p_uc:.4f} >= 0.05) - Breach rate consistent with 5%")
     else:
-        print(f"❌ Kupiec UC: FAIL (p={p_uc:.4f} < 0.05) - Breach rate diferă semnificativ de 5%")
-    
+        print(f"❌ Kupiec UC: FAIL (p={p_uc:.4f} < 0.05) - Breach rate significantly differs from 5%")
+
     if p_ind >= 0.05:
-        print(f"✅ Christoffersen IND: PASS (p={p_ind:.4f} >= 0.05) - Breaches sunt independente")
+        print(f"✅ Christoffersen IND: PASS (p={p_ind:.4f} >= 0.05) - Breaches are independent")
     else:
-        print(f"❌ Christoffersen IND: FAIL (p={p_ind:.4f} < 0.05) - Breaches vin în clustere")
-    
+        print(f"❌ Christoffersen IND: FAIL (p={p_ind:.4f} < 0.05) - Breaches cluster together")
+
     if p_cc >= 0.05:
-        print(f"✅ Conditional Coverage: PASS (p={p_cc:.4f} >= 0.05) - Model bine calibrat")
+        print(f"✅ Conditional Coverage: PASS (p={p_cc:.4f} >= 0.05) - Model well calibrated")
     else:
-        print(f"❌ Conditional Coverage: FAIL (p={p_cc:.4f} < 0.05) - Model necesită ajustări")
+        print(f"❌ Conditional Coverage: FAIL (p={p_cc:.4f} < 0.05) - Model needs adjustment")
 
     # ----------------------------
-    # 5.7. Plot returns + VaR MSM (ca în articol)
+    # 5.7. Plot returns + VaR MSM
     # ----------------------------
     plt.figure(figsize=(14, 6))
 
-    # returns (bare negre)
     plt.vlines(
         df_msm_var.index,
         ymin=0,
@@ -1084,7 +1037,6 @@ if __name__ == "__main__":
         label="Log-returns"
     )
 
-    # VaR(5%) MSM (linie roșie)
     plt.plot(
         df_msm_var.index,
         df_msm_var["VaR_5"],
@@ -1100,7 +1052,6 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
 
-    # extra info: quantila empirică 5%
     L1_emp = np.quantile(rets_series, 0.05)
     print(f"\nEmpirical 5% quantile of returns: {L1_emp:.3f}%")
     print(end="\n")
