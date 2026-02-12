@@ -26,7 +26,7 @@ _cache: dict[str, dict[str, Any]] = {}
 
 def _score_evt(evt_data: dict, alpha: float = 0.005) -> dict:
     """Score EVT tail risk (0-100). Higher = more dangerous."""
-    from extreme_value_theory import evt_var
+    from cortex.evt import evt_var
 
     var_loss = evt_var(
         xi=evt_data["xi"], beta=evt_data["beta"],
@@ -50,7 +50,7 @@ def _score_evt(evt_data: dict, alpha: float = 0.005) -> dict:
 
 def _score_svj(svj_data: dict) -> dict:
     """Score SVJ jump risk (0-100). Veto-worthy if jump_share > 60%."""
-    from svj_model import decompose_risk
+    from cortex.svj import decompose_risk
 
     risk = decompose_risk(svj_data["returns"], svj_data["calibration"])
     jump_share = risk["jump_share_pct"]
@@ -75,7 +75,7 @@ def _score_svj(svj_data: dict) -> dict:
 
 def _score_hawkes(hawkes_data: dict) -> dict:
     """Score Hawkes contagion risk (0-100). Block if contagion > 0.75."""
-    from hawkes_process import detect_flash_crash_risk
+    from cortex.hawkes import detect_flash_crash_risk
 
     risk = detect_flash_crash_risk(hawkes_data["event_times"], hawkes_data)
     # contagion_risk_score is already 0-1, map to 0-100

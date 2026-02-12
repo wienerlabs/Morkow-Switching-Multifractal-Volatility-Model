@@ -468,7 +468,7 @@ def compare_rough_vs_msm(
         Dict with keys: rough_bergomi, msm, winner, comparison_metrics.
     """
     import importlib
-    msm_module = importlib.import_module("MSM-VaR_MODEL")
+    msm_module = importlib.import_module("cortex.msm")
 
     r = np.asarray(returns, dtype=float)
     r_series = pd.Series(r) if not isinstance(returns, pd.Series) else returns

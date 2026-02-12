@@ -832,7 +832,7 @@ def msm_var_forecast_next_day(
 
     # EVT for extreme tail (alpha < 0.01)
     if use_evt and evt_params is not None and alpha < 0.01:
-        from extreme_value_theory import evt_var as _evt_var
+        from cortex.evt import evt_var as _evt_var
         var_loss = _evt_var(
             xi=evt_params["xi"],
             beta=evt_params["beta"],

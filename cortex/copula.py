@@ -389,7 +389,7 @@ def copula_portfolio_var(
     copula_var = float(np.percentile(port_returns, alpha * 100))
 
     # Gaussian VaR for comparison
-    from portfolio_var import portfolio_var as pvar_fn
+    from cortex.portfolio import portfolio_var as pvar_fn
     gauss_result = pvar_fn(model, weights, alpha=alpha)
     gaussian_var = gauss_result["portfolio_var"]
 
