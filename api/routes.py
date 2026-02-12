@@ -88,6 +88,15 @@ from api.models import (
     VaRResponse,
     VolatilityForecastResponse,
     get_regime_name,
+    LVaREstimateRequest,
+    LVaREstimateResponse,
+    SpreadEstimate,
+    RegimeLiquidityItem,
+    RegimeLiquidityProfileResponse,
+    RegimeLVaRBreakdownItem,
+    RegimeLVaRResponse,
+    MarketImpactRequest,
+    MarketImpactResponse,
 )
 
 from api.middleware import verify_api_key
@@ -155,7 +164,10 @@ def calibrate(req: CalibrateRequest):
         method=req.method.value,
         target_var_breach=req.target_var_breach,
         verbose=False,
+        leverage_gamma=req.leverage_gamma,
     )
+
+    leverage_gamma_val = cal.get("leverage_gamma", 0.0)
 
     sigma_f, sigma_filt, fprobs, sigma_states, P = msm.msm_vol_forecast(
         returns,
@@ -163,6 +175,7 @@ def calibrate(req: CalibrateRequest):
         sigma_low=cal["sigma_low"],
         sigma_high=cal["sigma_high"],
         p_stay=cal["p_stay"],
+        leverage_gamma=leverage_gamma_val,
     )
 
     _model_store[req.token] = {
@@ -175,6 +188,7 @@ def calibrate(req: CalibrateRequest):
         "P_matrix": P,
         "use_student_t": req.use_student_t,
         "nu": req.nu,
+        "leverage_gamma": leverage_gamma_val,
         "calibrated_at": datetime.now(timezone.utc),
     }
 
@@ -186,6 +200,7 @@ def calibrate(req: CalibrateRequest):
         sigma_high=cal["sigma_high"],
         p_stay=cal["p_stay"],
         sigma_states=cal["sigma_states"].tolist(),
+        leverage_gamma=leverage_gamma_val,
         metrics=CalibrationMetrics(**cal["metrics"]),
         calibrated_at=_model_store[req.token]["calibrated_at"],
     )
@@ -201,7 +216,10 @@ def get_current_regime(token: str = Query(...)):
     num_states = m["calibration"]["num_states"]
 
     var_t1, sigma_t1, z_alpha, pi_t1 = msm.msm_var_forecast_next_day(
-        m["filter_probs"], m["sigma_states"], m["P_matrix"], alpha=0.05
+        m["filter_probs"], m["sigma_states"], m["P_matrix"], alpha=0.05,
+        leverage_gamma=m.get("leverage_gamma", 0.0),
+        last_return=float(m["returns"].iloc[-1]),
+        p_stay=m["calibration"]["p_stay"],
     )
 
     return RegimeResponse(
@@ -237,6 +255,9 @@ def get_var(
     var_t1, sigma_t1, z_alpha, pi_t1 = msm.msm_var_forecast_next_day(
         m["filter_probs"], m["sigma_states"], m["P_matrix"],
         alpha=alpha, use_student_t=st, nu=df,
+        leverage_gamma=m.get("leverage_gamma", 0.0),
+        last_return=float(m["returns"].iloc[-1]),
+        p_stay=m["calibration"]["p_stay"],
     )
 
     return VaRResponse(
@@ -256,7 +277,10 @@ def get_volatility_forecast(token: str = Query(...)):
     m = _get_model(token)
 
     _, sigma_t1, _, pi_t1 = msm.msm_var_forecast_next_day(
-        m["filter_probs"], m["sigma_states"], m["P_matrix"]
+        m["filter_probs"], m["sigma_states"], m["P_matrix"],
+        leverage_gamma=m.get("leverage_gamma", 0.0),
+        last_return=float(m["returns"].iloc[-1]),
+        p_stay=m["calibration"]["p_stay"],
     )
 
     return VolatilityForecastResponse(
@@ -346,7 +370,10 @@ async def stream_regime(ws: WebSocket, token: str = Query(...)):
             num_states = m["calibration"]["num_states"]
 
             var_t1, sigma_t1, _, _ = msm.msm_var_forecast_next_day(
-                m["filter_probs"], m["sigma_states"], m["P_matrix"], alpha=0.05
+                m["filter_probs"], m["sigma_states"], m["P_matrix"], alpha=0.05,
+                leverage_gamma=m.get("leverage_gamma", 0.0),
+                last_return=float(m["returns"].iloc[-1]),
+                p_stay=m["calibration"]["p_stay"],
             )
 
             msg = RegimeStreamMessage(
@@ -1184,6 +1211,9 @@ async def hawkes_var_endpoint(req: HawkesVaRRequest):
     var_t1, sigma_t1, z_alpha, pi_t1 = msm.msm_var_forecast_next_day(
         m["filter_probs"], m["sigma_states"], m["P_matrix"],
         alpha=alpha, use_student_t=st, nu=df,
+        leverage_gamma=m.get("leverage_gamma", 0.0),
+        last_return=float(m["returns"].iloc[-1]),
+        p_stay=m["calibration"]["p_stay"],
     )
 
     intens = hawkes_intensity(h["event_times"], h)
@@ -1650,4 +1680,218 @@ def guardian_assess(req: GuardianAssessRequest):
             GuardianComponentScore(**s) for s in result["component_scores"]
         ],
         from_cache=result["from_cache"],
+    )
+
+
+
+# ── Liquidity-Adjusted VaR (LVaR) ─────────────────────────────────
+
+
+@router.post("/lvar/estimate", response_model=LVaREstimateResponse)
+def estimate_lvar(req: LVaREstimateRequest):
+    """Compute Liquidity-Adjusted VaR for a calibrated token.
+
+    Combines MSM base VaR with Roll (1984) spread estimation and
+    Bangia et al. (1999) liquidity cost adjustment.
+    """
+    from cortex import msm
+    from cortex.liquidity import estimate_spread, liquidity_adjusted_var
+
+    m = _get_model(req.token)
+
+    alpha = 1.0 - req.confidence / 100.0
+    st = m.get("use_student_t", False)
+    df = m.get("nu", 5.0)
+
+    var_t1, sigma_t1, z_alpha, pi_t1 = msm.msm_var_forecast_next_day(
+        m["filter_probs"], m["sigma_states"], m["P_matrix"],
+        alpha=alpha, use_student_t=st, nu=df,
+        leverage_gamma=m.get("leverage_gamma", 0.0),
+        last_return=float(m["returns"].iloc[-1]),
+        p_stay=m["calibration"]["p_stay"],
+    )
+
+    # Reconstruct prices from returns for spread estimation
+    returns = m["returns"]
+    prices = np.exp(np.cumsum(np.asarray(returns) / 100.0)) * 100.0
+
+    spread = estimate_spread(prices, method="roll", window=req.window)
+
+    lvar_result = liquidity_adjusted_var(
+        var_value=var_t1,
+        spread_pct=spread["spread_pct"],
+        spread_vol_pct=spread.get("spread_vol_pct", 0.0),
+        position_value=req.position_value,
+        alpha=alpha,
+        holding_period=req.holding_period,
+    )
+
+    return LVaREstimateResponse(
+        token=req.token,
+        lvar=lvar_result["lvar"],
+        base_var=lvar_result["base_var"],
+        liquidity_cost_pct=lvar_result["liquidity_cost_pct"],
+        liquidity_cost_abs=lvar_result["liquidity_cost_abs"],
+        lvar_abs=lvar_result["lvar_abs"],
+        lvar_ratio=lvar_result["lvar_ratio"],
+        spread=SpreadEstimate(
+            spread_pct=spread["spread_pct"],
+            spread_abs=spread["spread_abs"],
+            spread_vol_pct=spread.get("spread_vol_pct", 0.0),
+            method=spread["method"],
+            n_obs=spread["n_obs"],
+        ),
+        alpha=alpha,
+        holding_period=req.holding_period,
+        position_value=req.position_value,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/lvar/regime-profile", response_model=RegimeLiquidityProfileResponse)
+def get_regime_liquidity_profile(token: str = Query(...)):
+    """Get regime-conditional liquidity profiles for a calibrated token.
+
+    Estimates per-regime bid-ask spreads using the Roll (1984) estimator,
+    showing how liquidity varies across market regimes.
+    """
+    from cortex.liquidity import regime_liquidity_profile
+
+    m = _get_model(token)
+
+    returns = m["returns"]
+    prices = np.exp(np.cumsum(np.asarray(returns) / 100.0)) * 100.0
+
+    # Get regime labels from filter probabilities
+    fprobs = m["filter_probs"]
+    regime_labels = np.argmax(np.asarray(fprobs), axis=1) + 1
+    num_states = m["calibration"]["num_states"]
+
+    result = regime_liquidity_profile(
+        prices=prices,
+        regime_labels=regime_labels,
+        num_states=num_states,
+    )
+
+    return RegimeLiquidityProfileResponse(
+        token=token,
+        num_states=result["num_states"],
+        profiles=[RegimeLiquidityItem(**p) for p in result["profiles"]],
+        weighted_avg_spread_pct=result["weighted_avg_spread_pct"],
+        n_total=result["n_total"],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/lvar/regime-var", response_model=RegimeLVaRResponse)
+def get_regime_lvar(
+    token: str = Query(...),
+    confidence: float = Query(95.0, gt=50.0, le=99.99),
+    position_value: float = Query(100_000.0, gt=0),
+    holding_period: int = Query(1, ge=1, le=30),
+):
+    """Compute regime-weighted Liquidity-Adjusted VaR.
+
+    Combines per-regime spread profiles with current regime probabilities
+    to produce a probability-weighted LVaR estimate.
+    """
+    from cortex import msm
+    from cortex.liquidity import compute_lvar_with_regime, regime_liquidity_profile
+
+    m = _get_model(token)
+
+    alpha = 1.0 - confidence / 100.0
+    st = m.get("use_student_t", False)
+    df = m.get("nu", 5.0)
+
+    var_t1, sigma_t1, z_alpha_val, pi_t1 = msm.msm_var_forecast_next_day(
+        m["filter_probs"], m["sigma_states"], m["P_matrix"],
+        alpha=alpha, use_student_t=st, nu=df,
+        leverage_gamma=m.get("leverage_gamma", 0.0),
+        last_return=float(m["returns"].iloc[-1]),
+        p_stay=m["calibration"]["p_stay"],
+    )
+
+    returns = m["returns"]
+    prices = np.exp(np.cumsum(np.asarray(returns) / 100.0)) * 100.0
+
+    fprobs = m["filter_probs"]
+    regime_labels = np.argmax(np.asarray(fprobs), axis=1) + 1
+    num_states = m["calibration"]["num_states"]
+
+    profiles = regime_liquidity_profile(
+        prices=prices,
+        regime_labels=regime_labels,
+        num_states=num_states,
+    )
+
+    current_probs = np.asarray(fprobs.iloc[-1])
+
+    result = compute_lvar_with_regime(
+        var_value=var_t1,
+        regime_profiles=profiles,
+        current_regime_probs=current_probs,
+        position_value=position_value,
+        alpha=alpha,
+        holding_period=holding_period,
+    )
+
+    return RegimeLVaRResponse(
+        token=token,
+        lvar=result["lvar"],
+        base_var=result["base_var"],
+        liquidity_cost_pct=result["liquidity_cost_pct"],
+        regime_weighted_spread_pct=result["regime_weighted_spread_pct"],
+        regime_breakdown=[
+            RegimeLVaRBreakdownItem(**rb) for rb in result["regime_breakdown"]
+        ],
+        alpha=alpha,
+        holding_period=holding_period,
+        position_value=position_value,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.post("/lvar/impact", response_model=MarketImpactResponse)
+def estimate_market_impact(req: MarketImpactRequest):
+    """Estimate price impact cost using the Kyle (1985) square-root model.
+
+    Uses the calibrated model's daily volatility and either provided or
+    estimated average daily volume to compute expected market impact.
+    """
+    from cortex import msm
+    from cortex.liquidity import market_impact_cost
+
+    m = _get_model(req.token)
+
+    _, sigma_t1, _, _ = msm.msm_var_forecast_next_day(
+        m["filter_probs"], m["sigma_states"], m["P_matrix"],
+        leverage_gamma=m.get("leverage_gamma", 0.0),
+        last_return=float(m["returns"].iloc[-1]),
+        p_stay=m["calibration"]["p_stay"],
+    )
+
+    sigma_decimal = abs(sigma_t1) / 100.0
+
+    adv = req.adv_usd
+    if adv is None:
+        adv = 1_000_000.0  # default fallback
+
+    result = market_impact_cost(
+        sigma=sigma_decimal,
+        trade_size_usd=req.trade_size_usd,
+        adv_usd=adv,
+        participation_rate=req.participation_rate,
+    )
+
+    return MarketImpactResponse(
+        token=req.token,
+        impact_pct=result["impact_pct"],
+        impact_usd=result["impact_usd"],
+        participation_rate=result["participation_rate"],
+        participation_warning=result["participation_warning"],
+        sigma_daily=result["sigma_daily"],
+        trade_size_usd=result["trade_size_usd"],
+        adv_usd=result["adv_usd"],
+        timestamp=datetime.now(timezone.utc),
     )

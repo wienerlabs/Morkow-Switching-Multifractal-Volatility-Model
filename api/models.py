@@ -28,6 +28,18 @@ class CalibrateRequest(BaseModel):
     interval: str = Field("1D", description="Candle interval for Solana data")
     use_student_t: bool = Field(False, description="Use Student-t distribution for VaR")
     nu: float = Field(5.0, gt=2.0, description="Student-t degrees of freedom (must be > 2)")
+    leverage_gamma: float | str | None = Field(
+        None,
+        description=(
+            "Asymmetric leverage parameter (γ). "
+            "None = no leverage, float (≤ 0) = fixed value, "
+            "'estimate' = estimate via MLE."
+        ),
+    )
+    leverage_gamma: float | str | None = Field(
+        None,
+        description="Asymmetric leverage parameter. None=no leverage, float=fixed value, 'estimate'=MLE estimation",
+    )
 
 
 class CalibrationMetrics(BaseModel):
@@ -46,6 +58,7 @@ class CalibrateResponse(BaseModel):
     sigma_high: float
     p_stay: float | list[float]
     sigma_states: list[float]
+    leverage_gamma: float = Field(0.0, description="Asymmetric leverage parameter used in calibration")
     metrics: CalibrationMetrics
     calibrated_at: datetime
 
@@ -887,6 +900,61 @@ class SVJDiagnosticsResponse(BaseModel):
     timestamp: datetime
 
 
+# ── Liquidity-Adjusted VaR (LVaR) ──────────────────────────────────
+
+
+class LVaREstimateRequest(BaseModel):
+    token: str = Field(..., description="Token key from _model_store (must be calibrated)")
+    position_value: float = Field(100_000.0, gt=0, description="Position notional in USD")
+    alpha: float = Field(0.05, gt=0.0, lt=1.0, description="VaR tail probability")
+
+
+class LVaREstimateResponse(BaseModel):
+    token: str
+    lvar: float = Field(..., description="Liquidity-adjusted VaR")
+    base_var: float = Field(..., description="Base MSM VaR (before liquidity adjustment)")
+    liquidity_cost: float = Field(..., description="Liquidity cost in USD")
+    liquidity_cost_pct: float = Field(..., description="Liquidity cost as % of position")
+    roll_spread_pct: float = Field(..., description="Roll (1984) estimated spread %")
+    amihud_illiq: float = Field(..., description="Amihud (2002) illiquidity ratio")
+    position_value: float
+    alpha: float
+    timestamp: datetime
+
+
+class RegimeLiquidityItem(BaseModel):
+    regime: int
+    sigma: float
+    spread: float
+    spread_multiplier: float
+    amihud_illiq: Optional[float] = None
+    mean_volume: Optional[float] = None
+    liquidity_score: float
+    n_obs: int
+
+
+class RegimeLiquidityProfileResponse(BaseModel):
+    token: str
+    num_states: int
+    base_spread: float
+    delta: float
+    profiles: list[RegimeLiquidityItem]
+    current_weighted_spread: float
+    current_regime_probs: list[float]
+    timestamp: datetime
+
+
+class MarketImpactResponse(BaseModel):
+    token: str
+    impact_pct: float = Field(..., description="Estimated price impact %")
+    impact_usd: float = Field(..., description="Estimated price impact in USD")
+    participation_rate: float = Field(..., description="Trade size / ADV ratio")
+    sigma_daily: float
+    trade_size_usd: float
+    adv_usd: float
+    timestamp: datetime
+
+
 # ── Guardian (Unified Risk Veto) ─────────────────────────────────────
 
 
@@ -914,3 +982,96 @@ class GuardianAssessResponse(BaseModel):
     expires_at: str
     component_scores: list[GuardianComponentScore]
     from_cache: bool = False
+
+
+# ── Liquidity-Adjusted VaR (LVaR) ─────────────────────────────────
+
+
+class LVaREstimateRequest(BaseModel):
+    token: str = Field(..., description="Token key from _model_store (must be calibrated)")
+    window: Optional[int] = Field(None, ge=5, le=200, description="Rolling window for spread estimation. None = full-sample.")
+    position_value: float = Field(100_000.0, gt=0, description="Position notional in USD")
+    holding_period: int = Field(1, ge=1, le=30, description="Holding period in days")
+    confidence: float = Field(95.0, gt=50.0, le=99.99, description="VaR confidence level (%)")
+
+
+class SpreadEstimate(BaseModel):
+    spread_pct: float = Field(..., description="Estimated bid-ask spread as % of mid-price")
+    spread_abs: float = Field(..., description="Absolute spread in price units")
+    spread_vol_pct: float = Field(..., description="Spread volatility as % of mid-price")
+    method: str = Field(..., description="Estimation method (roll)")
+    n_obs: int
+
+
+class LVaREstimateResponse(BaseModel):
+    token: str
+    lvar: float = Field(..., description="Liquidity-adjusted VaR (%)")
+    base_var: float = Field(..., description="Base VaR without liquidity adjustment (%)")
+    liquidity_cost_pct: float = Field(..., description="Liquidity cost component (%)")
+    liquidity_cost_abs: float = Field(..., description="Liquidity cost in USD")
+    lvar_abs: float = Field(..., description="LVaR in USD")
+    lvar_ratio: float = Field(..., description="LVaR / VaR ratio (>1 means liquidity worsens risk)")
+    spread: SpreadEstimate
+    alpha: float
+    holding_period: int
+    position_value: float
+    timestamp: datetime
+
+
+class RegimeLiquidityItem(BaseModel):
+    regime: int
+    n_obs: int
+    spread_pct: Optional[float] = None
+    spread_abs: Optional[float] = None
+    mean_volume: Optional[float] = None
+    liquidity_score: Optional[float] = None
+    insufficient_data: bool = False
+
+
+class RegimeLiquidityProfileResponse(BaseModel):
+    token: str
+    num_states: int
+    profiles: list[RegimeLiquidityItem]
+    weighted_avg_spread_pct: float
+    n_total: int
+    timestamp: datetime
+
+
+class RegimeLVaRBreakdownItem(BaseModel):
+    regime: int
+    probability: float
+    spread_pct: float
+    lvar: float
+    liquidity_cost_pct: float
+
+
+class RegimeLVaRResponse(BaseModel):
+    token: str
+    lvar: float = Field(..., description="Regime-weighted LVaR (%)")
+    base_var: float
+    liquidity_cost_pct: float
+    regime_weighted_spread_pct: float
+    regime_breakdown: list[RegimeLVaRBreakdownItem]
+    alpha: float
+    holding_period: int
+    position_value: float
+    timestamp: datetime
+
+
+class MarketImpactRequest(BaseModel):
+    token: str = Field(..., description="Token key from _model_store (must be calibrated)")
+    trade_size_usd: float = Field(..., gt=0, description="Proposed trade size in USD")
+    adv_usd: Optional[float] = Field(None, gt=0, description="Average daily volume in USD. If None, uses stored volume data.")
+    participation_rate: float = Field(0.10, gt=0.0, le=1.0, description="Max acceptable participation rate")
+
+
+class MarketImpactResponse(BaseModel):
+    token: str
+    impact_pct: float = Field(..., description="Estimated price impact (%)")
+    impact_usd: float = Field(..., description="Estimated impact cost in USD")
+    participation_rate: float = Field(..., description="Trade size / ADV ratio")
+    participation_warning: bool = Field(..., description="True if participation exceeds threshold")
+    sigma_daily: float
+    trade_size_usd: float
+    adv_usd: float
+    timestamp: datetime
