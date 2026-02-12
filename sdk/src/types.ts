@@ -22,6 +22,7 @@ export interface CalibrateRequest {
   interval?: string;
   use_student_t?: boolean;
   nu?: number;
+  leverage_gamma?: number;
 }
 
 export interface CalibrationMetrics {
@@ -40,6 +41,7 @@ export interface CalibrateResponse {
   sigma_high: number;
   p_stay: number | number[];
   sigma_states: number[];
+  leverage_gamma: number;
   metrics: CalibrationMetrics;
   calibrated_at: string;
 }
@@ -894,6 +896,198 @@ export const RegimeResponseSchema = z.object({
   transition_matrix: z.array(z.array(z.number())),
 });
 
+// ── Async Calibration ──
+
+export interface AsyncTaskResponse {
+  task_id: string;
+  status: string;
+  endpoint: string;
+  created_at: string;
+}
+
+export interface TaskStatusResponse {
+  task_id: string;
+  status: string;
+  endpoint: string;
+  result: Record<string, unknown> | unknown[] | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+// ── LVaR (Liquidity-Adjusted VaR) ──
+
+export interface LVaREstimateRequest {
+  token: string;
+  window?: number | null;
+  position_value?: number;
+  holding_period?: number;
+  confidence?: number;
+}
+
+export interface SpreadEstimate {
+  spread_pct: number;
+  spread_abs: number;
+  spread_vol_pct: number;
+  method: string;
+  n_obs: number;
+}
+
+export interface LVaREstimateResponse {
+  token: string;
+  lvar: number;
+  base_var: number;
+  liquidity_cost_pct: number;
+  liquidity_cost_abs: number;
+  lvar_abs: number;
+  lvar_ratio: number;
+  spread: SpreadEstimate;
+  alpha: number;
+  holding_period: number;
+  position_value: number;
+  timestamp: string;
+}
+
+export interface RegimeLVaRBreakdownItem {
+  regime: number;
+  probability: number;
+  spread_pct: number;
+  lvar: number;
+  liquidity_cost_pct: number;
+}
+
+export interface RegimeLVaRResponse {
+  token: string;
+  lvar: number;
+  base_var: number;
+  liquidity_cost_pct: number;
+  regime_weighted_spread_pct: number;
+  regime_breakdown: RegimeLVaRBreakdownItem[];
+  alpha: number;
+  holding_period: number;
+  position_value: number;
+  timestamp: string;
+}
+
+export interface MarketImpactRequest {
+  token: string;
+  trade_size_usd: number;
+  adv_usd?: number | null;
+  participation_rate?: number;
+}
+
+export interface MarketImpactResponse {
+  token: string;
+  impact_pct: number;
+  impact_usd: number;
+  participation_rate: number;
+  participation_warning: boolean;
+  sigma_daily: number;
+  trade_size_usd: number;
+  adv_usd: number;
+  timestamp: string;
+}
+
+export interface RegimeLiquidityItem {
+  regime: number;
+  n_obs: number;
+  spread_pct: number | null;
+  spread_abs: number | null;
+  mean_volume: number | null;
+  liquidity_score: number | null;
+  insufficient_data: boolean;
+}
+
+export interface RegimeLiquidityProfileResponse {
+  token: string;
+  num_states: number;
+  profiles: RegimeLiquidityItem[];
+  weighted_avg_spread_pct: number;
+  n_total: number;
+  timestamp: string;
+}
+
+// ── Oracle (Pyth) ──
+
+export interface PythFeedAttributes {
+  asset_type: string;
+  base: string;
+  description: string;
+  display_symbol: string;
+  generic_symbol: string;
+  quote_currency: string;
+  symbol: string;
+}
+
+export interface PythFeedItem {
+  id: string;
+  attributes: PythFeedAttributes;
+}
+
+export interface PythFeedListResponse {
+  feeds: PythFeedItem[];
+  total: number;
+  query: string | null;
+  timestamp: string;
+}
+
+export interface OraclePriceItem {
+  price: number;
+  confidence: number;
+  ema_price: number;
+  expo: number;
+  publish_time: number;
+  feed_id: string;
+  symbol: string;
+  description: string;
+  timestamp: number;
+}
+
+export interface OraclePricesResponse {
+  prices: OraclePriceItem[];
+  count: number;
+  source: string;
+  timestamp: string;
+}
+
+export interface OracleHistoricalResponse {
+  prices: OraclePriceItem[];
+  query_timestamp: number;
+  count: number;
+  timestamp: string;
+}
+
+export interface OracleBufferEntry {
+  price: number;
+  confidence: number;
+  timestamp: number;
+}
+
+export interface OracleBufferResponse {
+  feed_id: string;
+  entries: OracleBufferEntry[];
+  count: number;
+}
+
+export interface OracleStreamStatus {
+  active: boolean;
+  feed_ids: string[];
+  events_received: number;
+  started_at: number | null;
+}
+
+export interface OracleStatusResponse {
+  hermes_url: string;
+  total_feeds_known: number;
+  feed_cache_age_s: number | null;
+  prices_cached: number;
+  buffers_active: number;
+  buffer_depth: number;
+  stream: OracleStreamStatus;
+  timestamp: number;
+}
+
 // ── Client Configuration ──
 
 export interface RiskEngineConfig {
@@ -904,4 +1098,142 @@ export interface RiskEngineConfig {
   circuitBreakerThreshold?: number;
   circuitBreakerResetMs?: number;
   validateResponses?: boolean;
+}
+
+// ── Streams (Helius) ──
+
+export interface StreamEvent {
+  event_type: string;
+  severity: string;
+  signature: string;
+  slot: number;
+  timestamp: number;
+  details: Record<string, unknown>;
+}
+
+export interface StreamEventsResponse {
+  events: StreamEvent[];
+  total: number;
+  timestamp: string;
+}
+
+export interface StreamStatusResponse {
+  connected: boolean;
+  last_event_time: number | null;
+  events_received: number;
+  started_at: number | null;
+}
+
+// ── Social Sentiment ──
+
+export interface SocialSourceItem {
+  source: string;
+  sentiment: number;
+  count: number;
+}
+
+export interface SocialSentimentResponse {
+  token: string;
+  overall_sentiment: number;
+  sources: SocialSourceItem[];
+  timestamp: number;
+}
+
+// ── Macro Indicators ──
+
+export interface FearGreedItem {
+  value: number;
+  classification: string;
+  timestamp: number;
+}
+
+export interface BtcDominanceItem {
+  btc_dominance: number;
+  eth_dominance: number;
+  total_market_cap_usd: number;
+  total_volume_24h_usd: number;
+  active_cryptocurrencies: number;
+}
+
+export interface MacroIndicatorsResponse {
+  fear_greed: FearGreedItem;
+  btc_dominance: BtcDominanceItem;
+  risk_level: string;
+  timestamp: number;
+}
+
+// ── Portfolio Risk ──
+
+export interface UpdatePositionRequest {
+  token: string;
+  size_usd: number;
+  direction: "long" | "short";
+  entry_price?: number;
+}
+
+export interface ClosePositionRequest {
+  token: string;
+  pnl: number;
+}
+
+export interface SetPortfolioValueRequest {
+  value: number;
+}
+
+export interface PositionItem {
+  token: string;
+  size_usd: number;
+  direction: string;
+  entry_price: number;
+  opened_at: number;
+}
+
+export interface PositionsResponse {
+  positions: PositionItem[];
+  total_exposure_usd: number;
+  portfolio_value: number;
+  timestamp: number;
+}
+
+export interface DrawdownResponse {
+  daily_pnl: number;
+  weekly_pnl: number;
+  daily_drawdown_pct: number;
+  weekly_drawdown_pct: number;
+  daily_limit_pct: number;
+  weekly_limit_pct: number;
+  daily_breached: boolean;
+  weekly_breached: boolean;
+  portfolio_value: number;
+}
+
+export interface CorrelationExposure {
+  group: string | null;
+  group_tokens: string[];
+  group_exposure_usd: number;
+}
+
+export interface PortfolioLimitsResponse {
+  blocked: boolean;
+  blockers: string[];
+  drawdown: DrawdownResponse;
+  correlation: CorrelationExposure;
+}
+
+// ── Execution ──
+
+export interface PreflightRequest {
+  token: string;
+  trade_size_usd: number;
+  direction: "buy" | "sell";
+}
+
+export interface ExecuteTradeRequest {
+  private_key: string;
+  token_mint: string;
+  direction: "buy" | "sell";
+  amount: number;
+  trade_size_usd: number;
+  slippage_bps?: number | null;
+  force?: boolean;
 }
