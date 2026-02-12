@@ -80,6 +80,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in self.EXEMPT_PATHS:
             return await call_next(request)
 
+        if os.environ.get("TESTING") == "1":
+            return await call_next(request)
+
         read_limit, write_limit = _get_limits()
         is_write = request.method in ("POST", "PUT", "PATCH", "DELETE")
         limit = write_limit if is_write else read_limit

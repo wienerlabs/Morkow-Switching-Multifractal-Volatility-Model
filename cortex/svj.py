@@ -241,7 +241,7 @@ def calibrate_svj(
     hawkes_params = None
     if use_hawkes:
         try:
-            from hawkes_process import extract_events, fit_hawkes, hawkes_intensity
+            from cortex.hawkes import extract_events, fit_hawkes, hawkes_intensity
             events = extract_events(returns, threshold_percentile=5.0, use_absolute=True)
             if events["n_events"] >= 5:
                 h_fit = fit_hawkes(events["event_times"], events["T"])
@@ -558,7 +558,7 @@ def svj_diagnostics(
     evt_tail = None
     if jumps["n_jumps"] >= 10:
         try:
-            from extreme_value_theory import fit_gpd, select_threshold
+            from cortex.evt import fit_gpd, select_threshold
             jump_losses = np.abs(np.array(jumps["jump_returns"]))
             thresh_info = select_threshold(jump_losses)
             gpd_fit = fit_gpd(jump_losses, thresh_info["threshold"])
@@ -576,7 +576,7 @@ def svj_diagnostics(
     clustering = None
     if jumps["n_jumps"] >= 5:
         try:
-            from hawkes_process import extract_events, fit_hawkes, detect_clusters
+            from cortex.hawkes import extract_events, fit_hawkes, detect_clusters
             events = extract_events(returns, threshold_percentile=5.0, use_absolute=True)
             if events["n_events"] >= 5:
                 h_fit = fit_hawkes(events["event_times"], events["T"])
