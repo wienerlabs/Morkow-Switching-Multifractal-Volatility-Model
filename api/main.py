@@ -12,9 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-# Ensure project root is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from api.middleware import RateLimitMiddleware, get_allowed_origins
 from api.routes import router
 
 logging.basicConfig(
@@ -38,13 +38,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+allowed_origins = get_allowed_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["X-API-Key", "Content-Type", "Authorization"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After"],
 )
+
+app.add_middleware(RateLimitMiddleware)
 
 app.include_router(router, prefix="/api/v1", tags=["msm"])
 
