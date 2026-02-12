@@ -221,12 +221,13 @@ def fit_copula(
         R = _ensure_positive_definite(_tau_to_pearson(tau))
 
         def neg_ll_nu(log_nu):
-            nu = np.exp(log_nu) + 2.01
+            lv = float(log_nu) if np.ndim(log_nu) == 0 else float(log_nu[0])
+            nu = np.exp(lv) + 2.01
             return -_ll_student_t(u, R, nu)
 
         result = minimize(neg_ll_nu, x0=np.log(5.0), method="Nelder-Mead",
                           options={"maxiter": 200})
-        nu = float(np.exp(result.x[0]) + 2.01)
+        nu = float(np.exp(result.x.flat[0]) + 2.01)
         ll = _ll_student_t(u, R, nu)
         n_params = d * (d - 1) // 2 + 1
         params = {"R": R, "nu": nu}
@@ -240,21 +241,24 @@ def fit_copula(
                 u_i, u_j = u[:, i], u[:, j]
                 if family == "clayton":
                     def neg_ll(log_th):
-                        return -_ll_clayton_bivariate(u_i, u_j, np.exp(log_th))
+                        v = float(log_th) if np.ndim(log_th) == 0 else float(log_th[0])
+                        return -_ll_clayton_bivariate(u_i, u_j, np.exp(v))
                     res = minimize(neg_ll, x0=np.log(1.0), method="Nelder-Mead")
-                    theta = float(np.exp(res.x[0]))
+                    theta = float(np.exp(res.x.flat[0]))
                     pair_lls.append(-res.fun)
                 elif family == "gumbel":
                     def neg_ll(log_th_m1):
-                        return -_ll_gumbel_bivariate(u_i, u_j, np.exp(log_th_m1) + 1.0)
+                        v = float(log_th_m1) if np.ndim(log_th_m1) == 0 else float(log_th_m1[0])
+                        return -_ll_gumbel_bivariate(u_i, u_j, np.exp(v) + 1.0)
                     res = minimize(neg_ll, x0=np.log(0.5), method="Nelder-Mead")
-                    theta = float(np.exp(res.x[0]) + 1.0)
+                    theta = float(np.exp(res.x.flat[0]) + 1.0)
                     pair_lls.append(-res.fun)
                 else:  # frank
                     def neg_ll(th):
-                        return -_ll_frank_bivariate(u_i, u_j, th[0])
+                        v = float(th) if np.ndim(th) == 0 else float(th[0])
+                        return -_ll_frank_bivariate(u_i, u_j, v)
                     res = minimize(neg_ll, x0=[2.0], method="Nelder-Mead")
-                    theta = float(res.x[0])
+                    theta = float(res.x.flat[0])
                     pair_lls.append(-res.fun)
                 pair_thetas.append(theta)
 

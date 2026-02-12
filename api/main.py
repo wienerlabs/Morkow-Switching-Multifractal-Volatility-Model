@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from api.middleware import RateLimitMiddleware, get_allowed_origins
 from api.routes import router
+from cortex.config import API_VERSION
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,7 +32,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CortexAgent Risk Engine",
     description="Multi-model volatility and risk management API — MSM regime detection, EVT, SVJ, Hawkes, copula VaR, rough volatility, and Guardian risk veto for autonomous DeFi agents on Solana.",
-    version="1.1.0",
+    version=API_VERSION,
     lifespan=lifespan,
 )
 
@@ -54,7 +55,7 @@ _frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "cortex-risk-engine", "version": "1.1.0"}
+    return {"status": "ok", "service": "cortex-risk-engine", "version": API_VERSION}
 
 
 @app.get("/", include_in_schema=False)

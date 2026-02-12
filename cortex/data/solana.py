@@ -4,6 +4,7 @@ Fetches OHLCV, funding rates, and liquidity metrics from on-chain sources.
 Outputs DataFrames compatible with the existing yfinance-based pipeline.
 """
 
+import atexit
 import os
 import logging
 from datetime import datetime, timezone
@@ -13,11 +14,25 @@ import numpy as np
 import pandas as pd
 import httpx
 
+from cortex.config import (
+    BIRDEYE_BASE,
+    DRIFT_DATA_API,
+    RAYDIUM_API,
+    SOLANA_HTTP_TIMEOUT,
+    SOLANA_MAX_CONNECTIONS,
+    SOLANA_MAX_KEEPALIVE,
+)
+
 logger = logging.getLogger(__name__)
 
-BIRDEYE_BASE = "https://public-api.birdeye.so"
-DRIFT_DATA_API = "https://data.api.drift.trade"
-RAYDIUM_API = "https://api-v3.raydium.io"
+_pool = httpx.Client(
+    timeout=SOLANA_HTTP_TIMEOUT,
+    limits=httpx.Limits(
+        max_connections=SOLANA_MAX_CONNECTIONS,
+        max_keepalive_connections=SOLANA_MAX_KEEPALIVE,
+    ),
+)
+atexit.register(_pool.close)
 
 # Well-known SPL token mint addresses
 TOKEN_REGISTRY: dict[str, str] = {
@@ -112,14 +127,13 @@ def get_token_ohlcv(
         "time_to": time_to,
     }
 
-    with httpx.Client(timeout=30) as client:
-        resp = client.get(
-            f"{BIRDEYE_BASE}/defi/ohlcv",
-            headers=_birdeye_headers(),
-            params=params,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    resp = _pool.get(
+        f"{BIRDEYE_BASE}/defi/ohlcv",
+        headers=_birdeye_headers(),
+        params=params,
+    )
+    resp.raise_for_status()
+    data = resp.json()
 
     items = data.get("data", {}).get("items", [])
     if not items:
@@ -172,13 +186,12 @@ def get_funding_rates(
             f"Use one of: {list(DRIFT_PERP_MARKETS.keys())}"
         )
 
-    with httpx.Client(timeout=30) as client:
-        resp = client.get(
-            f"{DRIFT_DATA_API}/fundingRates",
-            params={"marketIndex": market_index, "marketType": "perp"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    resp = _pool.get(
+        f"{DRIFT_DATA_API}/fundingRates",
+        params={"marketIndex": market_index, "marketType": "perp"},
+    )
+    resp.raise_for_status()
+    data = resp.json()
 
     records = data if isinstance(data, list) else data.get("data", [])
     if not records:
@@ -215,13 +228,12 @@ def get_liquidity_metrics(
     Args:
         pool_address: Raydium AMM pool address.
     """
-    with httpx.Client(timeout=30) as client:
-        resp = client.get(
-            f"{RAYDIUM_API}/pools/info/ids",
-            params={"ids": pool_address},
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    resp = _pool.get(
+        f"{RAYDIUM_API}/pools/info/ids",
+        params={"ids": pool_address},
+    )
+    resp.raise_for_status()
+    data = resp.json()
 
     pools = data.get("data", [])
     if not pools:
@@ -303,23 +315,22 @@ def get_market_depth(
     """
     address = _resolve_token_address(token)
 
-    with httpx.Client(timeout=30) as client:
-        resp = client.get(
-            f"{BIRDEYE_BASE}/defi/price",
-            headers=_birdeye_headers(),
-            params={"address": address},
-        )
-        resp.raise_for_status()
-        price_data = resp.json().get("data", {})
-        current_price = float(price_data.get("value", 0))
+    resp = _pool.get(
+        f"{BIRDEYE_BASE}/defi/price",
+        headers=_birdeye_headers(),
+        params={"address": address},
+    )
+    resp.raise_for_status()
+    price_data = resp.json().get("data", {})
+    current_price = float(price_data.get("value", 0))
 
-        resp2 = client.get(
-            f"{BIRDEYE_BASE}/defi/token_overview",
-            headers=_birdeye_headers(),
-            params={"address": address},
-        )
-        resp2.raise_for_status()
-        overview = resp2.json().get("data", {})
+    resp2 = _pool.get(
+        f"{BIRDEYE_BASE}/defi/token_overview",
+        headers=_birdeye_headers(),
+        params={"address": address},
+    )
+    resp2.raise_for_status()
+    overview = resp2.json().get("data", {})
 
     volume_24h = float(overview.get("v24hUSD", 0))
     liquidity = float(overview.get("liquidity", 0))

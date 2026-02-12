@@ -88,15 +88,12 @@ def _mock_ohlcv_response():
 
 
 @patch.dict(os.environ, {"BIRDEYE_API_KEY": "test-key"})
-@patch("cortex.data.solana.httpx.Client")
-def test_get_token_ohlcv(mock_client_cls):
-    mock_client = MagicMock()
-    mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-    mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+@patch("cortex.data.solana._pool")
+def test_get_token_ohlcv(mock_pool):
     mock_resp = MagicMock()
     mock_resp.json.return_value = _mock_ohlcv_response()
     mock_resp.raise_for_status = MagicMock()
-    mock_client.get.return_value = mock_resp
+    mock_pool.get.return_value = mock_resp
 
     df = get_token_ohlcv("SOL", "2024-01-15", "2024-01-17")
     assert isinstance(df, pd.DataFrame)
@@ -107,18 +104,15 @@ def test_get_token_ohlcv(mock_client_cls):
 
 # ── get_funding_rates (mocked HTTP) ──
 
-@patch("cortex.data.solana.httpx.Client")
-def test_get_funding_rates(mock_client_cls):
-    mock_client = MagicMock()
-    mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_client)
-    mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+@patch("cortex.data.solana._pool")
+def test_get_funding_rates(mock_pool):
     mock_resp = MagicMock()
     mock_resp.json.return_value = [
         {"ts": 1705276800, "fundingRate": 1000000, "oraclePriceTwap": 100000000, "markPriceTwap": 100500000},
         {"ts": 1705363200, "fundingRate": -500000, "oraclePriceTwap": 101000000, "markPriceTwap": 100800000},
     ]
     mock_resp.raise_for_status = MagicMock()
-    mock_client.get.return_value = mock_resp
+    mock_pool.get.return_value = mock_resp
 
     df = get_funding_rates("SOL-PERP")
     assert isinstance(df, pd.DataFrame)

@@ -5,7 +5,7 @@
 > Built by [Cortex AI](https://www.cortex-agent.xyz) — combining MSM regime detection, Extreme Value Theory, Hawkes processes, SVJ, copula dependence, rough volatility, multifractal analysis, and a unified Guardian risk veto layer. Exposed via a 45-endpoint REST API and a published [TypeScript SDK (`cortex-risk-sdk`)](https://www.npmjs.com/package/cortex-risk-sdk).
 
 [![npm](https://img.shields.io/npm/v/cortex-risk-sdk)](https://www.npmjs.com/package/cortex-risk-sdk)
-[![Tests](https://img.shields.io/badge/tests-261%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-347%20passing-brightgreen)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -59,8 +59,8 @@ The Cortex Risk Engine resolves this through **model composition**: each module 
 This framework makes the following contributions:
 
 - A production-ready implementation of the Calvet & Fisher (2004) MSM model with K-state Bayesian filtering, asymmetric transition matrices, and Student-t VaR extensions.
-- Integration of seven complementary risk models into a single coherent pipeline with 261 passing unit tests.
-- A Guardian risk veto layer that consolidates EVT (30%), SVJ (25%), Hawkes (25%), and Regime (20%) scores into a single composite risk assessment with circuit-breaker logic.
+- Integration of seven complementary risk models into a single coherent pipeline with 347 passing unit tests.
+- A Guardian risk veto layer that consolidates EVT (25%), SVJ (20%), Hawkes (20%), Regime (20%), and News (15%) scores into a single composite risk assessment with circuit-breaker logic.
 - A 45-endpoint REST API with WebSocket regime streaming, designed for sub-10ms query latency.
 - A published TypeScript SDK ([`cortex-risk-sdk`](https://www.npmjs.com/package/cortex-risk-sdk)) with cockatiel resilience (retry, circuit breaker, timeout) and zod runtime validation.
 - Regime-dependent copula selection that dynamically switches between Gaussian (calm) and Student-t (crisis) dependence structures based on filtered regime probabilities.
@@ -472,7 +472,7 @@ The REST API is served via FastAPI at `http://localhost:8000/api/v1`. Interactiv
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/guardian/assess` | Unified risk veto — composite score from EVT (30%), SVJ (25%), Hawkes (25%), Regime (20%) |
+| `POST` | `/guardian/assess` | Unified risk veto — composite score from EVT (25%), SVJ (20%), Hawkes (20%), Regime (20%), News (15%) |
 
 The Guardian returns `approved` (bool), `risk_score` (0–100), `veto_reasons`, `recommended_size`, and per-component breakdowns. Score ≥ 70 or any component > 90 triggers automatic veto.
 
