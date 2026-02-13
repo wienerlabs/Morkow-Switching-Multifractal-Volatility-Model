@@ -569,11 +569,15 @@ SECTIONS.forEach(sec => {
 
 // Resolve path params like {confidence} or {token}
 function resolvePath(pathTemplate, formData) {
-  return pathTemplate.replace(/\{(\w+)\}/g, (_, key) => {
+  let missing = null;
+  const resolved = pathTemplate.replace(/\{(\w+)\}/g, (_, key) => {
     const val = formData[key];
+    if (val === undefined || val === null || val === '') { missing = key; return ''; }
     delete formData[key];
     return encodeURIComponent(val);
   });
+  if (missing) throw new Error(`"${missing}" is required`);
+  return resolved;
 }
 
 async function runEndpoint(uid, ep) {
@@ -589,6 +593,18 @@ async function runEndpoint(uid, ep) {
     const v = input.value.trim();
     if (v !== '') raw[f.name] = v;
   });
+
+  // Validate required path params before sending
+  const pathParams = (ep.path.match(/\{(\w+)\}/g) || []).map(s => s.slice(1, -1));
+  for (const p of pathParams) {
+    if (!raw[p]) {
+      statusEl.textContent = `✗ "${p}" field is required`;
+      statusEl.className = 'status err';
+      const input = form.querySelector(`[name="${p}"]`);
+      if (input) { input.focus(); input.setAttribute('aria-invalid', 'true'); }
+      return;
+    }
+  }
 
   statusEl.innerHTML = '<span class="spinner"></span> Running…';
   statusEl.className = 'status loading';
