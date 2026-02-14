@@ -14,6 +14,7 @@ where y = loss - u (exceedance), ξ = shape, β = scale, u = threshold.
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Literal
 
 import logging
@@ -24,6 +25,14 @@ from scipy import stats
 from scipy.optimize import minimize
 
 logger = logging.getLogger(__name__)
+
+# Lazy import for pyextremes — graceful fallback
+_PYEXTREMES_AVAILABLE = False
+try:
+    from pyextremes import EVA as _EVA  # noqa: N811
+    _PYEXTREMES_AVAILABLE = True
+except ImportError:
+    _EVA = None
 
 
 def fit_gpd(
@@ -71,6 +80,107 @@ def fit_gpd(
         "aic": round(aic, 4),
         "bic": round(bic, 4),
     }
+
+
+def fit_gpd_pyextremes(
+    returns: np.ndarray | pd.Series,
+    threshold: float | None = None,
+    use_mcmc: bool = False,
+    mcmc_walkers: int = 12,
+    mcmc_samples: int = 300,
+) -> dict:
+    """Fit GPD via pyextremes EVA with optional automated threshold selection.
+
+    When threshold is None, uses the 90th percentile of losses as default.
+    When use_mcmc=True, fits via emcee MCMC for Bayesian confidence intervals.
+
+    Args:
+        returns: Raw returns (will be negated to get losses).
+        threshold: Explicit threshold; if None, uses 90th percentile of losses.
+        use_mcmc: If True, use MCMC (emcee) instead of MLE.
+        mcmc_walkers: Number of MCMC walkers (only if use_mcmc=True).
+        mcmc_samples: Number of MCMC samples per walker (only if use_mcmc=True).
+
+    Returns:
+        Dict with xi, beta, threshold, n_total, n_exceedances,
+        and optionally ci_lower/ci_upper for VaR confidence intervals.
+    """
+    from cortex.config import EVT_ENGINE
+
+    if EVT_ENGINE != "pyextremes" and _PYEXTREMES_AVAILABLE:
+        pass  # caller explicitly requested pyextremes path
+    if not _PYEXTREMES_AVAILABLE:
+        warnings.warn(
+            "pyextremes not installed — falling back to native fit_gpd(). "
+            "Install with: pip install pyextremes",
+            stacklevel=2,
+        )
+        r = np.asarray(returns if not isinstance(returns, pd.Series) else returns.values, dtype=float)
+        losses = -r
+        if threshold is None:
+            threshold = float(np.percentile(losses, 90))
+        return fit_gpd(losses, threshold=threshold)
+
+    r = np.asarray(returns if not isinstance(returns, pd.Series) else returns.values, dtype=float)
+    losses = -r
+    n_total = len(losses)
+
+    if threshold is None:
+        threshold = float(np.percentile(losses, 90))
+
+    # pyextremes requires a pandas Series with a DatetimeIndex
+    idx = pd.date_range("2000-01-01", periods=n_total, freq="D")
+    loss_series = pd.Series(losses, index=idx)
+
+    eva = _EVA(loss_series)
+    eva.get_extremes(method="POT", threshold=threshold)
+    n_exc = len(eva.extremes)
+
+    if n_exc < 10:
+        raise ValueError(f"Only {n_exc} exceedances above threshold {threshold:.4f}. Need ≥10.")
+
+    model_type = "Emcee" if use_mcmc else "MLE"
+    fit_kwargs: dict = {"model": model_type, "distribution": "genpareto"}
+    if use_mcmc:
+        fit_kwargs["n_walkers"] = mcmc_walkers
+        fit_kwargs["n_samples"] = mcmc_samples
+
+    eva.fit_model(**fit_kwargs)
+
+    params = eva.distribution.mle_parameters
+    xi = float(params.get("c", 0.0))
+    beta = float(params.get("scale", 1.0))
+
+    result: dict = {
+        "xi": round(xi, 6),
+        "beta": round(beta, 6),
+        "threshold": round(threshold, 6),
+        "n_total": n_total,
+        "n_exceedances": n_exc,
+        "engine": "pyextremes",
+        "model_type": model_type.lower(),
+    }
+
+    # Add confidence intervals from pyextremes summary
+    try:
+        summary = eva.get_summary(
+            return_period=[10, 50, 100],
+            alpha=0.95,
+        )
+        ci_data = []
+        for rp in summary.index:
+            ci_data.append({
+                "return_period": float(rp),
+                "return_value": round(float(summary.loc[rp, "return value"]), 6),
+                "ci_lower": round(float(summary.loc[rp, "lower ci"]), 6),
+                "ci_upper": round(float(summary.loc[rp, "upper ci"]), 6),
+            })
+        result["confidence_intervals"] = ci_data
+    except Exception as e:
+        logger.debug("pyextremes CI computation failed: %s", e)
+
+    return result
+
 
 
 def select_threshold(
