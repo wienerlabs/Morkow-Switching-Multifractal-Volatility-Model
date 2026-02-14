@@ -203,6 +203,11 @@ CACHE_DEFAULT_TTL = int(os.environ.get("CACHE_DEFAULT_TTL", "300"))
 
 HAWKES_ENGINE = os.environ.get("HAWKES_ENGINE", "numba")  # "native", "numba", "tick"
 
+# ── Logging ──
+
+LOG_FORMAT = os.environ.get("LOG_FORMAT", "console")  # "json" or "console"
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+
 # ── API ──
 
 API_VERSION = os.environ.get("API_VERSION", "1.2.0")

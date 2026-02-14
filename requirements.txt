@@ -48,5 +48,8 @@ tick>=0.7; python_version<"3.12"
 pyextremes>=2.3.0
 fbm>=0.3.0
 
+# Structured Logging
+structlog>=24.0
+
 # Testing
 pytest>=7.0
