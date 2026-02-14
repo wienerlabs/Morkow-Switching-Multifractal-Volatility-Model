@@ -1,22 +1,23 @@
 {
   "name": "cortex-risk-sdk",
-  "version": "1.0.1",
-  "description": "TypeScript SDK for the CortexAgent Risk Engine — MSM-VaR, EVT, SVJ, Hawkes, Rough Volatility, Copula VaR, and Guardian risk veto for autonomous DeFi agents on Solana.",
+  "version": "1.1.0",
+  "description": "TypeScript SDK for the CortexAgent Risk Engine — MSM-VaR, EVT, SVJ, Hawkes, Rough Volatility, Copula VaR, Guardian risk veto, on-chain liquidity, tick-level backtesting, and Hawkes on-chain contagion for autonomous DeFi agents on Solana.",
   "author": "Cortex AI <dev@cortex-agent.xyz> (https://www.cortex-agent.xyz)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cortex-agent/cortexagent.git"
+    "url": "git+https://github.com/wienerlabs/cortex-A-LAMS-VaR.git"
   },
   "homepage": "https://www.cortex-agent.xyz",
   "bugs": {
-    "url": "https://github.com/cortex-agent/cortexagent/issues"
+    "url": "https://github.com/wienerlabs/cortex-A-LAMS-VaR/issues"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     }
@@ -55,7 +56,12 @@
     "copula",
     "guardian",
     "autonomous-agents",
-    "trading"
+    "trading",
+    "onchain-liquidity",
+    "tick-data",
+    "backtesting",
+    "flash-crash",
+    "token-info"
   ],
   "dependencies": {
     "cockatiel": "^3.2.1",

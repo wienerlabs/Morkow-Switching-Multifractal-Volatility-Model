@@ -1237,3 +1237,209 @@ export interface ExecuteTradeRequest {
   slippage_bps?: number | null;
   force?: boolean;
 }
+
+// ── On-Chain Liquidity ──
+
+export interface OnchainDepthRequest {
+  pool_address: string;
+  num_ticks?: number;
+}
+
+export interface OnchainDepthResponse {
+  pool: string;
+  current_price: number;
+  bid_prices: number[];
+  ask_prices: number[];
+  bid_depth: number[];
+  ask_depth: number[];
+  total_bid_liquidity: number;
+  total_ask_liquidity: number;
+  depth_imbalance: number;
+  timestamp: string;
+}
+
+export interface DexSpreadItem {
+  dex: string;
+  mean_spread_pct: number;
+  std_spread_pct: number;
+  n_swaps: number;
+}
+
+export interface RealizedSpreadRequest {
+  token_address: string;
+  limit?: number;
+}
+
+export interface RealizedSpreadResponse {
+  token_address: string;
+  realized_spread_pct: number;
+  realized_spread_vol_pct: number;
+  n_swaps: number;
+  by_dex: DexSpreadItem[];
+  vwas_pct: number;
+  total_volume: number;
+  timestamp: string;
+}
+
+export interface OnchainLVaRRequest {
+  token: string;
+  token_address?: string | null;
+  pair_address?: string | null;
+  confidence?: number;
+  position_value?: number;
+  holding_period?: number;
+}
+
+export interface OnchainLVaRResponse {
+  token: string;
+  lvar: number;
+  base_var: number;
+  liquidity_cost_pct: number;
+  spread_pct: number;
+  spread_source: string;
+  by_dex?: DexSpreadItem[] | null;
+  confidence: number;
+  holding_period: number;
+  position_value: number;
+  timestamp: string;
+}
+
+// ── Tick-Level Data & Backtesting ──
+
+export interface TickDataRequest {
+  token_address: string;
+  lookback_days?: number;
+  bar_type?: string;
+  bar_size?: number;
+  limit?: number;
+}
+
+export interface TickBar {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  n_ticks: number;
+  vwap: number;
+}
+
+export interface TickDataResponse {
+  token_address: string;
+  bar_type: string;
+  bar_size: number;
+  n_bars: number;
+  bars: TickBar[];
+  timestamp: string;
+}
+
+export interface TickBacktestRequest {
+  token: string;
+  token_address?: string | null;
+  horizons?: number[];
+  confidence?: number;
+  lookback_days?: number;
+}
+
+export interface BacktestHorizonResult {
+  horizon_minutes: number;
+  n_observations: number;
+  n_violations: number;
+  violation_rate: number;
+  expected_rate: number;
+  kupiec_stat: number;
+  kupiec_pvalue: number;
+  kupiec_pass: boolean;
+  christoffersen_stat?: number | null;
+  christoffersen_pvalue?: number | null;
+}
+
+export interface TickBacktestResponse {
+  token: string;
+  confidence: number;
+  horizons: BacktestHorizonResult[];
+  overall_pass: boolean;
+  timestamp: string;
+}
+
+// ── On-Chain Events & Hawkes On-Chain ──
+
+export interface OnchainEventItem {
+  event_type: string;
+  slot: number;
+  timestamp: number;
+  magnitude: number;
+  details: Record<string, unknown>;
+}
+
+export interface OnchainEventsResponse {
+  token_address: string;
+  events: OnchainEventItem[];
+  n_events: number;
+  event_type_counts: Record<string, number>;
+  timestamp: string;
+}
+
+export interface HawkesOnchainCalibrateRequest {
+  token_address: string;
+  event_types?: string[];
+  lookback_slots?: number;
+}
+
+export interface CrossExcitationEntry {
+  source: string;
+  target: string;
+  alpha: number;
+  beta: number;
+}
+
+export interface HawkesOnchainCalibrateResponse {
+  token_address: string;
+  event_types: string[];
+  n_events_per_type: Record<string, number>;
+  mu: Record<string, number>;
+  cross_excitation: CrossExcitationEntry[];
+  branching_matrix: number[][];
+  spectral_radius: number;
+  stationary: boolean;
+  timestamp: string;
+}
+
+export interface HawkesOnchainRiskResponse {
+  token_address: string;
+  flash_crash_score: number;
+  current_intensities: Record<string, number>;
+  baseline_intensities: Record<string, number>;
+  dominant_event_type: string;
+  risk_level: string;
+  timestamp: string;
+}
+
+// ── Token Info ──
+
+export interface TokenInfoResponse {
+  address: string;
+  name: string;
+  symbol: string;
+  logo_uri: string;
+  decimals: number;
+  price_usd: number;
+  price_change_24h_pct: number;
+  market_cap: number;
+  volume_24h_usd: number;
+  liquidity_usd: number;
+  holder_count: number;
+  deployer: string;
+  created_at: string | number | null;
+  dex_platform: string;
+  timestamp: string;
+}
+
+// ── Health ──
+
+export interface HealthResponse {
+  status: string;
+  service: string;
+  version: string;
+}

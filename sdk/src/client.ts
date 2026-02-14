@@ -77,6 +77,22 @@ import type {
   PortfolioLimitsResponse,
   PreflightRequest,
   ExecuteTradeRequest,
+  OnchainDepthRequest,
+  OnchainDepthResponse,
+  RealizedSpreadRequest,
+  RealizedSpreadResponse,
+  OnchainLVaRRequest,
+  OnchainLVaRResponse,
+  TickDataRequest,
+  TickDataResponse,
+  TickBacktestRequest,
+  TickBacktestResponse,
+  HawkesOnchainCalibrateRequest,
+  HawkesOnchainCalibrateResponse,
+  OnchainEventsResponse,
+  HawkesOnchainRiskResponse,
+  TokenInfoResponse,
+  HealthResponse,
 } from "./types";
 import {
   GuardianAssessResponseSchema,
@@ -528,5 +544,55 @@ export class RiskEngineClient {
 
   async axiomStatus(): Promise<Record<string, unknown>> {
     return this.get("/api/v1/axiom/status");
+  }
+
+  // ── On-Chain Liquidity ──
+
+  async onchainDepth(req: OnchainDepthRequest): Promise<OnchainDepthResponse> {
+    return this.post("/api/v1/lvar/onchain-depth", req);
+  }
+
+  async realizedSpread(req: RealizedSpreadRequest): Promise<RealizedSpreadResponse> {
+    return this.post("/api/v1/lvar/realized-spread", req);
+  }
+
+  async onchainLVaR(req: OnchainLVaRRequest): Promise<OnchainLVaRResponse> {
+    return this.post("/api/v1/lvar/onchain-estimate", req);
+  }
+
+  // ── Tick-Level Data & Backtesting ──
+
+  async tickAggregate(req: TickDataRequest): Promise<TickDataResponse> {
+    return this.post("/api/v1/ticks/aggregate", req);
+  }
+
+  async tickBacktest(req: TickBacktestRequest): Promise<TickBacktestResponse> {
+    return this.post("/api/v1/backtest/tick-level", req);
+  }
+
+  // ── Hawkes On-Chain ──
+
+  async hawkesOnchainCalibrate(req: HawkesOnchainCalibrateRequest): Promise<HawkesOnchainCalibrateResponse> {
+    return this.post("/api/v1/hawkes/calibrate-onchain", req);
+  }
+
+  async hawkesOnchainEvents(tokenAddress: string, limit?: number): Promise<OnchainEventsResponse> {
+    return this.get(`/api/v1/hawkes/events/${encodeURIComponent(tokenAddress)}${this.qs({ limit })}`);
+  }
+
+  async hawkesOnchainRisk(tokenAddress: string): Promise<HawkesOnchainRiskResponse> {
+    return this.get(`/api/v1/hawkes/onchain-risk/${encodeURIComponent(tokenAddress)}`);
+  }
+
+  // ── Token Info ──
+
+  async tokenInfo(address: string): Promise<TokenInfoResponse> {
+    return this.get(`/api/v1/token/info/${encodeURIComponent(address)}`);
+  }
+
+  // ── Health ──
+
+  async health(): Promise<HealthResponse> {
+    return this.get("/health");
   }
 }

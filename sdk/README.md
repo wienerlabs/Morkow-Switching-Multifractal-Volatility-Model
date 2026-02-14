@@ -1,6 +1,6 @@
 # cortex-risk-sdk
 
-TypeScript SDK for the [CortexAgent Risk Engine](https://www.cortex-agent.xyz) — 45 typed endpoints covering MSM regime detection, EVT, SVJ, Hawkes, rough volatility, copula VaR, and Guardian risk veto.
+TypeScript SDK for the [CortexAgent Risk Engine](https://www.cortex-agent.xyz) — 60+ typed endpoints covering MSM regime detection, EVT, SVJ, Hawkes, rough volatility, copula VaR, Guardian risk veto, on-chain liquidity, tick-level backtesting, and Hawkes on-chain contagion.
 
 [![npm](https://img.shields.io/npm/v/cortex-risk-sdk)](https://www.npmjs.com/package/cortex-risk-sdk)
 
@@ -45,7 +45,7 @@ if (assessment.approved) {
 }
 ```
 
-## Modules (45 endpoints)
+## Modules (60+ endpoints)
 
 | Module | Methods | Description |
 |--------|---------|-------------|
@@ -56,11 +56,24 @@ if (assessment.approved) {
 | **Copula VaR** | `copulaVar`, `copulaCompare`, `copulaDiagnostics`, `regimeDependentCopulaVar` | Dependence modeling |
 | **EVT** | `evtCalibrate`, `evtVar`, `evtDiagnostics` | Tail risk (GPD) |
 | **Hawkes** | `hawkesCalibrate`, `hawkesIntensity`, `hawkesClusters`, `hawkesVar`, `hawkesSimulate` | Crash contagion |
+| **Hawkes On-Chain** | `hawkesOnchainCalibrate`, `hawkesOnchainEvents`, `hawkesOnchainRisk` | On-chain event contagion & flash crash risk |
 | **Multifractal** | `hurst`, `spectrum`, `regimeHurst`, `fractalDiagnostics` | Hurst exponent |
 | **Rough Vol** | `roughCalibrate`, `roughForecast`, `roughDiagnostics`, `roughCompareMsm` | Rough Bergomi |
 | **SVJ** | `svjCalibrate`, `svjVar`, `svjJumpRisk`, `svjDiagnostics` | Jump risk |
 | **News** | `newsFeed`, `newsSentiment`, `newsSignal` | Sentiment signals |
 | **Guardian** | `guardianAssess` | Unified risk veto |
+| **LVaR** | `lvarEstimate`, `lvarRegimeVar`, `lvarImpact`, `lvarRegimeProfile` | Liquidity-adjusted VaR |
+| **On-Chain Liquidity** | `onchainDepth`, `realizedSpread`, `onchainLVaR` | DEX depth, realized spread, on-chain LVaR |
+| **Tick Data** | `tickAggregate`, `tickBacktest` | Tick-level bars & multi-horizon backtesting |
+| **Oracle (Pyth)** | `oracleFeeds`, `oracleSearch`, `oraclePrices`, `oracleHistory`, `oracleBuffer`, `oracleStatus` | Pyth price feeds |
+| **Streams** | `streamEvents`, `streamStatus` | Helius on-chain event stream |
+| **Social** | `socialSentiment` | Social media sentiment |
+| **Macro** | `macroIndicators` | Fear & Greed, BTC dominance |
+| **Portfolio Risk** | `portfolioPositions`, `updatePosition`, `closePosition`, `setPortfolioValue`, `portfolioDrawdown`, `portfolioLimits` | Position & drawdown management |
+| **Execution** | `executionPreflight`, `executeTrade`, `executionLog`, `executionStats` | Trade execution pipeline |
+| **Axiom DEX** | `axiomPrice`, `axiomPair`, `axiomLiquidityMetrics`, `axiomHolders`, `axiomTokenAnalysis`, `axiomNewTokens`, `axiomWsStatus`, `axiomWalletBalance`, `axiomStatus` | Axiom DEX data |
+| **Token Info** | `tokenInfo` | Token metadata (Birdeye) |
+| **Health** | `health` | Service health check |
 
 ## WebSocket Streaming
 
@@ -92,12 +105,13 @@ Optional [zod](https://github.com/colinhacks/zod) runtime validation for critica
 
 ```typescript
 const risk = new RiskEngineClient({
-  baseUrl: "http://localhost:8000",  // Risk Engine URL
-  timeout: 10_000,                   // Request timeout (ms)
-  retries: 3,                        // Max retry attempts
-  cbThreshold: 5,                    // Circuit breaker threshold
-  cbResetMs: 30_000,                 // Circuit breaker reset (ms)
-  validateResponses: false,          // Zod validation
+  baseUrl: "http://localhost:8000",       // Risk Engine URL
+  timeout: 10_000,                        // Request timeout (ms)
+  retries: 3,                             // Max retry attempts
+  retryDelay: 500,                        // Retry base delay (ms)
+  circuitBreakerThreshold: 5,             // Circuit breaker threshold
+  circuitBreakerResetMs: 30_000,          // Circuit breaker reset (ms)
+  validateResponses: false,               // Zod validation
 });
 ```
 
