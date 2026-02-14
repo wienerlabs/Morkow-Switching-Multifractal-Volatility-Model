@@ -21,7 +21,7 @@
   --shadow-lg:0 4px 12px rgba(0,0,0,.1),0 2px 4px rgba(0,0,0,.06);
 }
 @media(prefers-color-scheme:dark){
-  :root{
+  :root:not([data-theme="light"]){
     --bg:#0a0a0a;--fg:#e5e5e5;--surface:#161616;--border:#2a2a2a;
     --muted:#999;--subtle:#1a1a1a;
     --accent:#818cf8;--accent-fg:#111;
@@ -32,8 +32,33 @@
     --shadow-lg:0 4px 12px rgba(0,0,0,.4),0 2px 4px rgba(0,0,0,.3);
   }
 }
+[data-theme="dark"]{
+  --bg:#0a0a0a;--fg:#e5e5e5;--surface:#161616;--border:#2a2a2a;
+  --muted:#999;--subtle:#1a1a1a;
+  --accent:#818cf8;--accent-fg:#111;
+  --success:#22c55e;--success-bg:#052e16;
+  --error:#ef4444;--error-bg:#450a0a;
+  --warning:#f59e0b;--warning-bg:#451a03;
+  --shadow:0 1px 3px rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.2);
+  --shadow-lg:0 4px 12px rgba(0,0,0,.4),0 2px 4px rgba(0,0,0,.3);
+}
+[data-theme="light"]{
+  --bg:#fafafa;--fg:#111;--surface:#fff;--border:#d0d0d0;
+  --muted:#666;--subtle:#f0f0f0;
+  --accent:#6366f1;--accent-fg:#fff;
+  --success:#16a34a;--success-bg:#f0fdf4;
+  --error:#dc2626;--error-bg:#fef2f2;
+  --warning:#d97706;--warning-bg:#fffbeb;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06);
+  --shadow-lg:0 4px 12px rgba(0,0,0,.1),0 2px 4px rgba(0,0,0,.06);
+}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
-html{font-family:var(--font);font-size:15px;color:var(--fg);background:var(--bg)}
+/* Theme toggle */
+#theme-toggle{background:none;border:1px solid var(--border);border-radius:var(--radius);padding:6px;cursor:pointer;color:var(--fg);display:flex;align-items:center;justify-content:center;width:32px;height:32px;transition:background .15s,border-color .15s;flex-shrink:0}
+#theme-toggle:hover{background:var(--subtle);border-color:var(--muted)}
+#theme-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#theme-toggle svg{width:16px;height:16px}
+html{font-family:var(--font);font-size:15px;color:var(--fg);background:var(--bg);transition:background .2s ease,color .2s ease}
 body{max-width:1024px;margin:0 auto;padding:24px 16px;padding-top:72px}
 /* Header */
 header{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--surface);border-bottom:1px solid var(--border);box-shadow:var(--shadow);padding:0 16px}
@@ -131,6 +156,10 @@ button:disabled{opacity:.4;cursor:not-allowed;transform:none}
     <h1>Cortex <span>Risk Engine</span></h1>
     <div id="health-status" class="loading" role="status" aria-live="polite">Checking…</div>
     <div id="cal-tracker" aria-live="polite">Calibrated: <span id="cal-tokens">none</span></div>
+    <button id="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle theme">
+      <svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      <svg id="theme-icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="display:none"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+    </button>
   </div>
 </header>
 
@@ -160,6 +189,45 @@ button:disabled{opacity:.4;cursor:not-allowed;transform:none}
 <main id="app"></main>
 
 <script>
+// Theme toggle — persists to localStorage
+(function initTheme() {
+  const root = document.documentElement;
+  const saved = localStorage.getItem('cortex-theme');
+  if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+
+  function isDarkActive() {
+    const t = root.getAttribute('data-theme');
+    if (t === 'dark') return true;
+    if (t === 'light') return false;
+    return window.matchMedia('(prefers-color-scheme:dark)').matches;
+  }
+  function updateIcons() {
+    const dark = isDarkActive();
+    document.getElementById('theme-icon-sun').style.display = dark ? 'none' : 'block';
+    document.getElementById('theme-icon-moon').style.display = dark ? 'block' : 'none';
+    document.getElementById('theme-toggle').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+
+  // Wait for DOM then bind
+  if (document.getElementById('theme-toggle')) bind();
+  else document.addEventListener('DOMContentLoaded', bind);
+
+  function bind() {
+    updateIcons();
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      const current = root.getAttribute('data-theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+      let next;
+      if (current === 'dark') next = 'light';
+      else if (current === 'light') next = 'dark';
+      else next = prefersDark ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      localStorage.setItem('cortex-theme', next);
+      updateIcons();
+    });
+  }
+})();
+
 const API = '/api/v1';
 
 function el(tag, attrs, ...children) {
