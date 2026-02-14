@@ -34,5 +34,19 @@ uvicorn[standard]>=0.20.0
 pydantic>=2.0
 websockets>=11.0
 
+# Metrics
+prometheus-fastapi-instrumentator>=6.0
+
+# Async Caching (Redis + in-memory fallback)
+cashews[redis]>=7.0
+
+# Hawkes Performance (optional — graceful fallback if unavailable)
+numba>=0.59.0
+tick>=0.7; python_version<"3.12"
+
+# EVT (pyextremes) & Rough Volatility (fbm) — optional engines
+pyextremes>=2.3.0
+fbm>=0.3.0
+
 # Testing
 pytest>=7.0

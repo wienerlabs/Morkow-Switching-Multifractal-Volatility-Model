@@ -184,6 +184,25 @@ ONCHAIN_EVENT_LOOKBACK_SLOTS = int(os.environ.get("ONCHAIN_EVENT_LOOKBACK_SLOTS"
 TICK_DEFAULT_LOOKBACK_DAYS = int(os.environ.get("TICK_DEFAULT_LOOKBACK_DAYS", "7"))
 TICK_MAX_BARS = int(os.environ.get("TICK_MAX_BARS", "10000"))
 
+# ── Engine Selection (pyextremes / fbm) ──
+
+EVT_ENGINE = os.environ.get("EVT_ENGINE", "native")   # "native" or "pyextremes"
+FBM_ENGINE = os.environ.get("FBM_ENGINE", "native")   # "native" or "fbm"
+
+# ── Metrics ──
+
+METRICS_ENABLED = os.environ.get("METRICS_ENABLED", "true").lower() == "true"
+
+# ── Cache (cashews) ──
+
+REDIS_URL = os.environ.get("REDIS_URL", "")
+CACHE_ENABLED = os.environ.get("CACHE_ENABLED", "true").lower() == "true"
+CACHE_DEFAULT_TTL = int(os.environ.get("CACHE_DEFAULT_TTL", "300"))
+
+# ── Hawkes Engine ──
+
+HAWKES_ENGINE = os.environ.get("HAWKES_ENGINE", "numba")  # "native", "numba", "tick"
+
 # ── API ──
 
 API_VERSION = os.environ.get("API_VERSION", "1.2.0")
