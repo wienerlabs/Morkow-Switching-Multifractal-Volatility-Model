@@ -40,7 +40,37 @@ logger = logging.getLogger(__name__)
 
 WEIGHTS = GUARDIAN_WEIGHTS
 
-_cache: dict[str, dict[str, Any]] = {}
+
+class _TTLCache:
+    """Simple TTL cache compatible with cashews patterns.
+
+    Provides dict-like .clear() for test backward compat while
+    auto-expiring entries after CACHE_TTL_SECONDS.
+    """
+
+    def __init__(self) -> None:
+        self._store: dict[str, dict[str, Any]] = {}
+
+    def get(self, key: str) -> dict | None:
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        if (time.time() - entry["ts"]) >= CACHE_TTL_SECONDS:
+            del self._store[key]
+            return None
+        return entry["result"]
+
+    def set(self, key: str, result: dict) -> None:
+        self._store[key] = {"ts": time.time(), "result": result}
+
+    def clear(self) -> None:
+        self._store.clear()
+
+    def __contains__(self, key: str) -> bool:
+        return self.get(key) is not None
+
+
+_cache = _TTLCache()
 _trade_history: deque[dict] = deque(maxlen=500)
 
 
