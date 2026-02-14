@@ -711,9 +711,10 @@ async function runEndpoint(uid, ep) {
       if (ep.path === '/calibrate' && raw.token) {
         addCalibratedToken(raw.token);
       }
-      // Render token card for /token/info/ responses
+      // Render token card for /token/info/ responses — hide raw JSON
       if (ep.path.startsWith('/token/info/') && json.address) {
         renderTokenCard(resultWrap, json);
+        resultEl.style.display = 'none';
       }
     } else {
       const detail = json.detail || `HTTP ${res.status}`;
@@ -739,9 +740,11 @@ function renderTokenCard(wrap, d) {
 
   const fmtUsd = (v) => {
     if (!v || v === 0) return '—';
+    if (v >= 1e12) return '$' + (v / 1e12).toFixed(2) + 'T';
     if (v >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
     if (v >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M';
     if (v >= 1e3) return '$' + (v / 1e3).toFixed(1) + 'K';
+    if (v < 0.01) return '$' + v.toFixed(6);
     return '$' + v.toFixed(2);
   };
   const fmtPrice = (v) => {
