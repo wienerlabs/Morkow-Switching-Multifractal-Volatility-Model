@@ -971,25 +971,21 @@ export class ArbitrageExecutor {
       return this.errorResult(opp, 'cex-to-dex', `Unknown token: ${opp.symbol}`);
     }
 
-    // ========== GUARDIAN DISABLED FOR TESTING ==========
-    // Guardian validation disabled to test arbitrage execution
-    // const guardianParams: GuardianTradeParams = {
-    //   inputMint: TOKENS.USDC.mint,
-    //   outputMint: token.mint,
-    //   amountIn: amountUsd,
-    //   amountInUsd: amountUsd,
-    //   slippageBps: 100,
-    //   strategy: 'arbitrage',
-    //   protocol: `${opp.buyExchange}-${opp.sellExchange}`,
-    //   walletAddress: this.keypair?.publicKey.toBase58() || '',
-    // };
-    // const guardianResult = await guardian.validate(guardianParams);
-    // if (!guardianResult.approved) {
-    //   console.log(`[ARBITRAGE] 🛡️ Guardian blocked transaction: ${guardianResult.blockReason}`);
-    //   return this.errorResult(opp, 'cex-to-dex', `Guardian blocked: ${guardianResult.blockReason}`);
-    // }
-    console.log(`[ARBITRAGE] ⚠️  Guardian validation DISABLED for testing`);
-    // ========================================
+    const guardianParams: GuardianTradeParams = {
+      inputMint: TOKENS.USDC.mint,
+      outputMint: token.mint,
+      amountIn: amountUsd,
+      amountInUsd: amountUsd,
+      slippageBps: 100,
+      strategy: 'arbitrage',
+      protocol: `${opp.buyExchange}-${opp.sellExchange}`,
+      walletAddress: this.keypair?.publicKey.toBase58() || '',
+    };
+    const guardianResult = await guardian.validate(guardianParams);
+    if (!guardianResult.approved) {
+      console.log(`[ARBITRAGE] 🛡️ Guardian blocked transaction: ${guardianResult.blockReason}`);
+      return this.errorResult(opp, 'cex-to-dex', `Guardian blocked: ${guardianResult.blockReason}`);
+    }
 
     // ========== GLOBAL RISK CHECK ==========
     // Check all risk limits before executing arbitrage
@@ -1016,9 +1012,8 @@ export class ArbitrageExecutor {
     }
     // ========================================
 
-    // Pre-flight checks (TESTING: Very low thresholds)
     const minSpread = this.config.minSpreadPct;
-    const feeEstimate = 0.05; // TESTING: 0.05% fee estimate (very low for testing)
+    const feeEstimate = 0.25; // Conservative fee estimate covering most exchanges
     const netSpread = opp.spreadPct - feeEstimate;
 
     if (netSpread < minSpread) {
@@ -1048,8 +1043,7 @@ export class ArbitrageExecutor {
       return this.executeCexToDex(opp, amountUsd);
     } else if (!buyIsCex && sellIsCex) {
       // DEX → CEX (buy on Jupiter, sell on Binance)
-      // TESTING: Enabled for testing (deposit delays accepted)
-      console.log(`[ARBITRAGE] ⚠️ DEX→CEX enabled for testing (deposit delays ~15min)`);
+      console.log(`[ARBITRAGE] DEX→CEX path (deposit delays ~15min)`);
       return this.executeDexToCex(opp, amountUsd);
     } else if (!buyIsCex && !sellIsCex) {
       // DEX → DEX (buy on Orca, sell on Meteora via Jupiter)
@@ -1332,8 +1326,8 @@ export function createArbitrageExecutor(dryRun: boolean = true): ArbitrageExecut
     solanaPrivateKey: process.env.SOLANA_PRIVATE_KEY || '',
     solanaRpcUrl: process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
     dryRun,
-    minProfitUsd: 0.001,     // TESTING: Min $0.001 profit (ULTRA low for testing!)
-    minSpreadPct: 0.001,     // TESTING: Min 0.001% after fees (ULTRA low for testing!)
+    minProfitUsd: 5.0,       // Min $5 profit after all fees
+    minSpreadPct: 0.10,      // Min 0.10% spread after fees
     maxWithdrawWaitMs: 300000, // 5 min max wait
   });
 }

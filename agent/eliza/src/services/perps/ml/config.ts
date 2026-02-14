@@ -71,7 +71,7 @@ export const MAINNET_CONFIG: TradingAgentConfig = {
   adrenaPollingIntervalMs: 30_000,   // 30s - backup for on-chain SL/TP
   flashPollingIntervalMs: 60_000,    // 60s - simulated, low priority
 
-  minConfidence: 0.25,              // 25% (lowered for mainnet testing)
+  minConfidence: 0.65,              // 65% confidence for production
   fundingThreshold: 0.0025,         // 0.25% threshold
 
   positionSizeUsd: 20,  // $20 minimum for mainnet

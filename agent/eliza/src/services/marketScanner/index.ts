@@ -32,7 +32,7 @@ const CORE_TOKENS = ['SOL', 'BTC', 'ETH', 'WIF', 'BONK', 'JUP'];
 const DEFAULT_CONFIG: ScannerConfig = {
   tokens: CORE_TOKENS,
   refreshInterval: 30000, // 30 seconds
-  minArbitrageSpread: 0.1, // TESTING: Lowered to 0.1% to find more opportunities
+  minArbitrageSpread: 0.5, // Min 0.5% spread after fees
   minLiquidity: 50000,
   maxRiskScore: 7,
 };

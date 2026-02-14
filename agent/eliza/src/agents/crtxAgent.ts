@@ -192,7 +192,7 @@ export class CRTXAgent {
   private performanceTracker = getPerformanceTracker();
   private bullishResearcher = getBullishResearcher();
   private bearishResearcher = getBearishResearcher();
-  private consensusEnabled = true;  // Can be disabled for testing
+  private consensusEnabled = true;
 
   constructor(config: Partial<AgentConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -438,7 +438,7 @@ export class CRTXAgent {
       this.lpExecutor = new LPExecutor({
         rpcUrl: this.config.solanaRpcUrl || 'https://api.mainnet-beta.solana.com',
         maxPriceImpactPct: 1.0,  // Max 1% price impact
-        defaultSlippageBps: 500, // 3% (increased for mainnet testing)
+        defaultSlippageBps: 300, // 3% slippage
         priorityFeeLamports: 50000,
       });
       logger.info('[CRTX] LP Executor initialized');
@@ -1633,8 +1633,8 @@ export class CRTXAgent {
       // Pre-filter pools with scam filters
       const ALLOWED_TOKENS = ['SOL', 'USDC', 'USDT', 'JUP', 'BONK', 'mSOL', 'stSOL', 'jitoSOL', 'RAY', 'ORCA'];
       const MAX_APY = 500;
-      const MIN_TVL = 50_000;  // Lowered to $50K for mainnet testing
-      const MIN_VOLUME_TVL = 0.1;  // Lowered for mainnet testing
+      const MIN_TVL = 100_000;
+      const MIN_VOLUME_TVL = 0.3;
 
       const eligiblePools = snapshot.lpPools.filter(pool => {
         if (pool.apy > MAX_APY) return false;
@@ -1698,7 +1698,7 @@ export class CRTXAgent {
             logLPEvaluation(pool, result.approved, result.rejectReason, result.riskAdjustedReturn, riskLabel);
 
             // Check if it meets minimum thresholds
-            if (result.expectedReturn >= 3) { // 3% APY minimum (lowered for testing)
+            if (result.expectedReturn >= 5) {
               console.log(`\n[CRTX] ✅ Opportunity found: ${result.type.toUpperCase()} ${result.name}`);
               console.log(`  💭 "First approved opportunity - executing immediately!"`);
               console.log(`  📊 APY: ${result.expectedReturn.toFixed(2)}% | Risk: ${riskLabel}`);
@@ -1848,16 +1848,15 @@ export class CRTXAgent {
     // Calculate risk-adjusted return
     const riskAdjustedReturn = perp.expectedReturnPct * (1 - perp.riskScore / 20);
 
-    // Rejection reasons - THRESHOLDS LOWERED FOR MAINNET TESTING
     let rejectReason: string | undefined;
     if (!riskCheck.allowed) {
       rejectReason = riskCheck.reason;
-    } else if (fundingBps < 1) {
-      rejectReason = `Funding too low: ${fundingBps.toFixed(1)}bps (min 1bps)`;
-    } else if (perp.openInterest < 100_000) {
-      rejectReason = `OI too low: $${(perp.openInterest / 1_000).toFixed(0)}K (min $100K)`;
-    } else if (confidence < 0.05) {  // Lowered from minConfidence to 5%
-      rejectReason = `Confidence too low: ${(confidence * 100).toFixed(0)}% (min 5%)`;
+    } else if (fundingBps < 3) {
+      rejectReason = `Funding too low: ${fundingBps.toFixed(1)}bps (min 3bps)`;
+    } else if (perp.openInterest < 500_000) {
+      rejectReason = `OI too low: $${(perp.openInterest / 1_000).toFixed(0)}K (min $500K)`;
+    } else if (confidence < this.config.minConfidence) {
+      rejectReason = `Confidence too low: ${(confidence * 100).toFixed(0)}% (min ${(this.config.minConfidence * 100).toFixed(0)}%)`;
     }
 
     const approved = !rejectReason && riskCheck.allowed && confidence >= this.config.minConfidence;

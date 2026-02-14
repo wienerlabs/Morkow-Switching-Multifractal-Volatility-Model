@@ -36,11 +36,11 @@ export interface PerpsScannnerConfig {
 }
 
 export const DEFAULT_PERPS_SCANNER_CONFIG: PerpsScannnerConfig = {
-  minNegativeFundingBps: 1,           // 0.01% hourly - lowered for mainnet testing
-  minFundingArbSpreadBps: 3,          // 0.03% spread - lowered for mainnet testing
-  minOiUsd: 100_000,                  // $100K minimum OI - lowered for mainnet testing
-  maxOiChangePct: 100,                // Max 100% OI change - relaxed
-  minLiquidityUsd: 50_000,            // $50K liquidity - lowered for mainnet testing
+  minNegativeFundingBps: 5,           // 0.05% hourly minimum
+  minFundingArbSpreadBps: 10,         // 0.10% spread minimum
+  minOiUsd: 500_000,                  // $500K minimum OI
+  maxOiChangePct: 50,                 // Max 50% OI change
+  minLiquidityUsd: 200_000,           // $200K liquidity minimum
   defaultLeverage: 3,
   holdingPeriodHours: 24,
   markets: ['SOL-PERP', 'BTC-PERP', 'ETH-PERP'],

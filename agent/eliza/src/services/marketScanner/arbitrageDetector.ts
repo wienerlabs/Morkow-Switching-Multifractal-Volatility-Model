@@ -116,16 +116,14 @@ export function detectArbitrage(
       continue;
     }
     
-    // Calculate fees (TESTING: Very low fee estimates)
-    const buyFee = EXCHANGE_FEES[lowest.exchange] || 0.05;  // TESTING: 0.05% instead of 0.25%
-    const sellFee = EXCHANGE_FEES[highest.exchange] || 0.05; // TESTING: 0.05% instead of 0.25%
+    const buyFee = EXCHANGE_FEES[lowest.exchange] || 0.25;
+    const sellFee = EXCHANGE_FEES[highest.exchange] || 0.25;
     const withdrawFee = lowest.type === 'cex' ? (WITHDRAWAL_FEES[lowest.exchange] || 0) : 0;
 
     const totalFeePct = buyFee + sellFee;
     const netSpreadPct = spreadPct - totalFeePct;
 
-    // TESTING: Allow negative net spread for testing purposes
-    // if (netSpreadPct <= 0) continue;
+    if (netSpreadPct <= 0) continue;
     
     const estimatedProfit = (tradeAmountUsd * spreadPct) / 100;
     const fees = (tradeAmountUsd * totalFeePct) / 100 + withdrawFee;

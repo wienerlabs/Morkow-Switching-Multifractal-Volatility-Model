@@ -589,28 +589,26 @@ export class SolendLendingClient {
       }
       // ========================================
 
-      // ========== GUARDIAN PRE-EXECUTION VALIDATION - DISABLED FOR TESTING ==========
-      // const guardianParams: GuardianTradeParams = {
-      //   inputMint: params.asset,
-      //   outputMint: params.asset,
-      //   amountIn: params.amount,
-      //   amountInUsd: params.amount,
-      //   slippageBps: 50,
-      //   strategy: 'lending',
-      //   protocol: 'solend',
-      //   walletAddress: this.keypair.publicKey.toBase58(),
-      // };
+      const guardianParams: GuardianTradeParams = {
+        inputMint: params.asset,
+        outputMint: params.asset,
+        amountIn: params.amount,
+        amountInUsd: params.amount,
+        slippageBps: 50,
+        strategy: 'lending',
+        protocol: 'solend',
+        walletAddress: this.keypair.publicKey.toBase58(),
+      };
 
-      // const guardianResult = await guardian.validate(guardianParams);
-      // if (!guardianResult.approved) {
-      //   logger.warn('[SOLEND] Guardian blocked borrow', {
-      //     reason: guardianResult.blockReason,
-      //     asset: params.asset,
-      //     amount: params.amount,
-      //   });
-      //   return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
-      // }
-      // ========================================
+      const guardianResult = await guardian.validate(guardianParams);
+      if (!guardianResult.approved) {
+        logger.warn('[SOLEND] Guardian blocked borrow', {
+          reason: guardianResult.blockReason,
+          asset: params.asset,
+          amount: params.amount,
+        });
+        return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
+      }
 
       const reserve = this.getReserveBySymbol(params.asset);
       if (!reserve) {

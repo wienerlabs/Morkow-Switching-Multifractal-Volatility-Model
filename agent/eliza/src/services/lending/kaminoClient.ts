@@ -501,28 +501,26 @@ export class KaminoLendingClient {
       this.ensureInitialized();
       logger.info('[KAMINO] Withdrawing', { asset: params.asset, amount: params.amount });
 
-      // ========== GUARDIAN PRE-EXECUTION VALIDATION - DISABLED FOR TESTING ==========
-      // const guardianParams: GuardianTradeParams = {
-      //   inputMint: params.asset,
-      //   outputMint: params.asset,
-      //   amountIn: params.amount,
-      //   amountInUsd: params.amount,
-      //   slippageBps: 50,
-      //   strategy: 'lending',
-      //   protocol: 'kamino',
-      //   walletAddress: this.keypair.publicKey.toBase58(),
-      // };
+      const guardianParams: GuardianTradeParams = {
+        inputMint: params.asset,
+        outputMint: params.asset,
+        amountIn: params.amount,
+        amountInUsd: params.amount,
+        slippageBps: 50,
+        strategy: 'lending',
+        protocol: 'kamino',
+        walletAddress: this.keypair.publicKey.toBase58(),
+      };
 
-      // const guardianResult = await guardian.validate(guardianParams);
-      // if (!guardianResult.approved) {
-      //   logger.warn('[KAMINO] Guardian blocked withdraw', {
-      //     reason: guardianResult.blockReason,
-      //     asset: params.asset,
-      //     amount: params.amount,
-      //   });
-      //   return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
-      // }
-      // ========================================
+      const guardianResult = await guardian.validate(guardianParams);
+      if (!guardianResult.approved) {
+        logger.warn('[KAMINO] Guardian blocked withdraw', {
+          reason: guardianResult.blockReason,
+          asset: params.asset,
+          amount: params.amount,
+        });
+        return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
+      }
 
       const reserve = this.market!.getReserveBySymbol(params.asset);
       if (!reserve) {
@@ -727,28 +725,26 @@ export class KaminoLendingClient {
       }
       // ========================================
 
-      // ========== GUARDIAN PRE-EXECUTION VALIDATION - DISABLED FOR TESTING ==========
-      // const guardianParams: GuardianTradeParams = {
-      //   inputMint: params.asset,
-      //   outputMint: params.asset,
-      //   amountIn: params.amount,
-      //   amountInUsd: params.amount,
-      //   slippageBps: 50,
-      //   strategy: 'lending',
-      //   protocol: 'kamino',
-      //   walletAddress: this.keypair.publicKey.toBase58(),
-      // };
+      const guardianParams: GuardianTradeParams = {
+        inputMint: params.asset,
+        outputMint: params.asset,
+        amountIn: params.amount,
+        amountInUsd: params.amount,
+        slippageBps: 50,
+        strategy: 'lending',
+        protocol: 'kamino',
+        walletAddress: this.keypair.publicKey.toBase58(),
+      };
 
-      // const guardianResult = await guardian.validate(guardianParams);
-      // if (!guardianResult.approved) {
-      //   logger.warn('[KAMINO] Guardian blocked borrow', {
-      //     reason: guardianResult.blockReason,
-      //     asset: params.asset,
-      //     amount: params.amount,
-      //   });
-      //   return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
-      // }
-      // ========================================
+      const guardianResult = await guardian.validate(guardianParams);
+      if (!guardianResult.approved) {
+        logger.warn('[KAMINO] Guardian blocked borrow', {
+          reason: guardianResult.blockReason,
+          asset: params.asset,
+          amount: params.amount,
+        });
+        return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
+      }
 
       const reserve = this.market!.getReserveBySymbol(params.asset);
       if (!reserve) {
@@ -911,28 +907,26 @@ export class KaminoLendingClient {
       this.ensureInitialized();
       logger.info('[KAMINO] Repaying', { asset: params.asset, amount: params.amount });
 
-      // ========== GUARDIAN PRE-EXECUTION VALIDATION - DISABLED FOR TESTING ==========
-      // const guardianParams: GuardianTradeParams = {
-      //   inputMint: params.asset,
-      //   outputMint: params.asset,
-      //   amountIn: params.amount,
-      //   amountInUsd: params.amount,
-      //   slippageBps: 50,
-      //   strategy: 'lending',
-      //   protocol: 'kamino',
-      //   walletAddress: this.keypair.publicKey.toBase58(),
-      // };
+      const guardianParams: GuardianTradeParams = {
+        inputMint: params.asset,
+        outputMint: params.asset,
+        amountIn: params.amount,
+        amountInUsd: params.amount,
+        slippageBps: 50,
+        strategy: 'lending',
+        protocol: 'kamino',
+        walletAddress: this.keypair.publicKey.toBase58(),
+      };
 
-      // const guardianResult = await guardian.validate(guardianParams);
-      // if (!guardianResult.approved) {
-      //   logger.warn('[KAMINO] Guardian blocked repay', {
-      //     reason: guardianResult.blockReason,
-      //     asset: params.asset,
-      //     amount: params.amount,
-      //   });
-      //   return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
-      // }
-      // ========================================
+      const guardianResult = await guardian.validate(guardianParams);
+      if (!guardianResult.approved) {
+        logger.warn('[KAMINO] Guardian blocked repay', {
+          reason: guardianResult.blockReason,
+          asset: params.asset,
+          amount: params.amount,
+        });
+        return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
+      }
 
       const reserve = this.market!.getReserveBySymbol(params.asset);
       if (!reserve) {

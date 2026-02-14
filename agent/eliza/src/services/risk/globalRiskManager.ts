@@ -735,25 +735,24 @@ export class GlobalRiskManager {
       blockReasons.push(...exposureCheck.violations);
     }
 
-    // 4. Check oracle staleness - DISABLED FOR LP TESTING
-    // TODO: Re-enable after fixing Jupiter/Birdeye API issues
-    // try {
-    //   const oracleStatus = await this.checkOraclePrice(params.symbol);
-    //   oracleStatuses.set(params.symbol, oracleStatus);
-    //   if (oracleStatus.isStale || oracleStatus.isEmergency) {
-    //     if (this.isDryRun) {
-    //       logger.warn(`[DRY-RUN] Oracle stale for ${params.symbol}: ${oracleStatus.stalenessSeconds.toFixed(0)}s - allowing for simulation`);
-    //     } else {
-    //       blockReasons.push(`Oracle stale for ${params.symbol}: ${oracleStatus.stalenessSeconds.toFixed(0)}s`);
-    //     }
-    //   }
-    // } catch (error) {
-    //   if (this.isDryRun) {
-    //     logger.warn(`[DRY-RUN] Oracle unavailable for ${params.symbol} - allowing for simulation`);
-    //   } else {
-    //     blockReasons.push(`Oracle unavailable for ${params.symbol}`);
-    //   }
-    // }
+    // 4. Check oracle staleness
+    try {
+      const oracleStatus = await this.checkOraclePrice(params.symbol);
+      oracleStatuses.set(params.symbol, oracleStatus);
+      if (oracleStatus.isStale || oracleStatus.isEmergency) {
+        if (this.isDryRun) {
+          logger.warn(`[DRY-RUN] Oracle stale for ${params.symbol}: ${oracleStatus.stalenessSeconds.toFixed(0)}s - allowing for simulation`);
+        } else {
+          blockReasons.push(`Oracle stale for ${params.symbol}: ${oracleStatus.stalenessSeconds.toFixed(0)}s`);
+        }
+      }
+    } catch (error) {
+      if (this.isDryRun) {
+        logger.warn(`[DRY-RUN] Oracle unavailable for ${params.symbol} - allowing for simulation`);
+      } else {
+        blockReasons.push(`Oracle unavailable for ${params.symbol}`);
+      }
+    }
 
     // 5. Check gas budget
     const gasBudget = await this.gasService.getGasBudgetStatus(params.walletBalanceSol);

@@ -170,7 +170,7 @@ export class SimpleLendingExecutor {
         'USDT': 1,
         'PYUSD': 1,
         'USDS': 1,
-        'SOL': 123,  // Approximate SOL price for testing
+        'SOL': 150,  // Last-resort fallback only if DexScreener is also down
       };
 
       const price = fallbackPrices[asset.toUpperCase()];
