@@ -17,6 +17,7 @@ from api.models import (
     VaRComparisonRow,
 )
 from api.stores import _evt_store, _get_model
+from cortex.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,8 @@ async def evt_calibrate(req: EVTCalibrateRequest, async_mode: bool = Query(False
 
 
 @router.get("/evt/var/{confidence}", response_model=EVTVaRResponse)
-def get_evt_var(confidence: float, token: str = Query(...)):
+@cache(ttl="60s", key="evt_var:{token}:{confidence}")
+async def get_evt_var(confidence: float, token: str = Query(...)):
     from cortex.evt import evt_cvar, evt_var
 
     if token not in _evt_store:
@@ -129,7 +131,8 @@ def get_evt_var(confidence: float, token: str = Query(...)):
 
 
 @router.get("/evt/diagnostics", response_model=EVTDiagnosticsResponse)
-def get_evt_diagnostics(token: str = Query(...)):
+@cache(ttl="120s", key="evt_diagnostics:{token}")
+async def get_evt_diagnostics(token: str = Query(...)):
     from cortex.evt import compare_var_methods, evt_backtest
 
     m = _get_model(token)

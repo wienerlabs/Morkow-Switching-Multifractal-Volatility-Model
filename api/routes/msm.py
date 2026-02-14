@@ -21,6 +21,7 @@ from api.models import (
     get_regime_name,
 )
 from api.stores import _get_model, _load_returns, _model_store
+from cortex.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,8 @@ def get_volatility_forecast(token: str = Query(...)):
 
 
 @router.get("/backtest/summary", response_model=BacktestSummaryResponse)
-def get_backtest_summary(token: str = Query(...), alpha: float = Query(0.05)):
+@cache(ttl="120s", key="backtest_summary:{token}:{alpha}")
+async def get_backtest_summary(token: str = Query(...), alpha: float = Query(0.05)):
     from scipy.stats import norm
 
     from cortex import msm
