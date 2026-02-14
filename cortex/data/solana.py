@@ -372,6 +372,12 @@ def get_market_depth(
 
 
 
+# Display name overrides for well-known wrapped/native tokens
+_DISPLAY_NAMES: dict[str, str] = {
+    "So11111111111111111111111111111111111111112": "Solana",
+}
+
+
 def get_token_metadata(token: str) -> dict:
     """Fetch token metadata from Birdeye /defi/token_overview.
 
@@ -390,17 +396,23 @@ def get_token_metadata(token: str) -> dict:
 
     price = float(d.get("price", 0) or 0)
     price_change_24h = float(d.get("priceChange24hPercent", 0) or 0)
-    mc = float(d.get("mc", 0) or d.get("realMc", 0) or 0)
+    mc = float(d.get("marketCap", 0) or d.get("fdv", 0) or 0)
     volume_24h = float(d.get("v24hUSD", 0) or 0)
     liquidity = float(d.get("liquidity", 0) or 0)
     holder = int(d.get("holder", 0) or 0)
 
     extensions = d.get("extensions", {}) or {}
-    created_at = d.get("createdAt") or d.get("lastTradeUnixTime")
+
+    # createdAt is not in token_overview — only use it if actually present
+    raw_created = d.get("createdAt")
+    created_at = raw_created if raw_created else None
+
+    raw_name = d.get("name") or d.get("symbol") or address[:8]
+    display_name = _DISPLAY_NAMES.get(address, raw_name)
 
     return {
         "address": address,
-        "name": d.get("name") or d.get("symbol") or address[:8],
+        "name": display_name,
         "symbol": d.get("symbol", ""),
         "logo_uri": d.get("logoURI") or d.get("icon") or extensions.get("imageUrl") or "",
         "decimals": int(d.get("decimals", 0) or 0),
