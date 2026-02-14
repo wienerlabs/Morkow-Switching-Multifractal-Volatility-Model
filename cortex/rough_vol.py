@@ -21,6 +21,14 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
+from cortex.config import FBM_ENGINE
+
+try:
+    from fbm import FBM as _FBM_Class
+    _FBM_AVAILABLE = True
+except ImportError:
+    _FBM_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +37,8 @@ def generate_fbm(n: int, H: float = 0.1, seed: int | None = None) -> np.ndarray:
     Generate fractional Brownian motion increments via Davies-Harte (FFT) method.
 
     Uses circulant embedding of the autocovariance function for exact generation
-    in O(n log n) time.
+    in O(n log n) time. When FBM_ENGINE="fbm" and the fbm library is installed,
+    delegates to fbm.FBM instead.
 
     Args:
         n: Number of increments to generate.
@@ -44,6 +53,25 @@ def generate_fbm(n: int, H: float = 0.1, seed: int | None = None) -> np.ndarray:
     if n < 2:
         raise ValueError(f"n must be >= 2, got {n}")
 
+    if FBM_ENGINE == "fbm":
+        if _FBM_AVAILABLE:
+            return _generate_fbm_library(n, H, seed)
+        logger.warning("FBM_ENGINE='fbm' but fbm library not installed; falling back to native")
+
+    return _generate_fbm_native(n, H, seed)
+
+
+def _generate_fbm_library(n: int, H: float, seed: int | None) -> np.ndarray:
+    """Generate fBm increments using the fbm library (Davies-Harte method)."""
+    if seed is not None:
+        np.random.seed(seed)
+    f = _FBM_Class(n=n, hurst=H, method="daviesharte")
+    samples = f.fbm()
+    return np.diff(samples)
+
+
+def _generate_fbm_native(n: int, H: float, seed: int | None) -> np.ndarray:
+    """Generate fBm increments using the native Davies-Harte FFT implementation."""
     rng = np.random.RandomState(seed)
 
     # Autocovariance of fBm increments: γ(k) = 0.5*(|k+1|^{2H} - 2|k|^{2H} + |k-1|^{2H})
