@@ -3,6 +3,7 @@
  */
 
 import type { CEXPrice } from './types.js';
+import { logger } from '../logger.js';
 
 const BINANCE_API = 'https://api.binance.com/api/v3';
 const COINBASE_API = 'https://api.coinbase.com/v2';
@@ -26,7 +27,7 @@ async function fetchWithTimeout(url: string, timeout = 20000): Promise<Response>
     clearTimeout(id);
     // Log timeout errors for debugging
     if (e.name === 'AbortError' || e.cause?.code === 'UND_ERR_CONNECT_TIMEOUT') {
-      console.log(`[CEX] Timeout (${timeout}ms) for ${url}`);
+      logger.info(`[CEX] Timeout (${timeout}ms) for ${url}`);
     }
     throw e;
   }
@@ -65,7 +66,7 @@ export async function fetchBinancePrices(symbols: string[]): Promise<CEXPrice[]>
       });
     }
   } catch (e) {
-    console.error('[Binance] Fetch error:', e);
+    logger.error('[Binance] Fetch error:', { error: String(e) });
   }
   return prices;
 }
@@ -97,7 +98,7 @@ export async function fetchCoinbasePrices(symbols: string[]): Promise<CEXPrice[]
       // Silently fail for timeouts
       const msg = e instanceof Error ? e.message : 'Unknown';
       if (!msg.includes('aborted')) {
-        console.warn(`[Coinbase] ❌ ${symbol} failed`);
+        logger.warn(`[Coinbase] ${symbol} failed`);
       }
     }
   }
@@ -136,7 +137,7 @@ export async function fetchKrakenPrices(symbols: string[]): Promise<CEXPrice[]> 
     // Silently fail - Kraken sometimes times out
     const msg = e instanceof Error ? e.message : 'Unknown';
     if (!msg.includes('aborted')) {
-      console.warn('[Kraken] ❌ Fetch failed');
+      logger.warn('[Kraken] Fetch failed');
     }
   }
   return prices;

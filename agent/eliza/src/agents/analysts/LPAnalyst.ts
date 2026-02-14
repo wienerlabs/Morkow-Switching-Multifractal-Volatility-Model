@@ -10,6 +10,7 @@ import type { LPPool } from '../../services/marketScanner/types.js';
 import { getSentimentIntegration, type SentimentAdjustedScore } from '../../services/sentiment/sentimentIntegration.js';
 import { RiskManager } from '../../services/riskManager.js';
 import { lpRebalancerModel, type PredictionResult } from '../../inference/model.js';
+import { logger } from '../../services/logger.js';
 
 /**
  * Input for LPAnalyst
@@ -78,7 +79,7 @@ export class LPAnalyst extends BaseAnalyst<LPAnalysisInput, LPOpportunityResult>
       dataQualityScore: 0.56,
     });
 
-    console.log(`ℹ️ [${new Date().toISOString()}] [AGENT] [LPAnalyst] Initialized`, {
+    logger.info(`ℹ️ [${new Date().toISOString()}] [AGENT] [LPAnalyst] Initialized`, {
       config: this.lpConfig,
     });
   }
@@ -267,34 +268,34 @@ export class LPAnalyst extends BaseAnalyst<LPAnalysisInput, LPOpportunityResult>
     const finalPassesThreshold = confidence >= this.lpConfig.minConfidenceThreshold;
     const delta = confidence - mlConfidence;
 
-    console.log(`\n┌─────────────────────────────────────────────────────────┐`);
-    console.log(`│  💧 LP POOL OPPORTUNITY EVALUATION WITH SENTIMENT       │`);
-    console.log(`├─────────────────────────────────────────────────────────┤`);
-    console.log(`│  Pool:                ${name.substring(0, 35).padEnd(35)}│`);
-    console.log(`│  Token:               ${primaryToken.padEnd(35)}│`);
-    console.log(`│  APY:                 ${(pool.apy.toFixed(2) + '%').padEnd(35)}│`);
-    console.log(`│  TVL:                 ${'$' + (pool.tvl / 1_000_000).toFixed(2) + 'M'.padEnd(33)}│`);
-    console.log(`├─────────────────────────────────────────────────────────┤`);
-    console.log(`│  ML Confidence:       ${mlConfidence.toFixed(3).padEnd(35)}│`);
+    logger.info(`\n┌─────────────────────────────────────────────────────────┐`);
+    logger.info(`│  💧 LP POOL OPPORTUNITY EVALUATION WITH SENTIMENT       │`);
+    logger.info(`├─────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Pool:                ${name.substring(0, 35).padEnd(35)}│`);
+    logger.info(`│  Token:               ${primaryToken.padEnd(35)}│`);
+    logger.info(`│  APY:                 ${(pool.apy.toFixed(2) + '%').padEnd(35)}│`);
+    logger.info(`│  TVL:                 ${'$' + (pool.tvl / 1_000_000).toFixed(2) + 'M'.padEnd(33)}│`);
+    logger.info(`├─────────────────────────────────────────────────────────┤`);
+    logger.info(`│  ML Confidence:       ${mlConfidence.toFixed(3).padEnd(35)}│`);
     if (sentimentAdjustment.sentimentAvailable) {
-      console.log(`│  Sentiment Score:     ${sentimentAdjustment.rawSentiment.toFixed(3)} (${sentimentAdjustment.signal})`.padEnd(60) + `│`);
-      console.log(`│  Normalized:          ${sentimentAdjustment.normalizedSentiment.toFixed(3).padEnd(35)}│`);
-      console.log(`│  Sentiment Weight:    ${'15%'.padEnd(35)}│`);
-      console.log(`│  Final Confidence:    ${confidence.toFixed(3).padEnd(35)}│`);
-      console.log(`│  Delta:               ${(delta >= 0 ? '+' : '') + delta.toFixed(3)}`.padEnd(60) + `│`);
+      logger.info(`│  Sentiment Score:     ${sentimentAdjustment.rawSentiment.toFixed(3)} (${sentimentAdjustment.signal})`.padEnd(60) + `│`);
+      logger.info(`│  Normalized:          ${sentimentAdjustment.normalizedSentiment.toFixed(3).padEnd(35)}│`);
+      logger.info(`│  Sentiment Weight:    ${'15%'.padEnd(35)}│`);
+      logger.info(`│  Final Confidence:    ${confidence.toFixed(3).padEnd(35)}│`);
+      logger.info(`│  Delta:               ${(delta >= 0 ? '+' : '') + delta.toFixed(3)}`.padEnd(60) + `│`);
     } else {
-      console.log(`│  Sentiment:           ${'unavailable (using ML only)'.padEnd(35)}│`);
+      logger.info(`│  Sentiment:           ${'unavailable (using ML only)'.padEnd(35)}│`);
     }
-    console.log(`├─────────────────────────────────────────────────────────┤`);
-    console.log(`│  Threshold:           ${this.lpConfig.minConfidenceThreshold.toFixed(3).padEnd(35)}│`);
-    console.log(`│  Decision:            ${(finalPassesThreshold ? 'PROVIDE LP ✅' : 'SKIP ❌').padEnd(35)}│`);
+    logger.info(`├─────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Threshold:           ${this.lpConfig.minConfidenceThreshold.toFixed(3).padEnd(35)}│`);
+    logger.info(`│  Decision:            ${(finalPassesThreshold ? 'PROVIDE LP ✅' : 'SKIP ❌').padEnd(35)}│`);
     if (mlPassesThreshold && !finalPassesThreshold) {
-      console.log(`│  ⚠️  SENTIMENT PREVENTED LP ENTRY                       │`);
+      logger.info(`│  ⚠️  SENTIMENT PREVENTED LP ENTRY                       │`);
     }
     if (!mlPassesThreshold && finalPassesThreshold) {
-      console.log(`│  ✨ SENTIMENT ENABLED LP ENTRY                          │`);
+      logger.info(`│  ✨ SENTIMENT ENABLED LP ENTRY                          │`);
     }
-    console.log(`└─────────────────────────────────────────────────────────┘`);
+    logger.info(`└─────────────────────────────────────────────────────────┘`);
   }
 
   /**

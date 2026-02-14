@@ -31,8 +31,8 @@ describe('RiskManager', () => {
       expect(DEFAULT_RISK_LIMITS.maxVolatility24h).toBe(0.15);
       expect(DEFAULT_RISK_LIMITS.minVolatility24h).toBe(0.02);
 
-      // Cooldown (disabled for testing)
-      expect(DEFAULT_RISK_LIMITS.minCooldownHours).toBe(0);
+      // Cooldown (1 hour for production)
+      expect(DEFAULT_RISK_LIMITS.minCooldownHours).toBe(1);
 
       // Data quality
       expect(DEFAULT_RISK_LIMITS.dataQualityScore).toBe(0.56);

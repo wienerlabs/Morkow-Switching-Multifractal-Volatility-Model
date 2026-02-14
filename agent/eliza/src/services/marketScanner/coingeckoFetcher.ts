@@ -3,6 +3,7 @@
  */
 
 import type { TokenPrice } from './types.js';
+import { logger } from '../logger.js';
 
 const COINGECKO_API = 'https://api.coingecko.com/api/v3';
 
@@ -35,7 +36,7 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
     clearTimeout(id);
     // Log timeout errors for debugging
     if (e.name === 'AbortError' || e.cause?.code === 'UND_ERR_CONNECT_TIMEOUT') {
-      console.log(`[CoinGecko] Timeout (${timeout}ms) for ${url}`);
+      logger.info(`[CoinGecko] Timeout (${timeout}ms) for ${url}`);
     }
     throw e;
   }
@@ -90,7 +91,7 @@ export async function fetchCoinGeckoPrices(symbols: string[]): Promise<CoinGecko
       });
     }
   } catch (e) {
-    console.error('[CoinGecko] Fetch error:', e);
+    logger.error('[CoinGecko] Fetch error:', { error: String(e) });
   }
   
   return prices;
@@ -149,7 +150,7 @@ export async function fetchCoinGeckoMarkets(symbols: string[]): Promise<CoinGeck
       });
     }
   } catch (e) {
-    console.error('[CoinGecko] Markets fetch error:', e);
+    logger.error('[CoinGecko] Markets fetch error:', { error: String(e) });
   }
   
   return prices;

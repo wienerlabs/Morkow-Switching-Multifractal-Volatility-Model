@@ -162,30 +162,30 @@ export class SpotAnalyst extends BaseAnalyst<SpotAnalysisInput, SpotOpportunityR
     });
 
     // Print summary of all tokens scanned
-    console.log('\n' + '='.repeat(80));
-    console.log('📊 SPOT ANALYST SCAN SUMMARY');
-    console.log('='.repeat(80));
-    console.log(`Total Tokens Scanned: ${results.length}`);
-    console.log(`Approved: ${approved.length} | Rejected: ${results.length - approved.length}`);
-    console.log('='.repeat(80) + '\n');
+    logger.info('\n' + '='.repeat(80));
+    logger.info('📊 SPOT ANALYST SCAN SUMMARY');
+    logger.info('='.repeat(80));
+    logger.info(`Total Tokens Scanned: ${results.length}`);
+    logger.info(`Approved: ${approved.length} | Rejected: ${results.length - approved.length}`);
+    logger.info('='.repeat(80) + '\n');
 
     results.forEach((result, index) => {
       const status = result.approved ? '✅ APPROVED' : '❌ REJECTED';
-      console.log(`[${index + 1}] ${result.token.symbol} - ${status}`);
-      console.log(`    ML Probability:  ${(Number(result.raw.mlProbability) * 100).toFixed(1)}%`);
-      console.log(`    Rule Score:      ${Number(result.raw.ruleScore).toFixed(0)}/160 (${(Number(result.raw.ruleScore) / 160 * 100).toFixed(1)}%)`);
-      console.log(`    Final Confidence: ${(Number(result.confidence) * 100).toFixed(1)}%`);
-      console.log(`    Threshold:       ${(this.spotConfig.minConfidenceThreshold * 100).toFixed(0)}%`);
+      logger.info(`[${index + 1}] ${result.token.symbol} - ${status}`);
+      logger.info(`    ML Probability:  ${(Number(result.raw.mlProbability) * 100).toFixed(1)}%`);
+      logger.info(`    Rule Score:      ${Number(result.raw.ruleScore).toFixed(0)}/160 (${(Number(result.raw.ruleScore) / 160 * 100).toFixed(1)}%)`);
+      logger.info(`    Final Confidence: ${(Number(result.confidence) * 100).toFixed(1)}%`);
+      logger.info(`    Threshold:       ${(this.spotConfig.minConfidenceThreshold * 100).toFixed(0)}%`);
       if (result.rejectReason) {
-        console.log(`    Reject Reason:   ${result.rejectReason}`);
+        logger.info(`    Reject Reason:   ${result.rejectReason}`);
       }
       if (result.approved) {
-        console.log(`    Position Size:   $${result.trading.positionSizeUsd.toFixed(2)}`);
-        console.log(`    Expected Return: $${result.trading.expectedReturnUsd.toFixed(2)}`);
+        logger.info(`    Position Size:   $${result.trading.positionSizeUsd.toFixed(2)}`);
+        logger.info(`    Expected Return: $${result.trading.expectedReturnUsd.toFixed(2)}`);
       }
-      console.log('');
+      logger.info('');
     });
-    console.log('='.repeat(80) + '\n');
+    logger.info('='.repeat(80) + '\n');
 
     return results;
   }
@@ -356,54 +356,54 @@ export class SpotAnalyst extends BaseAnalyst<SpotAnalysisInput, SpotOpportunityR
     };
 
     // Log detailed evaluation with COMPLETE trading information
-    console.log(`\n┌──────────────────────────────────────────────────────────┐`);
-    console.log(`│  🎯 SPOT TRADE OPPORTUNITY: ${token.symbol.padEnd(27)} │`);
-    console.log(`├──────────────────────────────────────────────────────────┤`);
-    console.log(`│  Token Info:`.padEnd(61) + '│');
-    console.log(`│    Address:    ${token.address}`.padEnd(61) + '│');
-    console.log(`│    Price:      $${formatUsd(entryPrice)}`.padEnd(61) + '│');
-    console.log(`│    Market Cap: ${formatCompact(token.marketCap)}`.padEnd(61) + '│');
-    console.log(`│    Liquidity:  ${formatCompact(token.liquidity)}`.padEnd(61) + '│');
-    console.log(`│    Volume 24h: ${formatCompact(token.volume24h)}`.padEnd(61) + '│');
-    console.log(`├──────────────────────────────────────────────────────────┤`);
-    console.log(`│  Trading Setup:`.padEnd(61) + '│');
-    console.log(`│    Direction:     LONG (Spot)`.padEnd(61) + '│');
-    console.log(`│    Leverage:      1x`.padEnd(61) + '│');
-    console.log(`│    Confidence:    ${(finalConfidence * 100).toFixed(0)}%`.padEnd(61) + '│');
-    console.log(`│    Position Size: $${formatUsd(positionSizeUsd)}`.padEnd(61) + '│');
-    console.log(`├──────────────────────────────────────────────────────────┤`);
-    console.log(`│  Entry & Exit:`.padEnd(61) + '│');
-    console.log(`│    ENTRY:       $${formatUsd(entryPrice)}`.padEnd(61) + '│');
-    console.log(`│    TP1 (+12%):  $${formatUsd(tp1Price)} → Exit 40%`.padEnd(61) + '│');
-    console.log(`│    TP2 (+25%):  $${formatUsd(tp2Price)} → Exit 35%`.padEnd(61) + '│');
-    console.log(`│    TP3 (+40%):  $${formatUsd(tp3Price)} → Exit 25%`.padEnd(61) + '│');
-    console.log(`│    STOP LOSS:   $${formatUsd(stopLossPrice)} (-8%)`.padEnd(61) + '│');
-    console.log(`├──────────────────────────────────────────────────────────┤`);
-    console.log(`│  Risk/Reward:`.padEnd(61) + '│');
-    console.log(`│    Expected Return: $${formatUsd(expectedReturnUsd)} (if TP1 hit)`.padEnd(61) + '│');
-    console.log(`│    Max Loss:        $${formatUsd(maxLossUsd)} (if stopped out)`.padEnd(61) + '│');
-    console.log(`│    Risk Score:      ${riskScore}/10`.padEnd(61) + '│');
-    console.log(`│    R/R Ratio:       ${riskRewardRatio.toFixed(1)}:1`.padEnd(61) + '│');
-    console.log(`├──────────────────────────────────────────────────────────┤`);
-    console.log(`│  Analysis Details:`.padEnd(61) + '│');
-    console.log(`│    ML Prediction:   ${(Number(mlPrediction.probability) * 100).toFixed(1)}% BUY probability`.padEnd(61) + '│');
-    console.log(`│    ML Confidence:   ${(Number(mlPrediction.confidence) * 100).toFixed(1)}%`.padEnd(61) + '│');
-    console.log(`│    Rule Score:      ${Number(ruleScore).toFixed(0)}/160 (${(Number(ruleConfidence) * 100).toFixed(1)}%)`.padEnd(61) + '│');
-    console.log(`│    Combined Score:  ${(Number(finalConfidence) * 100).toFixed(1)}% (${(Number(this.spotConfig.mlWeight) * 100).toFixed(0)}% ML + ${(Number(this.spotConfig.ruleWeight) * 100).toFixed(0)}% Rules)`.padEnd(61) + '│');
-    console.log(`├──────────────────────────────────────────────────────────┤`);
-    console.log(`│  Decision:          ${approved ? '✅ APPROVED' : '❌ REJECTED'}`.padEnd(61) + '│');
-    console.log(`│  Threshold:         ${(this.spotConfig.minConfidenceThreshold * 100).toFixed(0)}%`.padEnd(61) + '│');
+    logger.info(`\n┌──────────────────────────────────────────────────────────┐`);
+    logger.info(`│  🎯 SPOT TRADE OPPORTUNITY: ${token.symbol.padEnd(27)} │`);
+    logger.info(`├──────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Token Info:`.padEnd(61) + '│');
+    logger.info(`│    Address:    ${token.address}`.padEnd(61) + '│');
+    logger.info(`│    Price:      $${formatUsd(entryPrice)}`.padEnd(61) + '│');
+    logger.info(`│    Market Cap: ${formatCompact(token.marketCap)}`.padEnd(61) + '│');
+    logger.info(`│    Liquidity:  ${formatCompact(token.liquidity)}`.padEnd(61) + '│');
+    logger.info(`│    Volume 24h: ${formatCompact(token.volume24h)}`.padEnd(61) + '│');
+    logger.info(`├──────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Trading Setup:`.padEnd(61) + '│');
+    logger.info(`│    Direction:     LONG (Spot)`.padEnd(61) + '│');
+    logger.info(`│    Leverage:      1x`.padEnd(61) + '│');
+    logger.info(`│    Confidence:    ${(finalConfidence * 100).toFixed(0)}%`.padEnd(61) + '│');
+    logger.info(`│    Position Size: $${formatUsd(positionSizeUsd)}`.padEnd(61) + '│');
+    logger.info(`├──────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Entry & Exit:`.padEnd(61) + '│');
+    logger.info(`│    ENTRY:       $${formatUsd(entryPrice)}`.padEnd(61) + '│');
+    logger.info(`│    TP1 (+12%):  $${formatUsd(tp1Price)} → Exit 40%`.padEnd(61) + '│');
+    logger.info(`│    TP2 (+25%):  $${formatUsd(tp2Price)} → Exit 35%`.padEnd(61) + '│');
+    logger.info(`│    TP3 (+40%):  $${formatUsd(tp3Price)} → Exit 25%`.padEnd(61) + '│');
+    logger.info(`│    STOP LOSS:   $${formatUsd(stopLossPrice)} (-8%)`.padEnd(61) + '│');
+    logger.info(`├──────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Risk/Reward:`.padEnd(61) + '│');
+    logger.info(`│    Expected Return: $${formatUsd(expectedReturnUsd)} (if TP1 hit)`.padEnd(61) + '│');
+    logger.info(`│    Max Loss:        $${formatUsd(maxLossUsd)} (if stopped out)`.padEnd(61) + '│');
+    logger.info(`│    Risk Score:      ${riskScore}/10`.padEnd(61) + '│');
+    logger.info(`│    R/R Ratio:       ${riskRewardRatio.toFixed(1)}:1`.padEnd(61) + '│');
+    logger.info(`├──────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Analysis Details:`.padEnd(61) + '│');
+    logger.info(`│    ML Prediction:   ${(Number(mlPrediction.probability) * 100).toFixed(1)}% BUY probability`.padEnd(61) + '│');
+    logger.info(`│    ML Confidence:   ${(Number(mlPrediction.confidence) * 100).toFixed(1)}%`.padEnd(61) + '│');
+    logger.info(`│    Rule Score:      ${Number(ruleScore).toFixed(0)}/160 (${(Number(ruleConfidence) * 100).toFixed(1)}%)`.padEnd(61) + '│');
+    logger.info(`│    Combined Score:  ${(Number(finalConfidence) * 100).toFixed(1)}% (${(Number(this.spotConfig.mlWeight) * 100).toFixed(0)}% ML + ${(Number(this.spotConfig.ruleWeight) * 100).toFixed(0)}% Rules)`.padEnd(61) + '│');
+    logger.info(`├──────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Decision:          ${approved ? '✅ APPROVED' : '❌ REJECTED'}`.padEnd(61) + '│');
+    logger.info(`│  Threshold:         ${(this.spotConfig.minConfidenceThreshold * 100).toFixed(0)}%`.padEnd(61) + '│');
     if (rejectReason) {
-      console.log(`│  Reason:            ${rejectReason.substring(0, 38)}`.padEnd(61) + '│');
+      logger.info(`│  Reason:            ${rejectReason.substring(0, 38)}`.padEnd(61) + '│');
     }
     if (warnings.length > 0) {
-      console.log(`├──────────────────────────────────────────────────────────┤`);
-      console.log(`│  ⚠️  Warnings:`.padEnd(61) + '│');
+      logger.info(`├──────────────────────────────────────────────────────────┤`);
+      logger.info(`│  ⚠️  Warnings:`.padEnd(61) + '│');
       warnings.forEach(w => {
-        console.log(`│    - ${w.substring(0, 51)}`.padEnd(61) + '│');
+        logger.info(`│    - ${w.substring(0, 51)}`.padEnd(61) + '│');
       });
     }
-    console.log(`└──────────────────────────────────────────────────────────┘`);
+    logger.info(`└──────────────────────────────────────────────────────────┘`);
 
 
     return result;

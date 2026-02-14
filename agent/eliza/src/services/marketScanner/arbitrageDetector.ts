@@ -3,6 +3,7 @@
  */
 
 import type { CEXPrice, DEXPrice, ArbitrageOpportunity } from './types.js';
+import { logger } from '../logger.js';
 
 // Fee estimates per exchange (%)
 const EXCHANGE_FEES: Record<string, number> = {
@@ -103,7 +104,7 @@ export function detectArbitrage(
     const highest = sorted[sorted.length - 1];
 
     // DEBUG: Log price comparison
-    console.log(`[ArbitrageDetector] ${symbol}: lowest=${lowest.exchange}@$${lowest.price.toFixed(6)}, highest=${highest.exchange}@$${highest.price.toFixed(6)}`);
+    logger.info(`[ArbitrageDetector] ${symbol}: lowest=${lowest.exchange}@$${lowest.price.toFixed(6)}, highest=${highest.exchange}@$${highest.price.toFixed(6)}`);
 
     const spreadPct = ((highest.price - lowest.price) / lowest.price) * 100;
 
@@ -111,7 +112,7 @@ export function detectArbitrage(
     // Anything above 10% is likely a data error
     if (spreadPct < minSpreadPct || spreadPct > 10) {
       if (spreadPct > 10) {
-        console.log(`[ArbitrageDetector] ⚠️  ${symbol}: Spread ${spreadPct.toFixed(2)}% too high (>10%), likely data error - SKIPPED`);
+        logger.info(`[ArbitrageDetector] ⚠️  ${symbol}: Spread ${spreadPct.toFixed(2)}% too high (>10%), likely data error - SKIPPED`);
       }
       continue;
     }

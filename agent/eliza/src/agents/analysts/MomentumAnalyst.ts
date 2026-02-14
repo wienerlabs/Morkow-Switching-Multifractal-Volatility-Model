@@ -9,6 +9,7 @@ import { BaseAnalyst, DEFAULT_ANALYST_CONFIG, type AnalystConfig } from './BaseA
 import type { FundingArbitrageOpportunity } from '../../services/marketScanner/types.js';
 import { getSentimentIntegration, type SentimentAdjustedScore } from '../../services/sentiment/sentimentIntegration.js';
 import { RiskManager } from '../../services/riskManager.js';
+import { logger } from '../../services/logger.js';
 
 /**
  * Input for MomentumAnalyst
@@ -71,7 +72,7 @@ export class MomentumAnalyst extends BaseAnalyst<MomentumAnalysisInput, Momentum
       dataQualityScore: 0.56,
     });
 
-    console.log(`ℹ️ [${new Date().toISOString()}] [AGENT] [MomentumAnalyst] Initialized`, {
+    logger.info(`ℹ️ [${new Date().toISOString()}] [AGENT] [MomentumAnalyst] Initialized`, {
       config: this.momentumConfig,
     });
   }
@@ -179,34 +180,34 @@ export class MomentumAnalyst extends BaseAnalyst<MomentumAnalysisInput, Momentum
     const finalPassesThreshold = confidence >= this.momentumConfig.minConfidenceThreshold;
     const delta = confidence - baseConfidence;
 
-    console.log(`\n┌─────────────────────────────────────────────────────────┐`);
-    console.log(`│  🔄 FUNDING ARB OPPORTUNITY EVALUATION WITH SENTIMENT   │`);
-    console.log(`├─────────────────────────────────────────────────────────┤`);
-    console.log(`│  Market:              ${arb.market.padEnd(35)}│`);
-    console.log(`│  Token:               ${token.padEnd(35)}│`);
-    console.log(`│  Route:               ${(arb.longVenue + '↔' + arb.shortVenue).padEnd(35)}│`);
-    console.log(`│  Spread:              ${(arb.estimatedProfitBps.toFixed(1) + 'bps').padEnd(35)}│`);
-    console.log(`├─────────────────────────────────────────────────────────┤`);
-    console.log(`│  ML Confidence:       ${baseConfidence.toFixed(3).padEnd(35)}│`);
+    logger.info(`\n┌─────────────────────────────────────────────────────────┐`);
+    logger.info(`│  🔄 FUNDING ARB OPPORTUNITY EVALUATION WITH SENTIMENT   │`);
+    logger.info(`├─────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Market:              ${arb.market.padEnd(35)}│`);
+    logger.info(`│  Token:               ${token.padEnd(35)}│`);
+    logger.info(`│  Route:               ${(arb.longVenue + '↔' + arb.shortVenue).padEnd(35)}│`);
+    logger.info(`│  Spread:              ${(arb.estimatedProfitBps.toFixed(1) + 'bps').padEnd(35)}│`);
+    logger.info(`├─────────────────────────────────────────────────────────┤`);
+    logger.info(`│  ML Confidence:       ${baseConfidence.toFixed(3).padEnd(35)}│`);
     if (sentimentAdjustment.sentimentAvailable) {
-      console.log(`│  Sentiment Score:     ${sentimentAdjustment.rawSentiment.toFixed(3)} (${sentimentAdjustment.signal})`.padEnd(60) + `│`);
-      console.log(`│  Normalized:          ${sentimentAdjustment.normalizedSentiment.toFixed(3).padEnd(35)}│`);
-      console.log(`│  Sentiment Weight:    ${'5% (delta-neutral)'.padEnd(35)}│`);
-      console.log(`│  Final Confidence:    ${confidence.toFixed(3).padEnd(35)}│`);
-      console.log(`│  Delta:               ${(delta >= 0 ? '+' : '') + delta.toFixed(3)}`.padEnd(60) + `│`);
+      logger.info(`│  Sentiment Score:     ${sentimentAdjustment.rawSentiment.toFixed(3)} (${sentimentAdjustment.signal})`.padEnd(60) + `│`);
+      logger.info(`│  Normalized:          ${sentimentAdjustment.normalizedSentiment.toFixed(3).padEnd(35)}│`);
+      logger.info(`│  Sentiment Weight:    ${'5% (delta-neutral)'.padEnd(35)}│`);
+      logger.info(`│  Final Confidence:    ${confidence.toFixed(3).padEnd(35)}│`);
+      logger.info(`│  Delta:               ${(delta >= 0 ? '+' : '') + delta.toFixed(3)}`.padEnd(60) + `│`);
     } else {
-      console.log(`│  Sentiment:           ${'unavailable (using ML only)'.padEnd(35)}│`);
+      logger.info(`│  Sentiment:           ${'unavailable (using ML only)'.padEnd(35)}│`);
     }
-    console.log(`├─────────────────────────────────────────────────────────┤`);
-    console.log(`│  Threshold:           ${this.momentumConfig.minConfidenceThreshold.toFixed(3).padEnd(35)}│`);
-    console.log(`│  Decision:            ${(finalPassesThreshold ? 'TRADE ✅' : 'SKIP ❌').padEnd(35)}│`);
+    logger.info(`├─────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Threshold:           ${this.momentumConfig.minConfidenceThreshold.toFixed(3).padEnd(35)}│`);
+    logger.info(`│  Decision:            ${(finalPassesThreshold ? 'TRADE ✅' : 'SKIP ❌').padEnd(35)}│`);
     if (mlPassesThreshold && !finalPassesThreshold) {
-      console.log(`│  ⚠️  SENTIMENT PREVENTED TRADE                          │`);
+      logger.info(`│  ⚠️  SENTIMENT PREVENTED TRADE                          │`);
     }
     if (!mlPassesThreshold && finalPassesThreshold) {
-      console.log(`│  ✨ SENTIMENT ENABLED TRADE                             │`);
+      logger.info(`│  ✨ SENTIMENT ENABLED TRADE                             │`);
     }
-    console.log(`└─────────────────────────────────────────────────────────┘`);
+    logger.info(`└─────────────────────────────────────────────────────────┘`);
   }
 
   /**

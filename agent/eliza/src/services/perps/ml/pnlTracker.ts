@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { PositionSide } from '../../../types/perps.js';
 import type { CloseReason, TrackedPosition } from './tradingAgent.js';
+import { logger } from '../../logger.js';
 
 // ============= TYPES =============
 
@@ -91,7 +92,7 @@ class PnLTracker {
         });
       }
     } catch (err) {
-      console.warn('Could not load existing P&L data:', err);
+      logger.warn('Could not load existing P&L data:', err);
     }
   }
 

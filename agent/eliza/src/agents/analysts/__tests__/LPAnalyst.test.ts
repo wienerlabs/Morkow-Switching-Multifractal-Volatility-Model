@@ -134,8 +134,8 @@ describe('LPAnalyst', () => {
       expect(results[0].rejectReason).toContain('APY too high');
     });
 
-    it('should reject pools with TVL < $300k', async () => {
-      const pool = createMockPool({ tvl: 200_000 });
+    it('should reject pools with TVL < $100k', async () => {
+      const pool = createMockPool({ tvl: 50_000 });
       const input = createInput([pool]);
 
       const results = await analyst.analyze(input);
@@ -319,14 +319,13 @@ describe('LPAnalyst', () => {
       expect(results[0].approved).toBe(true);
     });
 
-    it('should filter below 84% confidence threshold', async () => {
-      const pool = createMockPool({ apy: 50, tvl: 1_000_000, volume24h: 400_000 }); // Low confidence
+    it('should filter below 50% confidence threshold', async () => {
+      const pool = createMockPool({ apy: 50, tvl: 150_000, volume24h: 20_000 }); // Low confidence
       const input = createInput([pool]);
 
       const results = await analyst.analyze(input);
 
-      // Heuristic confidence: (0.8 + 0.8) / 2 = 0.8 < 0.84
-      expect(results[0].confidence).toBeLessThan(0.84);
+      expect(results[0].confidence).toBeLessThan(0.50);
       expect(results[0].approved).toBe(false);
     });
 
@@ -357,7 +356,7 @@ describe('LPAnalyst', () => {
     it('should return results even if all rejected', async () => {
       const pools = [
         createMockPool({ apy: 600 }), // Too high APY
-        createMockPool({ tvl: 100_000 }), // Too low TVL
+        createMockPool({ tvl: 50_000 }), // Too low TVL (below $100k)
         createMockPool({ name: 'SCAM/USDC' }), // Unknown token
       ];
       const input = createInput(pools);

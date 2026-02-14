@@ -314,18 +314,18 @@ export class FundamentalAnalyst extends BaseAnalyst<FundamentalInput, Fundamenta
       ? '>1M (highly distributed)'
       : result.details.holderCount.toLocaleString();
 
-    console.log(`\n${emoji} FUNDAMENTAL: ${result.name}`);
-    console.log(`   ${ratingEmoji} Rating: ${result.rating} | Score: ${result.healthScore}/100`);
-    console.log(`   📊 Metrics: Holders=${result.metrics.holderConcentration}/40 Liquidity=${result.metrics.liquidityDepth}/30 Age=${result.metrics.tokenAge}/20 Whale=${result.metrics.whaleActivity}/10`);
-    console.log(`   🎯 Details: Holders=${holderCountDisplay} Top10=${result.details.topHoldersPercentage.toFixed(1)}% TVL=$${(result.details.tvlUsd / 1_000_000).toFixed(2)}M Age=${result.details.ageInDays}d Whale=${result.details.whaleTransferCount}`);
-    console.log(`   🎲 Risk: ${result.riskScore.toFixed(1)}/10 | Confidence: ${(result.confidence * 100).toFixed(0)}%`);
+    logger.info(`\n${emoji} FUNDAMENTAL: ${result.name}`);
+    logger.info(`   ${ratingEmoji} Rating: ${result.rating} | Score: ${result.healthScore}/100`);
+    logger.info(`   📊 Metrics: Holders=${result.metrics.holderConcentration}/40 Liquidity=${result.metrics.liquidityDepth}/30 Age=${result.metrics.tokenAge}/20 Whale=${result.metrics.whaleActivity}/10`);
+    logger.info(`   🎯 Details: Holders=${holderCountDisplay} Top10=${result.details.topHoldersPercentage.toFixed(1)}% TVL=$${(result.details.tvlUsd / 1_000_000).toFixed(2)}M Age=${result.details.ageInDays}d Whale=${result.details.whaleTransferCount}`);
+    logger.info(`   🎲 Risk: ${result.riskScore.toFixed(1)}/10 | Confidence: ${(result.confidence * 100).toFixed(0)}%`);
 
     if (!result.approved && result.rejectReason) {
-      console.log(`   ⚠️ Rejected: ${result.rejectReason}`);
+      logger.info(`   ⚠️ Rejected: ${result.rejectReason}`);
     }
 
     if (result.warnings.length > 0) {
-      console.log(`   ⚠️ Warnings: ${result.warnings.join(', ')}`);
+      logger.info(`   ⚠️ Warnings: ${result.warnings.join(', ')}`);
     }
   }
 

@@ -12,6 +12,7 @@ import { engineerFeatures } from '../features/engineer.js';
 import type { PoolFeatures } from '../inference/model.js';
 import type { LPPool } from './marketScanner/types.js';
 import { getSolPrice } from './marketData.js';
+import { logger } from './logger.js';
 
 // Cache configuration
 const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
@@ -50,7 +51,7 @@ class FeatureBuilderService {
    */
   initialize(apiKey: string): void {
     this.provider = new BirdeyeProvider(apiKey);
-    console.log('[FeatureBuilder] Initialized with Birdeye API');
+    logger.info('[FeatureBuilder] Initialized with Birdeye API');
   }
 
   /**
@@ -73,7 +74,7 @@ class FeatureBuilderService {
     }
 
     if (!this.provider) {
-      console.warn('[FeatureBuilder] Not initialized - using fallback features');
+      logger.warn('[FeatureBuilder] Not initialized - using fallback features');
       return await this.getFallbackFeatures(pool);
     }
 
@@ -81,14 +82,14 @@ class FeatureBuilderService {
       // Fetch OHLCV for pool's token pair
       const tokenAddress = this.getTokenAddress(pool);
       if (!tokenAddress) {
-        console.warn(`[FeatureBuilder] Unknown token for pool ${pool.name}`);
+        logger.warn(`[FeatureBuilder] Unknown token for pool ${pool.name}`);
         return await this.getFallbackFeatures(pool);
       }
 
       // Get OHLCV data (168 hours = 7 days for all features)
       const ohlcv = await this.getOHLCVWithCache(tokenAddress, 168);
       if (ohlcv.length === 0) {
-        console.warn(`[FeatureBuilder] No OHLCV data for ${pool.name}`);
+        logger.warn(`[FeatureBuilder] No OHLCV data for ${pool.name}`);
         return await this.getFallbackFeatures(pool);
       }
 
@@ -109,7 +110,7 @@ class FeatureBuilderService {
 
       return features;
     } catch (error) {
-      console.error(`[FeatureBuilder] Error fetching features for ${pool.name}:`, error);
+      logger.error(`[FeatureBuilder] Error fetching features for ${pool.name}:`, error);
       return await this.getFallbackFeatures(pool);
     }
   }
@@ -127,7 +128,7 @@ class FeatureBuilderService {
     for (let i = 0; i < pools.length; i += BATCH_SIZE) {
       const batch = pools.slice(i, i + BATCH_SIZE);
       
-      console.log(`[FeatureBuilder] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(pools.length / BATCH_SIZE)}`);
+      logger.info(`[FeatureBuilder] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(pools.length / BATCH_SIZE)}`);
 
       // Parallel fetch within batch
       const batchResults = await Promise.all(
@@ -149,7 +150,7 @@ class FeatureBuilderService {
       }
     }
 
-    console.log(`[FeatureBuilder] Completed: ${results.size}/${pools.length} pools with features`);
+    logger.info(`[FeatureBuilder] Completed: ${results.size}/${pools.length} pools with features`);
     return results;
   }
 
@@ -174,7 +175,7 @@ class FeatureBuilderService {
       this.ohlcvCache.set(cacheKey, { data, timestamp: Date.now() });
       return data;
     } catch (error) {
-      console.error(`[FeatureBuilder] OHLCV fetch failed for ${tokenAddress}:`, error);
+      logger.error(`[FeatureBuilder] OHLCV fetch failed for ${tokenAddress}:`, error);
       return cached?.data ?? [];
     }
   }
@@ -203,9 +204,9 @@ class FeatureBuilderService {
       };
 
       this.tokenHistoryLastUpdate = Date.now();
-      console.log(`[FeatureBuilder] Token history updated: SOL=${this.tokenPriceHistory.SOL.length}h, USDC=${this.tokenPriceHistory.USDC.length}h`);
+      logger.info(`[FeatureBuilder] Token history updated: SOL=${this.tokenPriceHistory.SOL.length}h, USDC=${this.tokenPriceHistory.USDC.length}h`);
     } catch (error) {
-      console.error('[FeatureBuilder] Failed to update token history:', error);
+      logger.error('[FeatureBuilder] Failed to update token history:', error);
     }
   }
 
@@ -311,7 +312,7 @@ class FeatureBuilderService {
   clearCache(): void {
     this.featureCache.clear();
     this.ohlcvCache.clear();
-    console.log('[FeatureBuilder] Cache cleared');
+    logger.info('[FeatureBuilder] Cache cleared');
   }
 
   /**

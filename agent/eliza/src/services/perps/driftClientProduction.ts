@@ -1476,7 +1476,7 @@ export function getDriftProductionClient(
 
 export function resetDriftProductionClient(): void {
   if (driftProductionInstance) {
-    driftProductionInstance.destroy().catch(console.error);
+    driftProductionInstance.destroy().catch((err) => logger.error('Failed to destroy DriftProductionClient', { error: String(err) }));
   }
   driftProductionInstance = null;
 }

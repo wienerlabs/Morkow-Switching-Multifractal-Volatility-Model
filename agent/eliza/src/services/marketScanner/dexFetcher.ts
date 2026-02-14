@@ -3,6 +3,7 @@
  */
 
 import type { DEXPrice, LPPool, NewToken } from './types.js';
+import { logger } from '../logger.js';
 
 // API Endpoints
 const BIRDEYE_API = 'https://public-api.birdeye.so';
@@ -54,7 +55,7 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 
       if (resp.ok) return resp;
       if (resp.status >= 500 && i < retries - 1) {
         const waitTime = Math.pow(2, i) * 1000; // Exponential backoff: 1s, 2s, 4s
-        console.log(`[DEXFetcher] Server error (${resp.status}), retrying in ${waitTime}ms (attempt ${i + 1}/${retries})`);
+        logger.info(`[DEXFetcher] Server error (${resp.status}), retrying in ${waitTime}ms (attempt ${i + 1}/${retries})`);
         await new Promise(r => setTimeout(r, waitTime));
         continue;
       }
@@ -65,9 +66,9 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 
       if (i < retries - 1) {
         const waitTime = Math.pow(2, i) * 2000; // Exponential backoff: 2s, 4s, 8s
         if (isTimeout) {
-          console.log(`[DEXFetcher] Timeout (${timeoutMs}ms), retrying in ${waitTime}ms (attempt ${i + 1}/${retries})`);
+          logger.info(`[DEXFetcher] Timeout (${timeoutMs}ms), retrying in ${waitTime}ms (attempt ${i + 1}/${retries})`);
         } else {
-          console.log(`[DEXFetcher] Connection error, retrying in ${waitTime}ms (attempt ${i + 1}/${retries})`);
+          logger.info(`[DEXFetcher] Connection error, retrying in ${waitTime}ms (attempt ${i + 1}/${retries})`);
         }
         await new Promise(r => setTimeout(r, waitTime));
         continue;
@@ -86,7 +87,7 @@ export async function fetchBirdeyePricesReal(symbols: string[]): Promise<DEXPric
   const prices: DEXPrice[] = [];
   const apiKey = getBirdeyeApiKey();
   if (!apiKey) {
-    console.warn('[Birdeye] No API key, skipping');
+    logger.warn('[Birdeye] No API key, skipping');
     return prices;
   }
 
@@ -115,7 +116,7 @@ export async function fetchBirdeyePricesReal(symbols: string[]): Promise<DEXPric
       });
     }
   } catch (e) {
-    console.error('[Birdeye] Multi-price error:', e);
+    logger.error('[Birdeye] Multi-price error:', { error: String(e) });
   }
   return prices;
 }
@@ -151,7 +152,7 @@ export async function fetchJupiterPrices(symbols: string[]): Promise<DEXPrice[]>
       });
     }
   } catch (e) {
-    console.error('[Jupiter] Price API error:', e);
+    logger.error('[Jupiter] Price API error:', { error: String(e) });
   }
   return prices;
 }
@@ -184,11 +185,11 @@ export async function fetchDexScreenerPrices(symbols: string[]): Promise<DEXPric
         const price = parseFloat(bestPair.priceUsd);
 
         // DEBUG: Log what we're getting
-        console.log(`[DexScreener] ${symbol}: dexId=${bestPair.dexId}, priceUsd=${bestPair.priceUsd}, parsed=${price}`);
+        logger.info(`[DexScreener] ${symbol}: dexId=${bestPair.dexId}, priceUsd=${bestPair.priceUsd}, parsed=${price}`);
 
         // Skip if price is invalid or DEX is unknown
         if (!price || price <= 0 || actualDex === 'unknown') {
-          console.warn(`[DexScreener] Skipping ${symbol}: invalid price (${price}) or DEX (${actualDex})`);
+          logger.warn(`[DexScreener] Skipping ${symbol}: invalid price (${price}) or DEX (${actualDex})`);
           continue;
         }
 
@@ -205,10 +206,10 @@ export async function fetchDexScreenerPrices(symbols: string[]): Promise<DEXPric
           timestamp: Date.now(),
         });
 
-        console.log(`[DexScreener] ✅ Added ${symbol} from ${actualDex}: $${price.toFixed(6)}`);
+        logger.info(`[DexScreener] Added ${symbol} from ${actualDex}: $${price.toFixed(6)}`);
       }
     } catch (e) {
-      console.error(`[DexScreener] ${symbol} error:`, e);
+      logger.error(`[DexScreener] ${symbol} error:`, { error: String(e) });
     }
   }
   return prices;
@@ -262,7 +263,7 @@ export async function fetchRaydiumPrices(symbols: string[]): Promise<DEXPrice[]>
       }
     }
   } catch (e) {
-    console.error('[Raydium] Error:', e);
+    logger.error('[Raydium] Error:', { error: String(e) });
   }
   return prices;
 }
@@ -329,7 +330,7 @@ export async function fetchOrcaPrices(symbols: string[]): Promise<DEXPrice[]> {
       }
     }
   } catch (e) {
-    console.error('[Orca] Error:', e);
+    logger.error('[Orca] Error:', { error: String(e) });
   }
   return prices;
 }
@@ -378,7 +379,7 @@ export async function fetchMeteoraPrices(symbols: string[]): Promise<DEXPrice[]>
       }
     }
   } catch (e) {
-    console.error('[Meteora] Error:', e);
+    logger.error('[Meteora] Error:', { error: String(e) });
   }
   return prices;
 }
@@ -413,7 +414,7 @@ export async function fetchBirdeyePrices(symbols: string[]): Promise<DEXPrice[]>
   const birdeye = results[3].status === 'fulfilled' ? results[3].value : [];
   const jupiter = results[4].status === 'fulfilled' ? results[4].value : [];
 
-  console.log(`[DEX] Raydium: ${raydium.length}, Orca: ${orca.length}, Meteora: ${meteora.length}, DexScreener: ${dexscreener.length}`);
+  logger.info(`[DEX] Raydium: ${raydium.length}, Orca: ${orca.length}, Meteora: ${meteora.length}, DexScreener: ${dexscreener.length}`);
 
   // Combine all - each source gets its own entry
   const priceMap = new Map<string, DEXPrice>();
@@ -479,7 +480,7 @@ export async function fetchDexScreenerPools(baseToken = 'SOL'): Promise<DEXPrice
       });
     }
   } catch (e) {
-    console.error('[DexScreener] Fetch error:', e);
+    logger.error('[DexScreener] Fetch error:', { error: String(e) });
   }
   return prices;
 }
@@ -526,7 +527,7 @@ async function fetchBirdeyeLPPools(): Promise<LPPool[]> {
       });
     }
   } catch (e) {
-    console.error('[Birdeye] Pool fetch error:', e);
+    logger.error('[Birdeye] Pool fetch error:', { error: String(e) });
   }
   return pools;
 }
@@ -576,7 +577,7 @@ async function fetchDexScreenerLPPools(): Promise<LPPool[]> {
         });
       }
     } catch (e) {
-      console.error(`[DexScreener] ${baseToken} pool fetch error:`, e);
+      logger.error(`[DexScreener] ${baseToken} pool fetch error:`, { error: String(e) });
     }
   }
 
@@ -616,7 +617,7 @@ async function fetchRaydiumLPPools(): Promise<LPPool[]> {
       });
     }
   } catch (e) {
-    console.error('[Raydium] Pool fetch error:', e);
+    logger.error('[Raydium] Pool fetch error:', { error: String(e) });
   }
   return pools;
 }
@@ -654,7 +655,7 @@ async function fetchOrcaLPPools(): Promise<LPPool[]> {
       });
     }
   } catch (e) {
-    console.error('[Orca] Pool fetch error:', e);
+    logger.error('[Orca] Pool fetch error:', { error: String(e) });
   }
   return pools;
 }
@@ -692,7 +693,7 @@ async function fetchMeteoraLPPools(): Promise<LPPool[]> {
       });
     }
   } catch (e) {
-    console.error('[Meteora] Pool fetch error:', e);
+    logger.error('[Meteora] Pool fetch error:', { error: String(e) });
   }
   return pools;
 }
@@ -714,7 +715,7 @@ export async function fetchTopLPPools(): Promise<LPPool[]> {
   const meteoraPools = results[2].status === 'fulfilled' ? results[2].value : [];
   const birdeyePools = results[3].status === 'fulfilled' ? results[3].value : [];
 
-  console.log(`[LP Pools] Raydium: ${raydiumPools.length}, Orca: ${orcaPools.length}, Meteora: ${meteoraPools.length}, DexScreener: ${dexscreenerPools.length}`);
+  logger.info(`[LP Pools] Raydium: ${raydiumPools.length}, Orca: ${orcaPools.length}, Meteora: ${meteoraPools.length}, DexScreener: ${dexscreenerPools.length}`);
 
   // Merge all pools - prefer native APIs over DexScreener
   const poolMap = new Map<string, LPPool>();
@@ -767,7 +768,7 @@ async function fetchBirdeyeNewTokens(minLiquidity: number): Promise<NewToken[]> 
       });
     }
   } catch (e) {
-    console.error('[Birdeye] New tokens fetch error:', e);
+    logger.error('[Birdeye] New tokens fetch error:', { error: String(e) });
   }
   return tokens;
 }
@@ -808,7 +809,7 @@ async function fetchDexScreenerNewTokens(minLiquidity: number): Promise<NewToken
       });
     }
   } catch (e) {
-    console.error('[DexScreener] New tokens fetch error:', e);
+    logger.error('[DexScreener] New tokens fetch error:', { error: String(e) });
   }
   return tokens;
 }
@@ -819,7 +820,7 @@ export async function fetchNewTokens(minLiquidity = 50000): Promise<NewToken[]> 
     fetchDexScreenerNewTokens(minLiquidity),
   ]);
 
-  console.log(`[New Tokens] Birdeye: ${birdeyeTokens.length}, DexScreener: ${dexscreenerTokens.length}`);
+  logger.info(`[New Tokens] Birdeye: ${birdeyeTokens.length}, DexScreener: ${dexscreenerTokens.length}`);
 
   // Merge by address
   const tokenMap = new Map<string, NewToken>();
@@ -870,7 +871,7 @@ export async function fetchTrendingTokens(): Promise<string[]> {
 
     return Array.from(symbols);
   } catch (e) {
-    console.error('[DexScreener] Trending tokens error:', e);
+    logger.error('[DexScreener] Trending tokens error:', { error: String(e) });
     return [];
   }
 }
