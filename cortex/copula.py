@@ -30,9 +30,19 @@ from scipy.optimize import minimize
 from scipy.special import gammaln
 from scipy.stats import kendalltau, multivariate_normal, norm, t as student_t
 
+from cortex.config import COPULA_ENGINE
+
 logger = logging.getLogger(__name__)
 
 COPULA_FAMILIES = ("gaussian", "student_t", "clayton", "gumbel", "frank")
+
+# ── Optional pyvinecopulib ──
+_VINE_AVAILABLE = False
+try:
+    import pyvinecopulib as pv
+    _VINE_AVAILABLE = True
+except ImportError:
+    pv = None  # type: ignore[assignment]
 
 
 def _to_uniform(data: np.ndarray) -> np.ndarray:
@@ -659,6 +669,191 @@ def regime_dependent_copula_var(
         "regime_tail_dependence": regime_tail_dependence,
         "dominant_regime": dominant_k + 1,
         "regime_probs": probs.tolist(),
+        "n_simulations": n_simulations,
+        "alpha": alpha,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Vine Copula (pyvinecopulib) — Wave 11B
+# ═══════════════════════════════════════════════════════════════════════
+
+_VINE_FAMILY_MAP = {
+    "gaussian": "gaussian",
+    "student_t": "student",
+    "clayton": "clayton",
+    "gumbel": "gumbel",
+    "frank": "frank",
+}
+
+
+def fit_vine_copula(
+    returns: np.ndarray | pd.DataFrame,
+    structure: str = "rvine",
+    family_set: list[str] | None = None,
+) -> dict:
+    """Fit a vine copula to multivariate return data using pyvinecopulib.
+
+    Vine copulas model high-dimensional dependencies through a cascade of
+    bivariate pair-copulas arranged in a tree structure. Much more flexible
+    than single bivariate copulas for d > 2 assets.
+
+    Args:
+        returns: (T, d) array or DataFrame of returns.
+        structure: "rvine" (default), "cvine", or "dvine".
+        family_set: List of copula families to consider. None = all available.
+
+    Returns:
+        Dict with structure, families_used, log_likelihood, aic, bic,
+        n_params, tail_dependence_summary, vine_object (for simulation).
+
+    Raises:
+        RuntimeError: If pyvinecopulib is not installed.
+    """
+    if not _VINE_AVAILABLE:
+        raise RuntimeError(
+            "pyvinecopulib not installed. Install with: pip install pyvinecopulib"
+        )
+
+    if isinstance(returns, pd.DataFrame):
+        returns = returns.values
+    n, d = returns.shape
+
+    u = pv.to_pseudo_obs(returns)
+
+    # Build family set
+    pv_families = None
+    if family_set:
+        pv_families = []
+        for f in family_set:
+            mapped = _VINE_FAMILY_MAP.get(f, f)
+            try:
+                pv_families.append(getattr(pv.BicopFamily, mapped))
+            except AttributeError:
+                logger.warning("Unknown vine copula family '%s', skipping", f)
+        if not pv_families:
+            pv_families = None
+
+    # Structure type
+    struct_map = {"rvine": "rvine", "cvine": "cvine", "dvine": "dvine"}
+    trunc_lvl = d - 1
+
+    controls = pv.FitControlsVinecop(
+        family_set=pv_families or [
+            pv.BicopFamily.gaussian,
+            pv.BicopFamily.student,
+            pv.BicopFamily.clayton,
+            pv.BicopFamily.gumbel,
+            pv.BicopFamily.frank,
+        ],
+        trunc_lvl=trunc_lvl,
+    )
+
+    vine = pv.Vinecop(data=u, controls=controls)
+
+    ll = float(vine.loglik(u))
+    n_params = int(vine.npars)
+    aic = 2 * n_params - 2 * ll
+    bic = n_params * np.log(n) - 2 * ll
+
+    # Extract family info from each pair copula
+    families_used: list[str] = []
+    for tree in range(min(d - 1, trunc_lvl)):
+        for edge in range(d - 1 - tree):
+            try:
+                pc = vine.get_pair_copula(tree, edge)
+                families_used.append(str(pc.family))
+            except Exception:
+                pass
+
+    return {
+        "engine": "pyvinecopulib",
+        "structure": structure,
+        "n_obs": n,
+        "n_assets": d,
+        "families_used": families_used,
+        "log_likelihood": ll,
+        "n_params": n_params,
+        "aic": aic,
+        "bic": bic,
+        "_vine_object": vine,
+    }
+
+
+def vine_copula_simulate(
+    vine_fit: dict,
+    n_samples: int = 10_000,
+    seed: int = 42,
+) -> np.ndarray:
+    """Generate uniform samples from a fitted vine copula.
+
+    Args:
+        vine_fit: Output of fit_vine_copula().
+        n_samples: Number of samples to generate.
+        seed: Random seed.
+
+    Returns:
+        (n_samples, d) array of uniform samples.
+    """
+    vine = vine_fit["_vine_object"]
+    return vine.simulate(n=n_samples, seeds=[seed])
+
+
+def vine_copula_portfolio_var(
+    model: dict,
+    weights: dict[str, float],
+    vine_fit: dict,
+    alpha: float = 0.05,
+    n_simulations: int = 10_000,
+    seed: int = 42,
+) -> dict:
+    """Portfolio VaR using vine copula Monte Carlo simulation.
+
+    Like copula_portfolio_var() but uses vine copula for proper multivariate
+    dependence instead of single-family bivariate approximation.
+
+    Args:
+        model: Output of calibrate_multivariate().
+        weights: Asset weights dict.
+        vine_fit: Output of fit_vine_copula().
+        alpha: VaR confidence level.
+        n_simulations: Number of MC draws.
+        seed: Random seed.
+
+    Returns:
+        Dict with vine_var, gaussian_var, var_ratio, simulation details.
+    """
+    assets = model["assets"]
+    d = len(assets)
+    w = np.array([weights.get(a, 0.0) for a in assets])
+    probs = model["current_probs"]
+
+    u_sim = vine_copula_simulate(vine_fit, n_simulations, seed)
+
+    returns_sim = np.zeros_like(u_sim)
+    for i, asset in enumerate(assets):
+        sigma_i = sum(
+            probs[k] * model["per_asset"][asset]["sigma_states"][k]
+            for k in range(model["num_states"])
+        )
+        returns_sim[:, i] = norm.ppf(np.clip(u_sim[:, i], 1e-10, 1 - 1e-10)) * sigma_i
+
+    port_returns = returns_sim @ w
+    vine_var = float(np.percentile(port_returns, alpha * 100))
+
+    from cortex.portfolio import portfolio_var as pvar_fn
+    gauss_result = pvar_fn(model, weights, alpha=alpha)
+    gaussian_var = gauss_result["portfolio_var"]
+
+    var_ratio = vine_var / gaussian_var if abs(gaussian_var) > 1e-12 else 1.0
+
+    return {
+        "vine_var": vine_var,
+        "gaussian_var": gaussian_var,
+        "var_ratio": var_ratio,
+        "engine": "pyvinecopulib",
+        "structure": vine_fit.get("structure", "rvine"),
+        "n_params": vine_fit.get("n_params", 0),
         "n_simulations": n_simulations,
         "alpha": alpha,
     }
