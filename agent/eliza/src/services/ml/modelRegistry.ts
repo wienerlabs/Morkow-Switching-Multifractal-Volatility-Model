@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from '../logger.js';
 
 // ============= TYPES =============
 
@@ -106,7 +107,7 @@ class ModelRegistry {
         this.initializeFromMetadata();
       }
     } catch (error) {
-      console.error('[ModelRegistry] Failed to load registry:', error);
+      logger.error('[ModelRegistry] Failed to load registry:', { error: String(error) });
       this.initializeFromMetadata();
     }
   }
@@ -118,7 +119,7 @@ class ModelRegistry {
     const metadataDir = path.join(MODELS_DIR, 'metadata');
     
     if (!fs.existsSync(metadataDir)) {
-      console.log('[ModelRegistry] No metadata directory found');
+      logger.info('[ModelRegistry] No metadata directory found');
       return;
     }
 
@@ -138,7 +139,7 @@ class ModelRegistry {
           this.addVersion(version);
         }
       } catch (error) {
-        console.error(`[ModelRegistry] Failed to parse ${file}:`, error);
+        logger.error(`[ModelRegistry] Failed to parse ${file}:`, { error: String(error) });
       }
     }
 
@@ -253,7 +254,7 @@ class ModelRegistry {
     this.activeModels.set(modelName, target);
     this.saveRegistry();
 
-    console.log(`[ModelRegistry] Rolled back ${modelName} to ${targetVersion}`);
+    logger.info(`[ModelRegistry] Rolled back ${modelName} to ${targetVersion}`);
     return true;
   }
 
@@ -325,7 +326,7 @@ class ModelRegistry {
 
       this.predictionLogs = [];
     } catch (error) {
-      console.error('[ModelRegistry] Failed to flush prediction logs:', error);
+      logger.error('[ModelRegistry] Failed to flush prediction logs:', { error: String(error) });
     }
   }
 
@@ -341,7 +342,7 @@ class ModelRegistry {
 
       fs.writeFileSync(REGISTRY_FILE, JSON.stringify(data, null, 2));
     } catch (error) {
-      console.error('[ModelRegistry] Failed to save registry:', error);
+      logger.error('[ModelRegistry] Failed to save registry:', { error: String(error) });
     }
   }
 
@@ -415,7 +416,7 @@ class ModelRegistry {
         }
       }
     } catch (error) {
-      console.error('[ModelRegistry] Failed to read prediction logs from disk:', error);
+      logger.error('[ModelRegistry] Failed to read prediction logs from disk:', { error: String(error) });
     }
 
     return logs;

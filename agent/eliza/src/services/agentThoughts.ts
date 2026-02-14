@@ -4,6 +4,7 @@
  */
 
 import type { ArbitrageOpportunity, LPPool } from './marketScanner/types.js';
+import { logger } from './logger.js';
 
 // ============= EXCHANGE/POOL LINKS =============
 
@@ -118,20 +119,20 @@ export function logArbitrageEvaluation(
     direction = 'DEX→DEX ⚠️ (arbitrage yok)';
   }
 
-  console.log(`\n[AGENT] 🤔 Evaluating: ${arb.symbol} arbitrage +${arb.spreadPct.toFixed(1)}%`);
-  console.log(`  → Spread: ${arb.spreadPct.toFixed(1)}% (after fees: ~${(arb.spreadPct - 0.5).toFixed(1)}%)`);
-  console.log(`  → Profit: $${arb.netProfit.toFixed(2)} | Direction: ${direction}`);
+  logger.info(`\n[AGENT] 🤔 Evaluating: ${arb.symbol} arbitrage +${arb.spreadPct.toFixed(1)}%`);
+  logger.info(`  → Spread: ${arb.spreadPct.toFixed(1)}% (after fees: ~${(arb.spreadPct - 0.5).toFixed(1)}%)`);
+  logger.info(`  → Profit: $${arb.netProfit.toFixed(2)} | Direction: ${direction}`);
 
   if (approved) {
-    console.log(`  → Position: $${positionSize?.toFixed(0) || '?'} | Score: ${riskAdjustedReturn.toFixed(2)}`);
-    console.log(`  💭 "${randomThought(ARB_THOUGHTS.approved)}"`);
-    console.log(`  ✅ APPROVED`);
-    console.log(`\n  📍 BUY: ${arb.buyExchange}`);
-    console.log(`     Link: ${isCexBuy ? getExchangeLink(arb.buyExchange, arb.symbol) : getPoolLink(arb.buyExchange, arb.buyPoolAddress || '')}`);
-    console.log(`     Price: $${arb.buyPrice > 0 ? arb.buyPrice.toFixed(4) : 'N/A'}`);
-    console.log(`  📍 SELL: ${arb.sellExchange}`);
-    console.log(`     Link: ${isCexSell ? getExchangeLink(arb.sellExchange, arb.symbol) : getPoolLink(arb.sellExchange, arb.sellPoolAddress || '')}`);
-    console.log(`     Price: $${arb.sellPrice > 0 ? arb.sellPrice.toFixed(4) : 'N/A'}`);
+    logger.info(`  → Position: $${positionSize?.toFixed(0) || '?'} | Score: ${riskAdjustedReturn.toFixed(2)}`);
+    logger.info(`  💭 "${randomThought(ARB_THOUGHTS.approved)}"`);
+    logger.info(`  ✅ APPROVED`);
+    logger.info(`\n  📍 BUY: ${arb.buyExchange}`);
+    logger.info(`     Link: ${isCexBuy ? getExchangeLink(arb.buyExchange, arb.symbol) : getPoolLink(arb.buyExchange, arb.buyPoolAddress || '')}`);
+    logger.info(`     Price: $${arb.buyPrice > 0 ? arb.buyPrice.toFixed(4) : 'N/A'}`);
+    logger.info(`  📍 SELL: ${arb.sellExchange}`);
+    logger.info(`     Link: ${isCexSell ? getExchangeLink(arb.sellExchange, arb.symbol) : getPoolLink(arb.sellExchange, arb.sellPoolAddress || '')}`);
+    logger.info(`     Price: $${arb.sellPrice > 0 ? arb.sellPrice.toFixed(4) : 'N/A'}`);
   } else{
     // Determine thought based on rejection reason
     let thought: string;
@@ -146,8 +147,8 @@ export function logArbitrageEvaluation(
     } else {
       thought = rejectReason || 'Bilinmeyen sebep';
     }
-    console.log(`  💭 "${thought}"`);
-    console.log(`  ❌ REJECTED: ${rejectReason}`);
+    logger.info(`  💭 "${thought}"`);
+    logger.info(`  ❌ REJECTED: ${rejectReason}`);
   }
 }
 
@@ -165,17 +166,17 @@ export function logLPEvaluation(
   const volM = vol / 1e6;
   const volTvl = tvl > 0 ? vol / tvl : 0;
 
-  console.log(`\n[AGENT] 🤔 Evaluating: LP ${pool.name} [${pool.dex}] +${apy.toFixed(0)}% APY`);
-  console.log(`  → TVL: $${tvlM.toFixed(1)}M | Volume: $${volM.toFixed(1)}M | V/TVL: ${volTvl.toFixed(2)}`);
-  console.log(`  → APY: ${apy.toFixed(0)}% | Risk: ${riskLevel}`);
+  logger.info(`\n[AGENT] 🤔 Evaluating: LP ${pool.name} [${pool.dex}] +${apy.toFixed(0)}% APY`);
+  logger.info(`  → TVL: $${tvlM.toFixed(1)}M | Volume: $${volM.toFixed(1)}M | V/TVL: ${volTvl.toFixed(2)}`);
+  logger.info(`  → APY: ${apy.toFixed(0)}% | Risk: ${riskLevel}`);
   
   if (approved) {
-    console.log(`  → Score: ${riskAdjustedReturn.toFixed(2)}`);
-    console.log(`  💭 "${randomThought(LP_THOUGHTS.approved)}"`);
-    console.log(`  ✅ APPROVED`);
-    console.log(`\n  📍 POOL: ${pool.dex}`);
-    console.log(`     Link: ${getPoolLink(pool.dex, pool.address)}`);
-    console.log(`     TVL: $${tvlM.toFixed(1)}M | Volume: $${volM.toFixed(1)}M`);
+    logger.info(`  → Score: ${riskAdjustedReturn.toFixed(2)}`);
+    logger.info(`  💭 "${randomThought(LP_THOUGHTS.approved)}"`);
+    logger.info(`  ✅ APPROVED`);
+    logger.info(`\n  📍 POOL: ${pool.dex}`);
+    logger.info(`     Link: ${getPoolLink(pool.dex, pool.address)}`);
+    logger.info(`     TVL: $${tvlM.toFixed(1)}M | Volume: $${volM.toFixed(1)}M`);
   } else {
     let thought: string;
     if (rejectReason?.includes('APY too high')) {
@@ -187,8 +188,8 @@ export function logLPEvaluation(
     } else {
       thought = rejectReason || 'Filtrelendi';
     }
-    console.log(`  💭 "${thought}"`);
-    console.log(`  ❌ REJECTED: ${rejectReason}`);
+    logger.info(`  💭 "${thought}"`);
+    logger.info(`  ❌ REJECTED: ${rejectReason}`);
   }
 }
 

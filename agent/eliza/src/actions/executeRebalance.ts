@@ -13,6 +13,7 @@ import { sendWithJito, calculateDynamicTip, checkJitoHealth } from '../services/
 import type { JitoConfig, JitoResult } from '../services/jitoService.js';
 import { getRiskManager } from '../services/riskManager.js';
 import type { RiskCheckResult } from '../services/riskManager.js';
+import { logger } from '../services/logger.js';
 
 // Token mint addresses
 const TOKENS = {
@@ -48,7 +49,7 @@ async function getSolPrice(): Promise<number> {
         return data.data.value;
       }
     } catch (error) {
-      console.warn('[executeRebalance] Birdeye SOL price fetch failed:', error);
+      logger.warn('[executeRebalance] Birdeye SOL price fetch failed:', error);
     }
   }
 
@@ -57,14 +58,14 @@ async function getSolPrice(): Promise<number> {
     const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
     const data = await response.json() as { solana?: { usd?: number } };
     if (data?.solana?.usd) {
-      console.log(`[executeRebalance] Using CoinGecko SOL price: $${data.solana.usd}`);
+      logger.info(`[executeRebalance] Using CoinGecko SOL price: $${data.solana.usd}`);
       return data.solana.usd;
     }
   } catch (error) {
-    console.warn('[executeRebalance] CoinGecko SOL price fetch failed:', error);
+    logger.warn('[executeRebalance] CoinGecko SOL price fetch failed:', error);
   }
 
-  console.warn(`[executeRebalance] All price sources failed, using conservative fallback: $${LAST_RESORT_SOL_PRICE}`);
+  logger.warn(`[executeRebalance] All price sources failed, using conservative fallback: $${LAST_RESORT_SOL_PRICE}`);
   return LAST_RESORT_SOL_PRICE;
 }
 
@@ -75,7 +76,7 @@ async function getSolPrice(): Promise<number> {
 async function get24hVolatility(): Promise<number> {
   const birdeyeApiKey = process.env.BIRDEYE_API_KEY;
   if (!birdeyeApiKey) {
-    console.warn('[executeRebalance] No BIRDEYE_API_KEY, using fallback volatility');
+    logger.warn('[executeRebalance] No BIRDEYE_API_KEY, using fallback volatility');
     return FALLBACK_VOLATILITY;
   }
 
@@ -116,7 +117,7 @@ async function get24hVolatility(): Promise<number> {
       return Math.max(0.01, Math.min(0.30, volatility));
     }
   } catch (error) {
-    console.warn('[executeRebalance] Failed to calculate volatility:', error);
+    logger.warn('[executeRebalance] Failed to calculate volatility:', error);
   }
   return FALLBACK_VOLATILITY;
 }
@@ -135,7 +136,7 @@ async function getWalletValue(
     const balanceUsd = balanceSol * solPrice;
     return { balanceSol, balanceUsd };
   } catch (error) {
-    console.warn('[executeRebalance] Failed to get wallet balance:', error);
+    logger.warn('[executeRebalance] Failed to get wallet balance:', error);
     return { balanceSol: 0, balanceUsd: 0 };
   }
 }
@@ -506,7 +507,7 @@ export const executeRebalanceAction: Action = {
       // 2. Get wallet balance for position sizing
       const walletValue = await getWalletValue(connection, keypair.publicKey, solPrice);
 
-      console.log(`[executeRebalance] Market data: volatility=${(volatility24h * 100).toFixed(2)}%, SOL=$${solPrice.toFixed(2)}, wallet=$${walletValue.balanceUsd.toFixed(2)}`);
+      logger.info(`[executeRebalance] Market data: volatility=${(volatility24h * 100).toFixed(2)}%, SOL=$${solPrice.toFixed(2)}, wallet=$${walletValue.balanceUsd.toFixed(2)}`);
 
       // 3. Calculate dynamic position size using Risk Manager
       const riskManager = getRiskManager();
@@ -522,7 +523,7 @@ export const executeRebalanceAction: Action = {
 
       const proposedPositionPct = positionCalc.positionPct;
 
-      console.log(`[executeRebalance] Position sizing: ${positionCalc.rationale}, result=${proposedPositionPct}%, $${positionCalc.positionUsd}`);
+      logger.info(`[executeRebalance] Position sizing: ${positionCalc.rationale}, result=${proposedPositionPct}%, $${positionCalc.positionUsd}`);
 
       // 4. Risk Management Check
       const riskCheck: RiskCheckResult = riskManager.checkTradeAllowed({
@@ -575,7 +576,7 @@ export const executeRebalanceAction: Action = {
           ? outAmount.toNumber() * solPrice  // SOL output: use output amount
           : amount;  // Stablecoin: use amount directly
 
-      console.log(`[executeRebalance] Trade size: $${tradeSizeUsd.toFixed(2)} (SOL price: $${solPrice.toFixed(2)})`);
+      logger.info(`[executeRebalance] Trade size: $${tradeSizeUsd.toFixed(2)} (SOL price: $${solPrice.toFixed(2)})`);
 
       const swapResult = await executeJupiterSwap(connection, keypair, swapTx, {
         useJito: true,
@@ -604,7 +605,7 @@ export const executeRebalanceAction: Action = {
 
       const saved = await saveRebalanceRecord(runtime, rebalanceRecord);
       if (!saved) {
-        console.warn('Failed to save rebalance record to cache');
+        logger.warn('Failed to save rebalance record to cache');
       }
 
       const result: RebalanceResult = {

@@ -23,6 +23,7 @@ import type { GuardianTradeParams } from './guardian/types.js';
 import { pmDecisionEngine, approvalQueue } from './pm/index.js';
 import type { QueueTradeParams } from './pm/types.js';
 import { createJupiterApiClient } from '@jup-ag/api';
+import { logger } from './logger.js';
 
 // ============= TYPES =============
 
@@ -237,7 +238,7 @@ async function getJupiterQuote(
   // Use Jupiter Ultra API
   const url = `https://api.jup.ag/ultra/v1/order?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amountLamports}&taker=${walletAddress}`;
 
-  console.log(`[JUPITER] Fetching quote from Ultra API...`);
+  logger.info(`[JUPITER] Fetching quote from Ultra API...`);
 
   const response = await fetch(url, {
     method: 'GET',
@@ -257,7 +258,7 @@ async function getJupiterQuote(
     throw new Error(`Jupiter quote error: ${(data as { error?: string }).error}`);
   }
 
-  console.log(`[JUPITER] ✅ Quote received from Ultra API`);
+  logger.info(`[JUPITER] ✅ Quote received from Ultra API`);
   return data;
 }
 
@@ -276,27 +277,27 @@ async function executeJupiterSwap(
   const txBuffer = Buffer.from(swapTransaction, 'base64');
   const transaction = VersionedTransaction.deserialize(txBuffer);
 
-  console.log('[JUPITER] 🔍 Transaction details:');
-  console.log('[JUPITER]   - Fee payer:', transaction.message.staticAccountKeys[0]?.toBase58());
-  console.log('[JUPITER]   - Our wallet:', keypair.publicKey.toBase58());
-  console.log('[JUPITER]   - Signatures before signing:', transaction.signatures.length);
+  logger.info('[JUPITER] 🔍 Transaction details:');
+  logger.info('[JUPITER]   - Fee payer:', transaction.message.staticAccountKeys[0]?.toBase58());
+  logger.info('[JUPITER]   - Our wallet:', keypair.publicKey.toBase58());
+  logger.info('[JUPITER]   - Signatures before signing:', transaction.signatures.length);
 
   // Sign the transaction with our wallet (normal flow, not gasless)
-  console.log('[JUPITER] Signing transaction with our wallet...');
+  logger.info('[JUPITER] Signing transaction with our wallet...');
   transaction.sign([keypair]);
 
-  console.log('[JUPITER]   - Signatures after signing:', transaction.signatures.length);
+  logger.info('[JUPITER]   - Signatures after signing:', transaction.signatures.length);
 
   const txid = await connection.sendTransaction(transaction, {
     skipPreflight: false,
     maxRetries: 3,
   });
 
-  console.log(`[JUPITER] ✅ Transaction sent: ${txid}`);
-  console.log(`[JUPITER] 🔗 View on Solscan: https://solscan.io/tx/${txid}`);
+  logger.info(`[JUPITER] ✅ Transaction sent: ${txid}`);
+  logger.info(`[JUPITER] 🔗 View on Solscan: https://solscan.io/tx/${txid}`);
 
   // Wait for confirmation with error checking
-  console.log(`[JUPITER] ⏳ Waiting for confirmation (up to 60 seconds)...`);
+  logger.info(`[JUPITER] ⏳ Waiting for confirmation (up to 60 seconds)...`);
 
   const startTime = Date.now();
   const timeout = 60000; // 60 seconds
@@ -307,8 +308,8 @@ async function executeJupiterSwap(
 
     // Check if transaction failed
     if (status?.value?.err) {
-      console.log(`[JUPITER] ❌ Transaction FAILED!`);
-      console.log(`[JUPITER] Error:`, JSON.stringify(status.value.err));
+      logger.info(`[JUPITER] ❌ Transaction FAILED!`);
+      logger.info(`[JUPITER] Error:`, JSON.stringify(status.value.err));
       throw new Error(`Jupiter swap transaction failed: ${JSON.stringify(status.value.err)}`);
     }
 
@@ -323,7 +324,7 @@ async function executeJupiterSwap(
     throw new Error(`Transaction confirmation timeout after 60 seconds. Check signature: ${txid}`);
   }
 
-  console.log(`[JUPITER] ✅ Transaction confirmed and SUCCESSFUL!`);
+  logger.info(`[JUPITER] ✅ Transaction confirmed and SUCCESSFUL!`);
 
   return txid;
 }
@@ -355,7 +356,7 @@ export class ArbitrageExecutor {
           const secretKey = Uint8Array.from(Buffer.from(config.solanaPrivateKey, 'base64'));
           this.keypair = Keypair.fromSecretKey(secretKey);
         } catch {
-          console.warn('[ArbitrageExecutor] Invalid Solana private key');
+          logger.warn('[ArbitrageExecutor] Invalid Solana private key');
         }
       }
     }
@@ -380,7 +381,7 @@ export class ArbitrageExecutor {
       this.lastBalanceUpdate = now;
       return this.cachedWalletBalance;
     } catch (error) {
-      console.error('[ARBITRAGE] Failed to get wallet balance:', error);
+      logger.error('[ARBITRAGE] Failed to get wallet balance', { error: String(error) });
       return this.cachedWalletBalance; // Return cached value on error
     }
   }
@@ -398,7 +399,7 @@ export class ArbitrageExecutor {
       return this.errorResult(opp, 'cex-to-dex', `Unknown token: ${symbol}`);
     }
 
-    console.log(`\n[ARBITRAGE] ${symbol} detected: +${opp.spreadPct.toFixed(2)}% spread`);
+    logger.info(`\n[ARBITRAGE] ${symbol} detected: +${opp.spreadPct.toFixed(2)}% spread`);
 
     // Calculate quantity based on USD amount
     const quantity = amountUsd / opp.buyPrice;
@@ -434,17 +435,17 @@ export class ArbitrageExecutor {
       const walletAddress = this.keypair.publicKey.toBase58();
 
       // Step 1: Buy on Binance
-      console.log(`[ARBITRAGE] Buy from ${opp.buyExchange}: ${quantity.toFixed(4)} ${symbol} at $${opp.buyPrice.toFixed(6)}`);
+      logger.info(`[ARBITRAGE] Buy from ${opp.buyExchange}: ${quantity.toFixed(4)} ${symbol} at $${opp.buyPrice.toFixed(6)}`);
 
       const order = await binanceSpotOrder(this.config, token.binanceSymbol, 'BUY', quantity, token.binanceDecimals);
       result.txHashes.cexOrder = order.clientOrderId;
       result.fees.cexTrade = parseFloat(order.fills?.[0]?.commission || '0');
 
       const executedQty = parseFloat(order.executedQty);
-      console.log(`[ARBITRAGE] ✅ Bought ${executedQty} ${symbol}`);
+      logger.info(`[ARBITRAGE] ✅ Bought ${executedQty} ${symbol}`);
 
       // Step 2: Withdraw to Solana
-      console.log(`[ARBITRAGE] Withdraw to Solana: ${walletAddress.slice(0, 8)}...`);
+      logger.info(`[ARBITRAGE] Withdraw to Solana: ${walletAddress.slice(0, 8)}...`);
 
       const withdrawal = await binanceWithdraw(
         this.config,
@@ -455,17 +456,17 @@ export class ArbitrageExecutor {
       result.txHashes.withdrawal = withdrawal.id;
       result.fees.withdrawal = this.getWithdrawalFee(symbol);
 
-      console.log(`[ARBITRAGE] Withdrawal initiated: ${withdrawal.id}`);
+      logger.info(`[ARBITRAGE] Withdrawal initiated: ${withdrawal.id}`);
 
       // Step 3: Wait for withdrawal (simplified - in production would poll)
-      console.log(`[ARBITRAGE] Waiting for withdrawal confirmation...`);
+      logger.info(`[ARBITRAGE] Waiting for withdrawal confirmation...`);
       await this.waitForBalance(token.mint, executedQty, this.config.maxWithdrawWaitMs);
 
       // Step 4: Sell on Jupiter
       const actualQty = executedQty - result.fees.withdrawal;
       const inputLamports = Math.floor(actualQty * Math.pow(10, token.decimals));
 
-      console.log(`[ARBITRAGE] Sell on Jupiter: ${actualQty.toFixed(4)} ${symbol}`);
+      logger.info(`[ARBITRAGE] Sell on Jupiter: ${actualQty.toFixed(4)} ${symbol}`);
 
       const quote = await getJupiterQuote(token.mint, TOKENS.USDC.mint, inputLamports, walletAddress);
       const swapTxid = await executeJupiterSwap(quote, walletAddress, this.connection, this.keypair);
@@ -496,14 +497,14 @@ export class ArbitrageExecutor {
       });
       // ========================================
 
-      console.log(`[ARBITRAGE] ✅ Net profit: $${result.netProfit.toFixed(2)} (+${result.profitPct.toFixed(2)}%)`);
+      logger.info(`[ARBITRAGE] ✅ Net profit: $${result.netProfit.toFixed(2)} (+${result.profitPct.toFixed(2)}%)`);
 
       return result;
 
     } catch (error) {
       result.error = error instanceof Error ? error.message : 'Unknown error';
       result.executionTimeMs = Date.now() - startTime;
-      console.log(`[ARBITRAGE] ❌ Failed: ${result.error}`);
+      logger.info(`[ARBITRAGE] ❌ Failed: ${result.error}`);
       return result;
     }
   }
@@ -531,13 +532,13 @@ export class ArbitrageExecutor {
     const totalFees = cexTradeFee + withdrawalFee + dexSwapFee + gasFee;
     const netProfit = grossProfit - totalFees;
 
-    console.log(`[ARBITRAGE] 📝 DRY RUN - Simulating...`);
-    console.log(`[ARBITRAGE] SOL price: $${solPrice.toFixed(2)} (live)`);
-    console.log(`[ARBITRAGE] Buy from ${opp.buyExchange}: ${quantity.toFixed(4)} ${opp.symbol} at $${opp.buyPrice.toFixed(6)}`);
-    console.log(`[ARBITRAGE] Withdraw to Solana: 2min ETA`);
-    console.log(`[ARBITRAGE] Sell on Jupiter: ${quantity.toFixed(4)} ${opp.symbol} → $${(amountUsd + grossProfit).toFixed(2)} USDC`);
-    console.log(`[ARBITRAGE] Gas: ${DEFAULT_GAS_SOL} SOL = $${gasFee.toFixed(4)}`);
-    console.log(`[ARBITRAGE] ${netProfit > 0 ? '✅' : '❌'} Net profit: $${netProfit.toFixed(2)} (+${((netProfit / amountUsd) * 100).toFixed(2)}%)`);
+    logger.info(`[ARBITRAGE] 📝 DRY RUN - Simulating...`);
+    logger.info(`[ARBITRAGE] SOL price: $${solPrice.toFixed(2)} (live)`);
+    logger.info(`[ARBITRAGE] Buy from ${opp.buyExchange}: ${quantity.toFixed(4)} ${opp.symbol} at $${opp.buyPrice.toFixed(6)}`);
+    logger.info(`[ARBITRAGE] Withdraw to Solana: 2min ETA`);
+    logger.info(`[ARBITRAGE] Sell on Jupiter: ${quantity.toFixed(4)} ${opp.symbol} → $${(amountUsd + grossProfit).toFixed(2)} USDC`);
+    logger.info(`[ARBITRAGE] Gas: ${DEFAULT_GAS_SOL} SOL = $${gasFee.toFixed(4)}`);
+    logger.info(`[ARBITRAGE] ${netProfit > 0 ? '✅' : '❌'} Net profit: $${netProfit.toFixed(2)} (+${((netProfit / amountUsd) * 100).toFixed(2)}%)`);
 
     const result: ArbitrageResult = {
       success: netProfit > 0,
@@ -589,8 +590,8 @@ export class ArbitrageExecutor {
       return this.errorResult(opp, 'dex-to-dex', `Unknown token: ${symbol}`);
     }
 
-    console.log(`\n[ARBITRAGE] ${symbol} DEX→DEX detected: +${opp.spreadPct.toFixed(2)}% spread`);
-    console.log(`[ARBITRAGE] Route: ${opp.buyExchange} → ${opp.sellExchange}`);
+    logger.info(`\n[ARBITRAGE] ${symbol} DEX→DEX detected: +${opp.spreadPct.toFixed(2)}% spread`);
+    logger.info(`[ARBITRAGE] Route: ${opp.buyExchange} → ${opp.sellExchange}`);
 
     const result: ArbitrageResult = {
       success: false,
@@ -622,7 +623,7 @@ export class ArbitrageExecutor {
       const walletAddress = this.keypair.publicKey.toBase58();
 
       // Step 1: Buy on first DEX (via Jupiter)
-      console.log(`[ARBITRAGE] Buy on ${opp.buyExchange}: ${symbol} at $${opp.buyPrice.toFixed(6)}`);
+      logger.info(`[ARBITRAGE] Buy on ${opp.buyExchange}: ${symbol} at $${opp.buyPrice.toFixed(6)}`);
 
       const buyAmountLamports = Math.floor(amountUsd * 1e6); // USDC has 6 decimals
       const buyQuote = await getJupiterQuote(TOKENS.USDC.mint, token.mint, buyAmountLamports, walletAddress);
@@ -630,10 +631,10 @@ export class ArbitrageExecutor {
 
       result.txHashes.buySwap = buyTxid;
       const tokensBought = parseInt(buyQuote.outAmount) / Math.pow(10, token.decimals);
-      console.log(`[ARBITRAGE] ✅ Bought ${tokensBought.toFixed(4)} ${symbol} - TX: ${buyTxid}`);
+      logger.info(`[ARBITRAGE] ✅ Bought ${tokensBought.toFixed(4)} ${symbol} - TX: ${buyTxid}`);
 
       // Step 2: Sell on second DEX (via Jupiter)
-      console.log(`[ARBITRAGE] Sell on ${opp.sellExchange}: ${tokensBought.toFixed(4)} ${symbol}`);
+      logger.info(`[ARBITRAGE] Sell on ${opp.sellExchange}: ${tokensBought.toFixed(4)} ${symbol}`);
 
       const sellAmountLamports = Math.floor(tokensBought * Math.pow(10, token.decimals));
       const sellQuote = await getJupiterQuote(token.mint, TOKENS.USDC.mint, sellAmountLamports, walletAddress);
@@ -641,7 +642,7 @@ export class ArbitrageExecutor {
 
       result.txHashes.sellSwap = sellTxid;
       result.amountOut = parseInt(sellQuote.outAmount) / 1e6; // USDC decimals
-      console.log(`[ARBITRAGE] ✅ Sold for ${result.amountOut.toFixed(2)} USDC - TX: ${sellTxid}`);
+      logger.info(`[ARBITRAGE] ✅ Sold for ${result.amountOut.toFixed(2)} USDC - TX: ${sellTxid}`);
 
       // Calculate profit
       result.grossProfit = result.amountOut - amountUsd;
@@ -653,8 +654,8 @@ export class ArbitrageExecutor {
       result.success = result.netProfit > 0;
       result.executionTimeMs = Date.now() - startTime;
 
-      console.log(`[ARBITRAGE] ${result.success ? '✅' : '❌'} Net profit: $${result.netProfit.toFixed(2)} (+${result.profitPct.toFixed(2)}%)`);
-      console.log(`[ARBITRAGE] Fees: DEX swaps $${result.fees.dexSwap.toFixed(2)}, Gas $${result.fees.gas.toFixed(2)}`);
+      logger.info(`[ARBITRAGE] ${result.success ? '✅' : '❌'} Net profit: $${result.netProfit.toFixed(2)} (+${result.profitPct.toFixed(2)}%)`);
+      logger.info(`[ARBITRAGE] Fees: DEX swaps $${result.fees.dexSwap.toFixed(2)}, Gas $${result.fees.gas.toFixed(2)}`);
 
       // Track in portfolio
       getPortfolioManager().recordArbitrageTrade({
@@ -669,7 +670,7 @@ export class ArbitrageExecutor {
       return result;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.log(`[ARBITRAGE] ❌ DEX→DEX execution failed: ${errorMsg}`);
+      logger.info(`[ARBITRAGE] ❌ DEX→DEX execution failed: ${errorMsg}`);
       result.error = errorMsg;
       result.executionTimeMs = Date.now() - startTime;
       return result;
@@ -695,12 +696,12 @@ export class ArbitrageExecutor {
     const totalFees = buySwapFee + sellSwapFee + gasFee;
     const netProfit = grossProfit - totalFees;
 
-    console.log(`[ARBITRAGE] 📝 DRY RUN - Simulating DEX→DEX...`);
-    console.log(`[ARBITRAGE] SOL price: $${solPrice.toFixed(2)} (live)`);
-    console.log(`[ARBITRAGE] Buy on ${opp.buyExchange}: ${opp.symbol} at $${opp.buyPrice.toFixed(6)}`);
-    console.log(`[ARBITRAGE] Sell on ${opp.sellExchange}: ${opp.symbol} at $${opp.sellPrice.toFixed(6)}`);
-    console.log(`[ARBITRAGE] Fees: Buy swap $${buySwapFee.toFixed(2)}, Sell swap $${sellSwapFee.toFixed(2)}, Gas $${gasFee.toFixed(4)}`);
-    console.log(`[ARBITRAGE] ${netProfit > 0 ? '✅' : '❌'} Net profit: $${netProfit.toFixed(2)} (+${((netProfit / amountUsd) * 100).toFixed(2)}%)`);
+    logger.info(`[ARBITRAGE] 📝 DRY RUN - Simulating DEX→DEX...`);
+    logger.info(`[ARBITRAGE] SOL price: $${solPrice.toFixed(2)} (live)`);
+    logger.info(`[ARBITRAGE] Buy on ${opp.buyExchange}: ${opp.symbol} at $${opp.buyPrice.toFixed(6)}`);
+    logger.info(`[ARBITRAGE] Sell on ${opp.sellExchange}: ${opp.symbol} at $${opp.sellPrice.toFixed(6)}`);
+    logger.info(`[ARBITRAGE] Fees: Buy swap $${buySwapFee.toFixed(2)}, Sell swap $${sellSwapFee.toFixed(2)}, Gas $${gasFee.toFixed(4)}`);
+    logger.info(`[ARBITRAGE] ${netProfit > 0 ? '✅' : '❌'} Net profit: $${netProfit.toFixed(2)} (+${((netProfit / amountUsd) * 100).toFixed(2)}%)`);
 
     const result: ArbitrageResult = {
       success: netProfit > 0,
@@ -749,7 +750,7 @@ export class ArbitrageExecutor {
       return this.errorResult(opp, 'dex-to-cex', `Unknown token: ${symbol}`);
     }
 
-    console.log(`\n[ARBITRAGE] ${symbol} detected: +${opp.spreadPct.toFixed(2)}% spread (DEX→CEX)`);
+    logger.info(`\n[ARBITRAGE] ${symbol} detected: +${opp.spreadPct.toFixed(2)}% spread (DEX→CEX)`);
 
     const quantity = amountUsd / opp.buyPrice;
 
@@ -784,7 +785,7 @@ export class ArbitrageExecutor {
 
       // Step 1: Buy on Jupiter (USDC → token)
       const inputLamports = Math.floor(amountUsd * 1e6); // USDC has 6 decimals
-      console.log(`[ARBITRAGE] Buy from ${opp.buyExchange}: ${quantity.toFixed(4)} ${symbol} at $${opp.buyPrice.toFixed(6)}`);
+      logger.info(`[ARBITRAGE] Buy from ${opp.buyExchange}: ${quantity.toFixed(4)} ${symbol} at $${opp.buyPrice.toFixed(6)}`);
 
       const quote = await getJupiterQuote(TOKENS.USDC.mint, token.mint, inputLamports, walletAddress);
       const swapTxid = await executeJupiterSwap(quote, walletAddress, this.connection, this.keypair);
@@ -795,38 +796,38 @@ export class ArbitrageExecutor {
       const solPrice = await getSolPrice();
       result.fees.gas = DEFAULT_GAS_SOL * solPrice;
 
-      console.log(`[ARBITRAGE] ✅ Bought ${executedQty.toFixed(4)} ${symbol} - TX: ${swapTxid.slice(0, 8)}...`);
+      logger.info(`[ARBITRAGE] ✅ Bought ${executedQty.toFixed(4)} ${symbol} - TX: ${swapTxid.slice(0, 8)}...`);
 
       // Step 2: Get Binance deposit address
-      console.log(`[ARBITRAGE] Getting Binance deposit address for ${symbol}...`);
+      logger.info(`[ARBITRAGE] Getting Binance deposit address for ${symbol}...`);
       const depositAddress = await this.getBinanceDepositAddress(symbol);
-      console.log(`[ARBITRAGE] Deposit address: ${depositAddress.slice(0, 8)}...`);
+      logger.info(`[ARBITRAGE] Deposit address: ${depositAddress.slice(0, 8)}...`);
 
       // Step 3: Transfer to Binance (SPL token transfer)
       // No need to wait - transaction confirmed means tokens are in our ATA
-      console.log(`[ARBITRAGE] Transferring ${executedQty.toFixed(4)} ${symbol} to Binance...`);
+      logger.info(`[ARBITRAGE] Transferring ${executedQty.toFixed(4)} ${symbol} to Binance...`);
       const transferResult = await this.transferSPLToken(token.mint, depositAddress, executedQty, token.decimals);
       result.txHashes.deposit = transferResult.txid;
-      console.log(`[ARBITRAGE] ✅ Deposit initiated - TX: ${transferResult.txid.slice(0, 8)}...`);
+      logger.info(`[ARBITRAGE] ✅ Deposit initiated - TX: ${transferResult.txid.slice(0, 8)}...`);
 
       // Use actual transferred amount (may be slightly less due to slippage)
       const actualTransferredQty = transferResult.actualAmount;
-      console.log(`[ARBITRAGE] 🔍 Actual transferred: ${actualTransferredQty.toFixed(6)} ${symbol}`);
+      logger.info(`[ARBITRAGE] 🔍 Actual transferred: ${actualTransferredQty.toFixed(6)} ${symbol}`);
 
       // Step 4: Wait for deposit confirmation
-      console.log(`[ARBITRAGE] ⏳ Waiting for Binance deposit confirmation (~10-30 min)...`);
+      logger.info(`[ARBITRAGE] ⏳ Waiting for Binance deposit confirmation (~10-30 min)...`);
       await this.waitForBinanceDeposit(symbol, actualTransferredQty);
-      console.log(`[ARBITRAGE] ✅ Deposit confirmed on Binance`);
+      logger.info(`[ARBITRAGE] ✅ Deposit confirmed on Binance`);
 
       // Step 5: Sell on Binance - USE ACTUAL TRANSFERRED AMOUNT
-      console.log(`[ARBITRAGE] Sell on ${opp.sellExchange}: ${actualTransferredQty.toFixed(4)} ${symbol}`);
+      logger.info(`[ARBITRAGE] Sell on ${opp.sellExchange}: ${actualTransferredQty.toFixed(4)} ${symbol}`);
       const order = await binanceSpotOrder(this.config, token.binanceSymbol, 'SELL', actualTransferredQty, token.binanceDecimals);
       result.txHashes.cexOrder = order.clientOrderId;
       result.fees.cexTrade = parseFloat(order.fills?.[0]?.commission || '0');
 
       const sellAmount = parseFloat(order.cummulativeQuoteQty);
       result.amountOut = sellAmount;
-      console.log(`[ARBITRAGE] ✅ Sold for $${sellAmount.toFixed(2)} USDT`);
+      logger.info(`[ARBITRAGE] ✅ Sold for $${sellAmount.toFixed(2)} USDT`);
 
       // Calculate profit
       result.grossProfit = result.amountOut - amountUsd;
@@ -847,11 +848,11 @@ export class ArbitrageExecutor {
       });
       // ========================================
 
-      console.log(`[ARBITRAGE] ${result.netProfit > 0 ? '✅' : '❌'} Net profit: $${result.netProfit.toFixed(2)} (+${result.profitPct.toFixed(2)}%)`);
+      logger.info(`[ARBITRAGE] ${result.netProfit > 0 ? '✅' : '❌'} Net profit: $${result.netProfit.toFixed(2)} (+${result.profitPct.toFixed(2)}%)`);
       return result;
 
     } catch (error) {
-      console.error(`[ARBITRAGE] ❌ DEX→CEX execution failed:`, error);
+      logger.error(`[ARBITRAGE] DEX→CEX execution failed`, { error: error instanceof Error ? error.message : String(error) });
       result.executionTimeMs = Date.now() - startTime;
       return result;
     }
@@ -879,13 +880,13 @@ export class ArbitrageExecutor {
     const totalFees = dexSwapFee + depositFee + cexTradeFee + gasFee;
     const netProfit = grossProfit - totalFees;
 
-    console.log(`[ARBITRAGE] 📝 DRY RUN - Simulating DEX→CEX...`);
-    console.log(`[ARBITRAGE] SOL price: $${solPrice.toFixed(2)} (live)`);
-    console.log(`[ARBITRAGE] Buy on ${opp.buyExchange}: ${quantity.toFixed(4)} ${opp.symbol} at $${opp.buyPrice.toFixed(6)}`);
-    console.log(`[ARBITRAGE] Deposit to Binance: ~15min ETA`);
-    console.log(`[ARBITRAGE] Sell on Binance: ${quantity.toFixed(4)} ${opp.symbol} → $${(amountUsd + grossProfit).toFixed(2)} USDT`);
-    console.log(`[ARBITRAGE] Gas: ${DEFAULT_GAS_SOL} SOL = $${gasFee.toFixed(4)}`);
-    console.log(`[ARBITRAGE] ${netProfit > 0 ? '✅' : '❌'} Net profit: $${netProfit.toFixed(2)} (+${((netProfit / amountUsd) * 100).toFixed(2)}%)`);
+    logger.info(`[ARBITRAGE] 📝 DRY RUN - Simulating DEX→CEX...`);
+    logger.info(`[ARBITRAGE] SOL price: $${solPrice.toFixed(2)} (live)`);
+    logger.info(`[ARBITRAGE] Buy on ${opp.buyExchange}: ${quantity.toFixed(4)} ${opp.symbol} at $${opp.buyPrice.toFixed(6)}`);
+    logger.info(`[ARBITRAGE] Deposit to Binance: ~15min ETA`);
+    logger.info(`[ARBITRAGE] Sell on Binance: ${quantity.toFixed(4)} ${opp.symbol} → $${(amountUsd + grossProfit).toFixed(2)} USDT`);
+    logger.info(`[ARBITRAGE] Gas: ${DEFAULT_GAS_SOL} SOL = $${gasFee.toFixed(4)}`);
+    logger.info(`[ARBITRAGE] ${netProfit > 0 ? '✅' : '❌'} Net profit: $${netProfit.toFixed(2)} (+${((netProfit / amountUsd) * 100).toFixed(2)}%)`);
 
     const result: ArbitrageResult = {
       success: netProfit > 0,
@@ -948,17 +949,17 @@ export class ArbitrageExecutor {
       const needsApproval = pmDecisionEngine.needsApproval(pmParams, portfolioValueUsd);
 
       if (needsApproval) {
-        console.log(`[ARBITRAGE] Trade requires PM approval for ${opp.symbol}`);
+        logger.info(`[ARBITRAGE] Trade requires PM approval for ${opp.symbol}`);
 
         const tradeId = approvalQueue.queueTrade(pmParams);
         const approvalResult = await approvalQueue.waitForApproval(tradeId);
 
         if (!approvalResult.approved) {
-          console.log(`[ARBITRAGE] PM rejected transaction: ${approvalResult.rejectionReason}`);
+          logger.info(`[ARBITRAGE] PM rejected transaction: ${approvalResult.rejectionReason}`);
           return this.errorResult(opp, 'cex-to-dex', `PM rejected: ${approvalResult.rejectionReason || approvalResult.status}`);
         }
 
-        console.log(`[ARBITRAGE] PM approved transaction`);
+        logger.info(`[ARBITRAGE] PM approved transaction`);
       }
     }
     // ========================================
@@ -967,7 +968,7 @@ export class ArbitrageExecutor {
     // Look up token mint address from symbol
     const token = TOKENS[opp.symbol];
     if (!token) {
-      console.log(`[ARBITRAGE] ❌ Unknown token: ${opp.symbol} - skipping Guardian validation`);
+      logger.info(`[ARBITRAGE] ❌ Unknown token: ${opp.symbol} - skipping Guardian validation`);
       return this.errorResult(opp, 'cex-to-dex', `Unknown token: ${opp.symbol}`);
     }
 
@@ -983,7 +984,7 @@ export class ArbitrageExecutor {
     };
     const guardianResult = await guardian.validate(guardianParams);
     if (!guardianResult.approved) {
-      console.log(`[ARBITRAGE] 🛡️ Guardian blocked transaction: ${guardianResult.blockReason}`);
+      logger.info(`[ARBITRAGE] 🛡️ Guardian blocked transaction: ${guardianResult.blockReason}`);
       return this.errorResult(opp, 'cex-to-dex', `Guardian blocked: ${guardianResult.blockReason}`);
     }
 
@@ -999,11 +1000,11 @@ export class ArbitrageExecutor {
     });
 
     if (!riskCheck.canTrade) {
-      console.log(`[ARBITRAGE] ❌ Blocked by risk manager: ${riskCheck.blockReasons.join('; ')}`);
+      logger.info(`[ARBITRAGE] ❌ Blocked by risk manager: ${riskCheck.blockReasons.join('; ')}`);
 
       // In dry-run mode, simulate the trade anyway for paper trading
       if (this.config.dryRun) {
-        console.log(`[ARBITRAGE] 📝 DRY-RUN: Simulating trade despite block (paper trading)...`);
+        logger.info(`[ARBITRAGE] 📝 DRY-RUN: Simulating trade despite block (paper trading)...`);
         // Continue to execution simulation below
       } else {
         // In production, strictly block the trade
@@ -1017,17 +1018,17 @@ export class ArbitrageExecutor {
     const netSpread = opp.spreadPct - feeEstimate;
 
     if (netSpread < minSpread) {
-      console.log(`[ARBITRAGE] ❌ Spread too low: ${opp.spreadPct.toFixed(2)}% (need >${minSpread + feeEstimate}%)`);
+      logger.info(`[ARBITRAGE] ❌ Spread too low: ${opp.spreadPct.toFixed(2)}% (need >${minSpread + feeEstimate}%)`);
       return this.errorResult(opp, 'cex-to-dex', `Spread too low after fees: ${netSpread.toFixed(2)}%`);
     }
 
     const estimatedProfit = amountUsd * (netSpread / 100);
     if (estimatedProfit < this.config.minProfitUsd) {
-      console.log(`[ARBITRAGE] ❌ Profit too low: $${estimatedProfit.toFixed(2)} (need >$${this.config.minProfitUsd})`);
+      logger.info(`[ARBITRAGE] ❌ Profit too low: $${estimatedProfit.toFixed(2)} (need >$${this.config.minProfitUsd})`);
       return this.errorResult(opp, 'cex-to-dex', `Profit too low: $${estimatedProfit.toFixed(2)}`);
     }
 
-    console.log(`[ARBITRAGE] Risk check passed: ${riskCheck.circuitBreakerState}`);
+    logger.info(`[ARBITRAGE] Risk check passed: ${riskCheck.circuitBreakerState}`);
 
     // Determine arbitrage type
     const isCex = (exchange: string) => {
@@ -1043,14 +1044,14 @@ export class ArbitrageExecutor {
       return this.executeCexToDex(opp, amountUsd);
     } else if (!buyIsCex && sellIsCex) {
       // DEX → CEX (buy on Jupiter, sell on Binance)
-      console.log(`[ARBITRAGE] DEX→CEX path (deposit delays ~15min)`);
+      logger.info(`[ARBITRAGE] DEX→CEX path (deposit delays ~15min)`);
       return this.executeDexToCex(opp, amountUsd);
     } else if (!buyIsCex && !sellIsCex) {
       // DEX → DEX (buy on Orca, sell on Meteora via Jupiter)
       return this.executeDexToDex(opp, amountUsd);
     } else {
       // CEX → CEX (not supported)
-      console.log(`[ARBITRAGE] ⚠️ CEX→CEX not supported`);
+      logger.info(`[ARBITRAGE] ⚠️ CEX→CEX not supported`);
       return this.errorResult(opp, 'cex-to-cex', 'CEX→CEX not supported');
     }
   }
@@ -1077,15 +1078,15 @@ export class ArbitrageExecutor {
     // In production: poll SPL token balance until it arrives
     // For now, just wait fixed time
     const waitTime = Math.min(maxWaitMs, 120000); // Max 2 min
-    console.log(`[ARBITRAGE] Waiting ${waitTime / 1000}s for balance...`);
+    logger.info(`[ARBITRAGE] Waiting ${waitTime / 1000}s for balance...`);
     await new Promise(resolve => setTimeout(resolve, waitTime));
   }
 
   private async getBinanceDepositAddress(symbol: string): Promise<string> {
     const response = await binanceGetDepositAddress(this.config, symbol, 'SOL');
-    console.log(`[ARBITRAGE] 🔍 Binance deposit response:`, JSON.stringify(response, null, 2));
-    console.log(`[ARBITRAGE] 🔍 Deposit address: ${response.address}`);
-    console.log(`[ARBITRAGE] 🔍 Address tag: ${response.tag || 'none'}`);
+    logger.info(`[ARBITRAGE] 🔍 Binance deposit response:`, JSON.stringify(response, null, 2));
+    logger.info(`[ARBITRAGE] 🔍 Deposit address: ${response.address}`);
+    logger.info(`[ARBITRAGE] 🔍 Address tag: ${response.tag || 'none'}`);
     return response.address;
   }
 
@@ -1111,24 +1112,24 @@ export class ArbitrageExecutor {
     const startTime = Date.now();
     const expectedLamports = Math.floor(expectedAmount * Math.pow(10, decimals));
 
-    console.log(`[ARBITRAGE] 🔍 Polling ATA balance...`);
-    console.log(`[ARBITRAGE]    ATA: ${ata.toBase58()}`);
-    console.log(`[ARBITRAGE]    Expected: ${expectedLamports} lamports (${expectedAmount} tokens)`);
+    logger.info(`[ARBITRAGE] 🔍 Polling ATA balance...`);
+    logger.info(`[ARBITRAGE]    ATA: ${ata.toBase58()}`);
+    logger.info(`[ARBITRAGE]    Expected: ${expectedLamports} lamports (${expectedAmount} tokens)`);
 
     while (Date.now() - startTime < maxWaitMs) {
       try {
         const accountInfo = await getAccount(this.connection, ata);
         const balance = Number(accountInfo.amount);
 
-        console.log(`[ARBITRAGE]    Current balance: ${balance} lamports (${balance / Math.pow(10, decimals)} tokens)`);
+        logger.info(`[ARBITRAGE]    Current balance: ${balance} lamports (${balance / Math.pow(10, decimals)} tokens)`);
 
         if (balance > 0) {
-          console.log(`[ARBITRAGE] ✅ Tokens arrived! Balance: ${balance} lamports`);
+          logger.info(`[ARBITRAGE] ✅ Tokens arrived! Balance: ${balance} lamports`);
           return;
         }
       } catch (error) {
         // ATA might not exist yet, keep polling
-        console.log(`[ARBITRAGE]    ATA not found yet, continuing to poll...`);
+        logger.info(`[ARBITRAGE]    ATA not found yet, continuing to poll...`);
       }
 
       // Wait 2 seconds before next poll
@@ -1157,10 +1158,10 @@ export class ArbitrageExecutor {
 
     if (isNativeSOL) {
       // Native SOL transfer - use SystemProgram
-      console.log(`[ARBITRAGE] Transfer details (Native SOL):`);
-      console.log(`  From: ${this.keypair.publicKey.toBase58()}`);
-      console.log(`  To: ${destinationPubkey.toBase58()}`);
-      console.log(`  Amount: ${amount} SOL (${Math.floor(amount * LAMPORTS_PER_SOL)} lamports)`);
+      logger.info(`[ARBITRAGE] Transfer details (Native SOL):`);
+      logger.info(`  From: ${this.keypair.publicKey.toBase58()}`);
+      logger.info(`  To: ${destinationPubkey.toBase58()}`);
+      logger.info(`  Amount: ${amount} SOL (${Math.floor(amount * LAMPORTS_PER_SOL)} lamports)`);
 
       const transaction = new Transaction().add(
         SystemProgram.transfer({
@@ -1177,7 +1178,7 @@ export class ArbitrageExecutor {
         { commitment: 'confirmed' }
       );
 
-      console.log(`[ARBITRAGE] ✅ Native SOL transfer successful: ${signature}`);
+      logger.info(`[ARBITRAGE] ✅ Native SOL transfer successful: ${signature}`);
       return { txid: signature, actualAmount: amount };
     }
 
@@ -1198,12 +1199,12 @@ export class ArbitrageExecutor {
       destinationPubkey
     );
 
-    console.log(`[ARBITRAGE] Transfer details (SPL Token):`);
-    console.log(`  Token Mint: ${mintPubkey.toBase58()}`);
-    console.log(`  From (our ATA): ${sourceTokenAccount.toBase58()}`);
-    console.log(`  To (Binance wallet): ${destinationPubkey.toBase58()}`);
-    console.log(`  To (Binance ATA): ${destinationTokenAccount.toBase58()}`);
-    console.log(`  Amount: ${amount} (${Math.floor(amount * Math.pow(10, decimals))} lamports)`);
+    logger.info(`[ARBITRAGE] Transfer details (SPL Token):`);
+    logger.info(`  Token Mint: ${mintPubkey.toBase58()}`);
+    logger.info(`  From (our ATA): ${sourceTokenAccount.toBase58()}`);
+    logger.info(`  To (Binance wallet): ${destinationPubkey.toBase58()}`);
+    logger.info(`  To (Binance ATA): ${destinationTokenAccount.toBase58()}`);
+    logger.info(`  Amount: ${amount} (${Math.floor(amount * Math.pow(10, decimals))} lamports)`);
 
     // Check source ATA balance BEFORE transfer
     const { getAccount } = await import('@solana/spl-token');
@@ -1214,9 +1215,9 @@ export class ArbitrageExecutor {
       actualBalance = Number(sourceAccountInfo.amount);
       const expectedBalance = Math.floor(amount * Math.pow(10, decimals));
 
-      console.log(`[ARBITRAGE] 🔍 Source ATA Balance Check:`);
-      console.log(`  Expected: ${expectedBalance} (${amount} tokens)`);
-      console.log(`  Actual: ${actualBalance} (${actualBalance / Math.pow(10, decimals)} tokens)`);
+      logger.info(`[ARBITRAGE] 🔍 Source ATA Balance Check:`);
+      logger.info(`  Expected: ${expectedBalance} (${amount} tokens)`);
+      logger.info(`  Actual: ${actualBalance} (${actualBalance / Math.pow(10, decimals)} tokens)`);
 
       if (actualBalance === 0) {
         throw new Error(`No balance in source ATA!`);
@@ -1226,13 +1227,13 @@ export class ArbitrageExecutor {
       if (actualBalance < expectedBalance) {
         const diff = expectedBalance - actualBalance;
         const diffPct = (diff / expectedBalance) * 100;
-        console.log(`[ARBITRAGE] ⚠️  Balance slightly lower than expected (${diffPct.toFixed(4)}% difference)`);
-        console.log(`[ARBITRAGE] ✅ Using actual balance: ${actualBalance} lamports`);
+        logger.info(`[ARBITRAGE] ⚠️  Balance slightly lower than expected (${diffPct.toFixed(4)}% difference)`);
+        logger.info(`[ARBITRAGE] ✅ Using actual balance: ${actualBalance} lamports`);
       } else {
-        console.log(`[ARBITRAGE] ✅ Balance verified - sufficient funds available`);
+        logger.info(`[ARBITRAGE] ✅ Balance verified - sufficient funds available`);
       }
     } catch (error: any) {
-      console.log(`[ARBITRAGE] ❌ Source ATA balance check failed:`, error.message);
+      logger.info(`[ARBITRAGE] ❌ Source ATA balance check failed:`, error.message);
       throw error;
     }
 
@@ -1241,7 +1242,7 @@ export class ArbitrageExecutor {
     const transaction = new Transaction();
 
     if (!destinationAccountInfo) {
-      console.log(`[ARBITRAGE] ⚠️  Destination ATA does not exist - creating it...`);
+      logger.info(`[ARBITRAGE] ⚠️  Destination ATA does not exist - creating it...`);
       // Create the destination ATA
       const createAtaInstruction = createAssociatedTokenAccountInstruction(
         this.keypair.publicKey, // payer
@@ -1250,9 +1251,9 @@ export class ArbitrageExecutor {
         mintPubkey // mint
       );
       transaction.add(createAtaInstruction);
-      console.log(`[ARBITRAGE] ✅ Added create ATA instruction`);
+      logger.info(`[ARBITRAGE] ✅ Added create ATA instruction`);
     } else {
-      console.log(`[ARBITRAGE] ✅ Destination ATA already exists`);
+      logger.info(`[ARBITRAGE] ✅ Destination ATA already exists`);
     }
 
     // Create transfer instruction - USE ACTUAL BALANCE (not expected amount)
@@ -1277,7 +1278,7 @@ export class ArbitrageExecutor {
 
     // Return both txid and actual transferred amount
     const actualAmountTransferred = actualBalance / Math.pow(10, decimals);
-    console.log(`[ARBITRAGE] ✅ Transfer successful - sent ${actualAmountTransferred.toFixed(6)} tokens`);
+    logger.info(`[ARBITRAGE] ✅ Transfer successful - sent ${actualAmountTransferred.toFixed(6)} tokens`);
     return { txid: signature, actualAmount: actualAmountTransferred };
   }
 
@@ -1285,7 +1286,7 @@ export class ArbitrageExecutor {
     // In production: poll Binance deposit history until deposit arrives
     // For now, just wait fixed time (deposits typically take 10-30 min)
     const waitTime = Math.min(this.config.maxWithdrawWaitMs, 1800000); // Max 30 min
-    console.log(`[ARBITRAGE] Waiting ${waitTime / 60000} minutes for Binance deposit...`);
+    logger.info(`[ARBITRAGE] Waiting ${waitTime / 60000} minutes for Binance deposit...`);
     await new Promise(resolve => setTimeout(resolve, waitTime));
 
     // TODO: In production, poll Binance deposit history:

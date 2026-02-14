@@ -9,6 +9,7 @@ import { BaseAnalyst, DEFAULT_ANALYST_CONFIG, type AnalystConfig } from './BaseA
 import type { LendingMarketData } from '../../services/lending/types.js';
 import { RiskManager } from '../../services/riskManager.js';
 import { getLendingModelLoader, createFeatureExtractor, type PredictionResult } from '../../services/lending/ml/index.js';
+import { logger } from '../../services/logger.js';
 
 /**
  * Input for LendingAnalyst
@@ -85,7 +86,7 @@ export class LendingAnalyst extends BaseAnalyst<LendingAnalysisInput, LendingOpp
     });
     this.featureExtractor = createFeatureExtractor();
 
-    console.log(`ℹ️ [${new Date().toISOString()}] [AGENT] [LendingAnalyst] Initialized`, {
+    logger.info(`ℹ️ [${new Date().toISOString()}] [AGENT] [LendingAnalyst] Initialized`, {
       config: this.lendingConfig,
     });
   }
@@ -103,10 +104,10 @@ export class LendingAnalyst extends BaseAnalyst<LendingAnalysisInput, LendingOpp
     try {
       await this.modelLoader.initialize();
       this.initialized = true;
-      console.log(`ℹ️ [${new Date().toISOString()}] [AGENT] [LendingAnalyst] ML model loaded`);
+      logger.info(`ℹ️ [${new Date().toISOString()}] [AGENT] [LendingAnalyst] ML model loaded`);
       return true;
     } catch (error) {
-      console.error(`❌ [${new Date().toISOString()}] [AGENT] [LendingAnalyst] Failed to load ML model:`, error);
+      logger.error(`❌ [${new Date().toISOString()}] [AGENT] [LendingAnalyst] Failed to load ML model:`, error);
       return false;
     }
   }
@@ -133,7 +134,7 @@ export class LendingAnalyst extends BaseAnalyst<LendingAnalysisInput, LendingOpp
 
     if (this.config.verbose) {
       const approved = results.filter(r => r.approved);
-      console.log(`ℹ️ [${new Date().toISOString()}] [AGENT] [LendingAnalyst] Analyzed ${results.length} markets, ${approved.length} approved`);
+      logger.info(`ℹ️ [${new Date().toISOString()}] [AGENT] [LendingAnalyst] Analyzed ${results.length} markets, ${approved.length} approved`);
     }
 
     return results;

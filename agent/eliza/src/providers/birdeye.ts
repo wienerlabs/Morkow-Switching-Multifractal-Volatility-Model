@@ -43,6 +43,8 @@ export const TOKENS = {
   BONK: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
 } as const;
 
+import { logger } from '../services/logger.js';
+
 // Interval mapping
 const INTERVAL_MAP: Record<string, string> = {
   '1m': '1m',
@@ -118,7 +120,7 @@ export class BirdeyeProvider {
           // Handle rate limiting with exponential backoff
           if (response.status === 429) {
             const waitTime = Math.pow(2, attempt + 1) * 2000; // 4s, 8s, 16s for rate limit
-            console.warn(`⚠️ Birdeye rate limited (429). Waiting ${waitTime}ms before retry ${attempt + 1}/${retries}`);
+            logger.warn(`⚠️ Birdeye rate limited (429). Waiting ${waitTime}ms before retry ${attempt + 1}/${retries}`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
             continue;
           }
@@ -139,7 +141,7 @@ export class BirdeyeProvider {
           // Retry on timeout
           if ((fetchError.name === 'AbortError' || fetchError.cause?.code === 'UND_ERR_CONNECT_TIMEOUT') && attempt < retries - 1) {
             const waitTime = Math.pow(2, attempt) * 2000;
-            console.warn(`⚠️ Birdeye timeout (30s). Retrying in ${waitTime}ms (attempt ${attempt + 1}/${retries})`);
+            logger.warn(`⚠️ Birdeye timeout (30s). Retrying in ${waitTime}ms (attempt ${attempt + 1}/${retries})`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
             continue;
           }
@@ -179,7 +181,7 @@ export class BirdeyeProvider {
         const price = await this.getTokenPrice(token);
         results[token] = price;
       } catch (error) {
-        console.error(`Failed to fetch price for ${token}:`, error);
+        logger.error(`Failed to fetch price for ${token}:`, error);
       }
     });
 
@@ -222,7 +224,7 @@ export class BirdeyeProvider {
   }
 
   async getPoolOverview(poolAddress: string): Promise<PoolOverview> {
-    console.log(`🔍 Fetching pool overview for: ${poolAddress}`);
+    logger.info(`🔍 Fetching pool overview for: ${poolAddress}`);
 
     try {
       const data = await this.request<{
@@ -234,7 +236,7 @@ export class BirdeyeProvider {
         v24hChangePercent: number;
       }>('/defi/v3/pair/overview/single', { address: poolAddress });
 
-      console.log('📊 Pool data received:', JSON.stringify(data, null, 2));
+      logger.info('📊 Pool data received:', JSON.stringify(data, null, 2));
 
       return {
         address: data.address || poolAddress,
@@ -245,7 +247,7 @@ export class BirdeyeProvider {
         priceChange24h: data.v24hChangePercent || 0,
       };
     } catch (error) {
-      console.error('❌ Pool overview error:', error);
+      logger.error('❌ Pool overview error:', error);
       throw error;
     }
   }

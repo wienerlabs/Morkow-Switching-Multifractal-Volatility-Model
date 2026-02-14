@@ -16,6 +16,7 @@ import { renderDashboard } from './dashboard.js';
 import { getPerpsScanner } from '../perps/perpsScanner.js';
 import { fetchLendingMarkets } from './lendingScanner.js';
 import { fetchSpotTokens } from './spotScanner.js';
+import { logger } from '../logger.js';
 
 export * from './types.js';
 export { fetchAllCEXPrices } from './cexFetcher.js';
@@ -52,7 +53,7 @@ export async function scanMarkets(config: Partial<ScannerConfig> = {}): Promise<
       if (trending.length > 0) {
         trendingTokensCache = trending;
         lastTrendingFetch = Date.now();
-        console.log(`[Scanner] Trending tokens: ${trending.join(', ')}`);
+        logger.info(`[Scanner] Trending tokens: ${trending.join(', ')}`);
       }
     } catch (e) {
       // Ignore errors, use cached or empty
@@ -62,11 +63,11 @@ export async function scanMarkets(config: Partial<ScannerConfig> = {}): Promise<
   // Combine core tokens with trending tokens
   const allTokens = [...new Set([...cfg.tokens, ...trendingTokensCache])];
 
-  console.log('[Scanner] Fetching from all sources...');
-  console.log(`[Scanner] Tokens: ${allTokens.join(', ')}`);
-  console.log('[Scanner] CEX: Binance ✅, Coinbase ✅, Kraken ✅');
-  console.log('[Scanner] DEX: DexScreener ✅ (Birdeye ❌ suspended, Jupiter ❌ requires paid API)');
-  console.log('[Scanner] Verification: CoinGecko ✅');
+  logger.info('[Scanner] Fetching from all sources...');
+  logger.info(`[Scanner] Tokens: ${allTokens.join(', ')}`);
+  logger.info('[Scanner] CEX: Binance ✅, Coinbase ✅, Kraken ✅');
+  logger.info('[Scanner] DEX: DexScreener ✅ (Birdeye ❌ suspended, Jupiter ❌ requires paid API)');
+  logger.info('[Scanner] Verification: CoinGecko ✅');
 
   // Initialize perps scanner (will use cached clients if available)
   const perpsScanner = getPerpsScanner();
@@ -84,10 +85,10 @@ export async function scanMarkets(config: Partial<ScannerConfig> = {}): Promise<
   ]);
 
   // Log results
-  console.log(`[Scanner] Results: CEX ${cexPrices.length} | DEX ${dexPrices.length} | CoinGecko ${coingeckoPrices.length} | Pools ${lpPools.length}`);
-  console.log(`[Scanner] Perps: ${perpsData.perpsOpportunities.length} opportunities | ${perpsData.fundingArbitrage.length} funding arb`);
-  console.log(`[Scanner] Lending: ${lendingMarkets.length} markets`);
-  console.log(`[Scanner] Spot: ${spotTokens.length} tokens`);
+  logger.info(`[Scanner] Results: CEX ${cexPrices.length} | DEX ${dexPrices.length} | CoinGecko ${coingeckoPrices.length} | Pools ${lpPools.length}`);
+  logger.info(`[Scanner] Perps: ${perpsData.perpsOpportunities.length} opportunities | ${perpsData.fundingArbitrage.length} funding arb`);
+  logger.info(`[Scanner] Lending: ${lendingMarkets.length} markets`);
+  logger.info(`[Scanner] Spot: ${spotTokens.length} tokens`);
 
   // Detect arbitrage opportunities
   const arbitrage = detectArbitrage(cexPrices, dexPrices, cfg.minArbitrageSpread);
@@ -124,16 +125,16 @@ export async function scanMarkets(config: Partial<ScannerConfig> = {}): Promise<
 export async function startScanner(config: Partial<ScannerConfig> = {}): Promise<void> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   
-  console.log('[Scanner] Starting Market Scanner...');
-  console.log(`[Scanner] Tokens: ${cfg.tokens.join(', ')}`);
-  console.log(`[Scanner] Refresh: ${cfg.refreshInterval / 1000}s`);
+  logger.info('[Scanner] Starting Market Scanner...');
+  logger.info(`[Scanner] Tokens: ${cfg.tokens.join(', ')}`);
+  logger.info(`[Scanner] Refresh: ${cfg.refreshInterval / 1000}s`);
   
   const scan = async () => {
     try {
       const snapshot = await scanMarkets(cfg);
       renderDashboard(snapshot);
     } catch (error) {
-      console.error('[Scanner] Error:', error);
+      logger.error('[Scanner] Error', { error: error instanceof Error ? error.message : String(error) });
     }
   };
   
@@ -146,6 +147,6 @@ export async function startScanner(config: Partial<ScannerConfig> = {}): Promise
 
 // CLI entry point
 if (import.meta.url === `file://${process.argv[1]}`) {
-  startScanner().catch(console.error);
+  startScanner().catch((e) => logger.error('[Scanner] Fatal error', { error: String(e) }));
 }
 

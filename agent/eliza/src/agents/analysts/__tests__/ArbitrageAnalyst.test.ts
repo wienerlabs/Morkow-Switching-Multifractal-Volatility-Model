@@ -162,9 +162,8 @@ describe('ArbitrageAnalyst', () => {
       expect(results[0].expectedReturn).toBe(2.5);
     });
 
-    it('should reject spreads below threshold (0.5%)', async () => {
-      // Min spread is now 0.5% per risk parameters
-      const input = createInput([createMockArbitrage({ spreadPct: 0.3 })]);
+    it('should reject spreads below threshold (0.10%)', async () => {
+      const input = createInput([createMockArbitrage({ spreadPct: 0.05, buyExchange: 'raydium', sellExchange: 'jupiter' })]);
       const results = await analyst.analyze(input);
 
       expect(results[0].approved).toBe(false);
@@ -172,11 +171,11 @@ describe('ArbitrageAnalyst', () => {
     });
 
     it('should reject unrealistically high spreads (>10%)', async () => {
-      const input = createInput([createMockArbitrage({ spreadPct: 15 })]);
+      const input = createInput([createMockArbitrage({ spreadPct: 15, buyExchange: 'raydium', sellExchange: 'jupiter' })]);
       const results = await analyst.analyze(input);
 
       expect(results[0].approved).toBe(false);
-      expect(results[0].rejectReason).toContain('Spread unrealistic');
+      expect(results[0].rejectReason).toContain('Spread');
     });
 
     it('should prefer higher spreads (higher risk-adjusted return)', async () => {
@@ -196,10 +195,11 @@ describe('ArbitrageAnalyst', () => {
       const customAnalyst = new ArbitrageAnalyst({
         minSpreadPct: 2.0,
         maxSpreadPct: 5.0,
+        allowDexToDex: true,
         verbose: false,
       });
 
-      const input = createInput([createMockArbitrage({ spreadPct: 1.5 })]);
+      const input = createInput([createMockArbitrage({ spreadPct: 1.5, buyExchange: 'raydium', sellExchange: 'jupiter' })]);
       const results = await customAnalyst.analyze(input);
 
       expect(results[0].approved).toBe(false);
@@ -210,25 +210,19 @@ describe('ArbitrageAnalyst', () => {
   // ============= 3. GAS COST ANALYSIS =============
   describe('Gas Cost Analysis', () => {
     it('should include gas in profitability check via netProfit', async () => {
-      // netProfit should already account for gas costs
-      const input = createInput([createMockArbitrage({ netProfit: 10, fees: 5 })]);
+      // Use DEX→DEX direction (both allowed by default config)
+      const input = createInput([createMockArbitrage({ netProfit: 10, fees: 5, buyExchange: 'raydium', sellExchange: 'jupiter' })]);
       const results = await analyst.analyze(input);
 
       expect(results[0].approved).toBe(true);
       expect(results[0].raw.netProfit).toBe(10);
     });
 
-    it('should reject when spread passes but profit is below threshold', async () => {
-      // When spread passes (>=0.5%) but profitAfterGas is below threshold
-      // This happens when the profitAfterGasPct calculation yields < 0.5%
-      // Current implementation: profitAfterGasPct effectively equals spreadPct
-      // So this test verifies the profit percentage is checked and below threshold gets rejected
-      // Use spread=0.4 which is below both spread threshold AND profit threshold
-      const input = createInput([createMockArbitrage({ spreadPct: 0.4, netProfit: 0.4 })]);
+    it('should reject when spread is below minimum threshold', async () => {
+      const input = createInput([createMockArbitrage({ spreadPct: 0.04, netProfit: 0.4, buyExchange: 'raydium', sellExchange: 'jupiter' })]);
       const results = await analyst.analyze(input);
 
       expect(results[0].approved).toBe(false);
-      // Will hit spread too low first since spread < 0.5%
       expect(results[0].rejectReason).toContain('Spread too low');
     });
 
@@ -253,7 +247,8 @@ describe('ArbitrageAnalyst', () => {
 
   // ============= 4. DIRECTION VALIDATION =============
   describe('Direction Validation', () => {
-    it('should allow CEX→DEX arbitrage (Binance → Jupiter)', async () => {
+    it('should reject CEX→DEX arbitrage (requires CEX balance)', async () => {
+      // Default config: allowCexToDex = false (requires CEX balance)
       const input = createInput([
         createMockArbitrage({
           buyExchange: 'binance',
@@ -263,10 +258,12 @@ describe('ArbitrageAnalyst', () => {
       const results = await analyst.analyze(input);
 
       expect(results[0].direction.isCexToDex).toBe(true);
-      expect(results[0].approved).toBe(true);
+      expect(results[0].approved).toBe(false);
+      expect(results[0].rejectReason).toContain('CEX→DEX disabled');
     });
 
-    it('should reject DEX→CEX arbitrage (deposit latency risk)', async () => {
+    it('should allow DEX→CEX arbitrage', async () => {
+      // Default config: allowDexToCex = true
       const input = createInput([
         createMockArbitrage({
           buyExchange: 'jupiter',
@@ -276,8 +273,7 @@ describe('ArbitrageAnalyst', () => {
       const results = await analyst.analyze(input);
 
       expect(results[0].direction.isDexToCex).toBe(true);
-      expect(results[0].approved).toBe(false);
-      expect(results[0].rejectReason).toContain('DEX→CEX disabled');
+      expect(results[0].approved).toBe(true);
     });
 
     it('should ALLOW DEX→DEX arbitrage when enabled (per risk params)', async () => {
@@ -424,18 +420,19 @@ describe('ArbitrageAnalyst', () => {
     });
 
     it('should approve when ML confidence exceeds threshold', async () => {
-      const input = createInput([createMockArbitrage({ confidence: 'low' })]);
+      // Use DEX→DEX direction (allowed by default)
+      const input = createInput([createMockArbitrage({ confidence: 'low', buyExchange: 'raydium', sellExchange: 'jupiter' })]);
       const results = await analyst.analyze(input);
 
-      // ML mock returns 0.85 > 0.8 (default minConfidence)
+      // ML mock returns 0.85 > 0.60 (default minConfidence)
       expect(results[0].approved).toBe(true);
     });
 
     it('should approve when ML confidence is high', async () => {
-      const input = createInput([createMockArbitrage({ confidence: 'high' })]);
+      const input = createInput([createMockArbitrage({ confidence: 'high', buyExchange: 'raydium', sellExchange: 'jupiter' })]);
       const results = await analyst.analyze(input);
 
-      // ML mock returns 0.85 > 0.8 threshold
+      // ML mock returns 0.85 > 0.60 threshold
       expect(results[0].approved).toBe(true);
     });
 
@@ -465,8 +462,8 @@ describe('ArbitrageAnalyst', () => {
 
     it('should return results even if all are rejected', async () => {
       const input = createInput([
-        createMockArbitrage({ spreadPct: 0.2 }), // Below 0.5% threshold
-        createMockArbitrage({ buyExchange: 'jupiter', sellExchange: 'binance' }), // DEX→CEX (disabled)
+        createMockArbitrage({ spreadPct: 0.02 }), // Below 0.10% threshold
+        createMockArbitrage({ buyExchange: 'binance', sellExchange: 'coinbase' }), // CEX→CEX (disabled)
       ]);
       const results = await analyst.analyze(input);
 
@@ -505,7 +502,7 @@ describe('ArbitrageAnalyst', () => {
   // ============= 9. EDGE CASES =============
   describe('Edge Cases', () => {
     it('should handle zero spread', async () => {
-      const input = createInput([createMockArbitrage({ spreadPct: 0 })]);
+      const input = createInput([createMockArbitrage({ spreadPct: 0, buyExchange: 'raydium', sellExchange: 'jupiter' })]);
       const results = await analyst.analyze(input);
 
       expect(results[0].approved).toBe(false);

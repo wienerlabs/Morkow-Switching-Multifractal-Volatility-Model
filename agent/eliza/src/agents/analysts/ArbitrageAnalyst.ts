@@ -381,26 +381,26 @@ export class ArbitrageAnalyst extends BaseAnalyst<ArbitrageAnalysisInput, Arbitr
                           direction.isDexToCex ? 'DEX→CEX' :
                           direction.isCexToDex ? 'CEX→DEX' : 'CEX→CEX';
 
-    console.log(`\n┌─────────────────────────────────────────────────────────┐`);
-    console.log(`│  ⚡ ARBITRAGE OPPORTUNITY EVALUATION                    │`);
-    console.log(`├─────────────────────────────────────────────────────────┤`);
-    console.log(`│  Symbol:              ${arb.symbol.padEnd(35)}│`);
-    console.log(`│  Route:               ${(arb.buyExchange + '→' + arb.sellExchange).padEnd(35)}│`);
-    console.log(`│  Direction:           ${(directionType + (directionAllowed ? ' ✅' : ' ❌ BLOCKED')).padEnd(35)}│`);
-    console.log(`│  Spread:              ${(arb.spreadPct.toFixed(2) + '%').padEnd(35)}│`);
-    console.log(`├─────────────────────────────────────────────────────────┤`);
-    console.log(`│  ML Confidence:       ${(baseConfidence.toFixed(3) + (baseConfidence >= this.arbConfig.minConfidence ? ' ✅' : ' ❌')).padEnd(35)}│`);
+    logger.info(`\n┌─────────────────────────────────────────────────────────┐`);
+    logger.info(`│  ⚡ ARBITRAGE OPPORTUNITY EVALUATION                    │`);
+    logger.info(`├─────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Symbol:              ${arb.symbol.padEnd(35)}│`);
+    logger.info(`│  Route:               ${(arb.buyExchange + '→' + arb.sellExchange).padEnd(35)}│`);
+    logger.info(`│  Direction:           ${(directionType + (directionAllowed ? ' ✅' : ' ❌ BLOCKED')).padEnd(35)}│`);
+    logger.info(`│  Spread:              ${(arb.spreadPct.toFixed(2) + '%').padEnd(35)}│`);
+    logger.info(`├─────────────────────────────────────────────────────────┤`);
+    logger.info(`│  ML Confidence:       ${(baseConfidence.toFixed(3) + (baseConfidence >= this.arbConfig.minConfidence ? ' ✅' : ' ❌')).padEnd(35)}│`);
     if (sentimentAdjustment.sentimentAvailable) {
-      console.log(`│  Sentiment:           ${sentimentAdjustment.rawSentiment.toFixed(3)} (${sentimentAdjustment.signal})`.padEnd(60) + `│`);
-      console.log(`│  Final Confidence:    ${confidence.toFixed(3).padEnd(35)}│`);
+      logger.info(`│  Sentiment:           ${sentimentAdjustment.rawSentiment.toFixed(3)} (${sentimentAdjustment.signal})`.padEnd(60) + `│`);
+      logger.info(`│  Final Confidence:    ${confidence.toFixed(3).padEnd(35)}│`);
     } else {
-      console.log(`│  Sentiment:           ${'unavailable (using ML only)'.padEnd(35)}│`);
+      logger.info(`│  Sentiment:           ${'unavailable (using ML only)'.padEnd(35)}│`);
     }
-    console.log(`├─────────────────────────────────────────────────────────┤`);
-    console.log(`│  Min Confidence:      ${(this.arbConfig.minConfidence.toFixed(2) + ' (' + (confidence >= this.arbConfig.minConfidence ? 'PASS' : 'FAIL') + ')').padEnd(35)}│`);
-    console.log(`│  Min Spread:          ${(this.arbConfig.minSpreadPct.toFixed(2) + '% (' + (arb.spreadPct >= this.arbConfig.minSpreadPct ? 'PASS' : 'FAIL') + ')').padEnd(35)}│`);
-    console.log(`│  Direction Allowed:   ${(directionAllowed ? 'YES' : 'NO - ' + directionType + ' disabled').padEnd(35)}│`);
-    console.log(`└─────────────────────────────────────────────────────────┘`);
+    logger.info(`├─────────────────────────────────────────────────────────┤`);
+    logger.info(`│  Min Confidence:      ${(this.arbConfig.minConfidence.toFixed(2) + ' (' + (confidence >= this.arbConfig.minConfidence ? 'PASS' : 'FAIL') + ')').padEnd(35)}│`);
+    logger.info(`│  Min Spread:          ${(this.arbConfig.minSpreadPct.toFixed(2) + '% (' + (arb.spreadPct >= this.arbConfig.minSpreadPct ? 'PASS' : 'FAIL') + ')').padEnd(35)}│`);
+    logger.info(`│  Direction Allowed:   ${(directionAllowed ? 'YES' : 'NO - ' + directionType + ' disabled').padEnd(35)}│`);
+    logger.info(`└─────────────────────────────────────────────────────────┘`);
   }
 
   /**

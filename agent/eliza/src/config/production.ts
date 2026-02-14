@@ -8,6 +8,8 @@
  * - Rate limits and retry logic
  */
 
+import { logger } from '../services/logger.js';
+
 export interface CortexConfig {
   // Mode
   simulationMode: boolean;
@@ -153,16 +155,16 @@ export function validateConfig(config: CortexConfig): { valid: boolean; errors: 
  * Print configuration summary (safe - no secrets)
  */
 export function printConfigSummary(config: CortexConfig): void {
-  console.log('\n📋 Cortex Configuration:');
-  console.log('═'.repeat(40));
-  console.log(`  Mode: ${config.simulationMode ? '🎮 SIMULATION' : '🚀 PRODUCTION'}`);
-  console.log(`  RPC: ${config.solanaRpcUrl.slice(0, 30)}...`);
-  console.log(`  Birdeye API: ${config.birdeyeApiKey ? '✅' : '❌'}`);
-  console.log(`  Wallet: ${config.walletPrivateKey ? '✅ Configured' : '❌ Not set'}`);
-  console.log(`  Monitoring: ${config.monitoringEnabled ? '✅ Enabled' : '❌ Disabled'}`);
-  console.log(`  Auto-Rebalance: ${config.autoRebalanceEnabled ? '✅ Enabled' : '❌ Disabled'}`);
-  console.log(`  Threshold: ${(config.rebalanceThreshold * 100).toFixed(0)}%`);
-  console.log('═'.repeat(40));
+  logger.info('\n📋 Cortex Configuration:');
+  logger.info('═'.repeat(40));
+  logger.info(`  Mode: ${config.simulationMode ? '🎮 SIMULATION' : '🚀 PRODUCTION'}`);
+  logger.info(`  RPC: ${config.solanaRpcUrl.slice(0, 30)}...`);
+  logger.info(`  Birdeye API: ${config.birdeyeApiKey ? '✅' : '❌'}`);
+  logger.info(`  Wallet: ${config.walletPrivateKey ? '✅ Configured' : '❌ Not set'}`);
+  logger.info(`  Monitoring: ${config.monitoringEnabled ? '✅ Enabled' : '❌ Disabled'}`);
+  logger.info(`  Auto-Rebalance: ${config.autoRebalanceEnabled ? '✅ Enabled' : '❌ Disabled'}`);
+  logger.info(`  Threshold: ${(config.rebalanceThreshold * 100).toFixed(0)}%`);
+  logger.info('═'.repeat(40));
 }
 
 /**

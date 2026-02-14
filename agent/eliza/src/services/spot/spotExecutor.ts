@@ -12,8 +12,8 @@ import type { GuardianTradeParams } from '../guardian/types.js';
 import { pmDecisionEngine, approvalQueue } from '../pm/index.js';
 import type { QueueTradeParams } from '../pm/types.js';
 
-// Jupiter Ultra API key from environment
-const JUPITER_API_KEY = process.env.JUPITER_API_KEY || '5029a20a-952a-4509-bc0c-b266ca594103';
+// Jupiter Ultra API key from environment (required)
+const JUPITER_API_KEY = process.env.JUPITER_API_KEY || '';
 
 export interface SpotExecutorConfig {
   rpcUrl: string;
@@ -69,6 +69,9 @@ export class SpotExecutor {
   private decimalsCache: Map<string, number> = new Map();
 
   constructor(private config: SpotExecutorConfig) {
+    if (!JUPITER_API_KEY) {
+      throw new Error('JUPITER_API_KEY environment variable is required for spot trading');
+    }
     this.connection = new Connection(config.rpcUrl, 'confirmed');
     this.wallet = config.wallet;
     this.slippageBps = config.slippageBps || 50; // 0.5% default (Ultra API recommends lower)

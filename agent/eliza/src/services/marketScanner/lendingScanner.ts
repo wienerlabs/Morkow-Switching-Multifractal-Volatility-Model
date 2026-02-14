@@ -6,6 +6,7 @@
  */
 
 import type { LendingMarketData } from '../lending/types.js';
+import { logger } from '../logger.js';
 
 const DEFILLAMA_POOLS_API = 'https://yields.llama.fi/pools';
 
@@ -30,7 +31,7 @@ export async function fetchLendingMarkets(): Promise<LendingMarketData[]> {
     const response = await fetch(DEFILLAMA_POOLS_API);
     
     if (!response.ok) {
-      console.error(`[LendingScanner] DeFiLlama API error: ${response.status}`);
+      logger.error(`[LendingScanner] DeFiLlama API error: ${response.status}`);
       return [];
     }
 
@@ -73,11 +74,11 @@ export async function fetchLendingMarkets(): Promise<LendingMarketData[]> {
       };
     });
 
-    console.log(`[LendingScanner] Found ${markets.length} lending markets (Kamino, MarginFi, Solend)`);
+    logger.info(`[LendingScanner] Found ${markets.length} lending markets (Kamino, MarginFi, Solend)`);
     
     return markets;
   } catch (error) {
-    console.error('[LendingScanner] Error fetching lending markets:', error);
+    logger.error('[LendingScanner] Error fetching lending markets:', { error: String(error) });
     return [];
   }
 }
