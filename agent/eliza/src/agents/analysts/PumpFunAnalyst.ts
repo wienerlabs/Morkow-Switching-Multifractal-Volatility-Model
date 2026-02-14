@@ -68,20 +68,19 @@ export class PumpFunAnalyst extends BaseAnalyst<PumpFunAnalysisInput, PumpFunOpp
     this.pumpfunConfig = { ...DEFAULT_PUMPFUN_CONFIG, ...config };
     this.modeConfig = modeConfig;
 
-    // Validate that Pump.fun is enabled
-    if (!modeConfig.enablePumpFun) {
-      throw new Error('PumpFunAnalyst requires AGGRESSIVE mode (enablePumpFun: true)');
-    }
-
     // Initialize Pump.fun client
     this.pumpfunClient = new PumpFunClient();
 
-    logger.info('[PumpFunAnalyst] Initialized', {
-      config: this.pumpfunConfig,
-      mode: modeConfig.mode,
-      minTVL: modeConfig.minTVL,
-      minHolders: modeConfig.minHolders,
-    });
+    if (!modeConfig.enablePumpFun) {
+      logger.info('[PumpFunAnalyst] PumpFun disabled in current mode (requires AGGRESSIVE)');
+    } else {
+      logger.info('[PumpFunAnalyst] Initialized', {
+        config: this.pumpfunConfig,
+        mode: modeConfig.mode,
+        minTVL: modeConfig.minTVL,
+        minHolders: modeConfig.minHolders,
+      });
+    }
   }
 
   getName(): string {
@@ -92,6 +91,9 @@ export class PumpFunAnalyst extends BaseAnalyst<PumpFunAnalysisInput, PumpFunOpp
    * Analyze Pump.fun tokens and return opportunities
    */
   async analyze(input: PumpFunAnalysisInput = {}): Promise<PumpFunOpportunityResult[]> {
+    if (!this.modeConfig.enablePumpFun) {
+      return [];
+    }
     const { limit = 50, offset = 0 } = input;
 
     try {

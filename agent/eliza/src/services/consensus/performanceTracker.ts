@@ -5,11 +5,18 @@
  * based on historical accuracy and profitability.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { logger } from '../logger.js';
 import type {
   AgentPerformance,
   TradeRecord,
 } from './types.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DEFAULT_STATE_FILE = path.join(__dirname, '../../../data/performance_tracker_state.json');
 
 // ============= TYPES =============
 
@@ -40,10 +47,13 @@ export class PerformanceTracker {
   private weightCache: Map<string, number> = new Map();
   private lastCacheUpdate: Date = new Date(0);
   private readonly CACHE_TTL_MS = 5 * 60 * 1000;  // 5 minutes
+  private stateFilePath: string;
 
-  constructor(config: Partial<PerformanceConfig> = {}) {
+  constructor(config: Partial<PerformanceConfig> = {}, stateFilePath?: string) {
     this.config = { ...DEFAULT_PERFORMANCE_CONFIG, ...config };
-    logger.info('[PerformanceTracker] Initialized', { config: this.config });
+    this.stateFilePath = stateFilePath || DEFAULT_STATE_FILE;
+    this.loadState();
+    logger.info('[PerformanceTracker] Initialized', { config: this.config, stateFile: this.stateFilePath });
   }
 
   /**
@@ -63,6 +73,8 @@ export class PerformanceTracker {
       asset: record.asset,
       decision: record.decision,
     });
+
+    this.saveState();
   }
 
   /**
@@ -97,6 +109,8 @@ export class PerformanceTracker {
         outcome: record.outcome,
         pnl,
       });
+
+      this.saveState();
     }
   }
 
@@ -138,6 +152,53 @@ export class PerformanceTracker {
       weights.set(agentId, await this.getAgentWeight(agentId));
     }
     return weights;
+  }
+
+  // ============= STATE PERSISTENCE =============
+
+  private loadState(): void {
+    try {
+      if (!fs.existsSync(this.stateFilePath)) {
+        return;
+      }
+      const json = fs.readFileSync(this.stateFilePath, 'utf-8');
+      const data = JSON.parse(json) as Record<string, Array<TradeRecord & { entryTime: string; exitTime?: string }>>;
+
+      for (const [agentId, records] of Object.entries(data)) {
+        this.tradeRecords.set(agentId, records.map(r => ({
+          ...r,
+          entryTime: new Date(r.entryTime),
+          exitTime: r.exitTime ? new Date(r.exitTime) : undefined,
+        })));
+      }
+
+      logger.info('[PerformanceTracker] State loaded from disk', {
+        agents: Object.keys(data).length,
+        path: this.stateFilePath,
+      });
+    } catch (error) {
+      logger.warn('[PerformanceTracker] Failed to load state, starting fresh', { error });
+    }
+  }
+
+  private saveState(): void {
+    try {
+      const dir = path.dirname(this.stateFilePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      const data: Record<string, TradeRecord[]> = {};
+      for (const [agentId, records] of this.tradeRecords.entries()) {
+        data[agentId] = records;
+      }
+
+      const tmpPath = this.stateFilePath + '.tmp';
+      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2));
+      fs.renameSync(tmpPath, this.stateFilePath);
+    } catch (error) {
+      logger.error('[PerformanceTracker] Failed to save state', { error });
+    }
   }
 
   // ============= PRIVATE METHODS =============

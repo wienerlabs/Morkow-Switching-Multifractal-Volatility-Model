@@ -46,6 +46,18 @@ export interface CortexConfig {
   
   // Cooldowns
   rebalanceCooldownMs: number;
+
+  // Trading cycle
+  tradingCycleMs: number;
+
+  // Slippage configuration (basis points)
+  slippage: {
+    arbitrage: number;
+    spot: number;
+    lending: number;
+    lpDeposit: number;
+    lpWithdraw: number;
+  };
 }
 
 /**
@@ -98,6 +110,18 @@ export function loadConfig(): CortexConfig {
     
     // Cooldowns
     rebalanceCooldownMs: parseInt(process.env.REBALANCE_COOLDOWN_MS || '86400000', 10), // 24 hours
+
+    // Trading cycle
+    tradingCycleMs: parseInt(process.env.TRADING_CYCLE_MS || '60000', 10),
+
+    // Slippage configuration (basis points)
+    slippage: {
+      arbitrage: parseInt(process.env.SLIPPAGE_ARBITRAGE_BPS || '50', 10),
+      spot: parseInt(process.env.SLIPPAGE_SPOT_BPS || '100', 10),
+      lending: parseInt(process.env.SLIPPAGE_LENDING_BPS || '50', 10),
+      lpDeposit: parseInt(process.env.SLIPPAGE_LP_DEPOSIT_BPS || '100', 10),
+      lpWithdraw: parseInt(process.env.SLIPPAGE_LP_WITHDRAW_BPS || '50', 10),
+    },
   };
 }
 
@@ -139,6 +163,23 @@ export function printConfigSummary(config: CortexConfig): void {
   console.log(`  Auto-Rebalance: ${config.autoRebalanceEnabled ? '✅ Enabled' : '❌ Disabled'}`);
   console.log(`  Threshold: ${(config.rebalanceThreshold * 100).toFixed(0)}%`);
   console.log('═'.repeat(40));
+}
+
+/**
+ * Validate agent startup configuration
+ */
+export function validateAgentConfig(agentConfig: { minConfidence: number; portfolioValueUsd: number }): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  if (agentConfig.minConfidence < 0.50) {
+    errors.push(`minConfidence too low: ${agentConfig.minConfidence} (minimum: 0.50)`);
+  }
+
+  if (agentConfig.portfolioValueUsd < 1) {
+    errors.push(`portfolioValueUsd too low: $${agentConfig.portfolioValueUsd}`);
+  }
+
+  return { valid: errors.length === 0, errors };
 }
 
 // Export singleton config

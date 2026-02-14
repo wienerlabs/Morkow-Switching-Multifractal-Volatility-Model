@@ -23,37 +23,49 @@ const TOKENS = {
 };
 
 // Default fallback values for when API calls fail
-const FALLBACK_VOLATILITY = 0.05; // 5% default volatility
-const FALLBACK_SOL_PRICE = 200;   // $200 fallback SOL price
+const FALLBACK_VOLATILITY = 0.08; // 8% default volatility (conservative)
+const LAST_RESORT_SOL_PRICE = 150; // Conservative last-resort fallback
 
 /**
- * Fetch SOL price from Birdeye API
+ * Fetch SOL price from Birdeye API with CoinGecko fallback
  */
 async function getSolPrice(): Promise<number> {
+  // Try Birdeye first
   const birdeyeApiKey = process.env.BIRDEYE_API_KEY;
-  if (!birdeyeApiKey) {
-    console.warn('[executeRebalance] No BIRDEYE_API_KEY, using fallback SOL price');
-    return FALLBACK_SOL_PRICE;
+  if (birdeyeApiKey) {
+    try {
+      const response = await fetch(
+        `https://public-api.birdeye.so/defi/price?address=${TOKENS.SOL}`,
+        {
+          headers: {
+            'X-API-KEY': birdeyeApiKey,
+            'x-chain': 'solana',
+          },
+        }
+      );
+      const data = await response.json() as { success?: boolean; data?: { value?: number } };
+      if (data.success && data.data?.value) {
+        return data.data.value;
+      }
+    } catch (error) {
+      console.warn('[executeRebalance] Birdeye SOL price fetch failed:', error);
+    }
   }
 
+  // Try CoinGecko as fallback
   try {
-    const response = await fetch(
-      `https://public-api.birdeye.so/defi/price?address=${TOKENS.SOL}`,
-      {
-        headers: {
-          'X-API-KEY': birdeyeApiKey,
-          'x-chain': 'solana',
-        },
-      }
-    );
-    const data = await response.json() as { success?: boolean; data?: { value?: number } };
-    if (data.success && data.data?.value) {
-      return data.data.value;
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    const data = await response.json() as { solana?: { usd?: number } };
+    if (data?.solana?.usd) {
+      console.log(`[executeRebalance] Using CoinGecko SOL price: $${data.solana.usd}`);
+      return data.solana.usd;
     }
   } catch (error) {
-    console.warn('[executeRebalance] Failed to fetch SOL price:', error);
+    console.warn('[executeRebalance] CoinGecko SOL price fetch failed:', error);
   }
-  return FALLBACK_SOL_PRICE;
+
+  console.warn(`[executeRebalance] All price sources failed, using conservative fallback: $${LAST_RESORT_SOL_PRICE}`);
+  return LAST_RESORT_SOL_PRICE;
 }
 
 /**

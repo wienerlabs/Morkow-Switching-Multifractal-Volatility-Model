@@ -66,8 +66,7 @@ export const DEFAULT_RISK_LIMITS: RiskLimits = {
   minVolatility24h: 0.02,  // Need some movement for opportunity
 
   // Based on avg 1.0 trades/day optimal spacing
-  // TEMPORARILY DISABLED FOR TESTING - was 24
-  minCooldownHours: 0,
+  minCooldownHours: 1,
 
   // Regime-specific position scaling
   // Conservative in BEAR markets where model may be less reliable

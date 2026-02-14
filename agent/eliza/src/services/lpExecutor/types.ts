@@ -42,6 +42,7 @@ export interface DepositParams {
   amountUsd: number;          // USD amount to deposit
   slippageBps?: number;       // Slippage tolerance in basis points (default: 50 = 0.5%)
   wallet: Keypair;
+  portfolioValueUsd?: number; // Total portfolio value for PM approval calculations
 }
 
 // Deposit result

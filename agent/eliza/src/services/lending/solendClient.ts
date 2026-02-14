@@ -409,27 +409,28 @@ export class SolendLendingClient {
       }
       // ========================================
 
-      // ========== GUARDIAN PRE-EXECUTION VALIDATION - DISABLED FOR TESTING ==========
-      // const guardianParams: GuardianTradeParams = {
-      //   inputMint: params.asset,
-      //   outputMint: params.asset,
-      //   amountIn: params.amount,
-      //   amountInUsd: params.amount,
-      //   slippageBps: 50,
-      //   strategy: 'lending',
-      //   protocol: 'solend',
-      //   walletAddress: this.keypair.publicKey.toBase58(),
-      // };
+      // ========== GUARDIAN PRE-EXECUTION VALIDATION ==========
+      const guardianParams: GuardianTradeParams = {
+        inputMint: params.asset,
+        outputMint: params.asset,
+        amountIn: params.amount,
+        amountInUsd: params.amount,
+        slippageBps: 50,
+        strategy: 'lending',
+        protocol: 'solend',
+        walletAddress: this.keypair.publicKey.toBase58(),
+      };
 
-      // const guardianResult = await guardian.validate(guardianParams);
-      // if (!guardianResult.approved) {
-      //   logger.warn('[SOLEND] Guardian blocked deposit', {
-      //     reason: guardianResult.blockReason,
-      //     asset: params.asset,
-      //     amount: params.amount,
-      //   });
-      //   return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
-      // }
+      logger.info('[SOLEND] Running Guardian validation', { asset: params.asset, amount: params.amount });
+      const guardianResult = await guardian.validate(guardianParams);
+      if (!guardianResult.approved) {
+        logger.warn('[SOLEND] Guardian blocked deposit', {
+          reason: guardianResult.blockReason,
+          asset: params.asset,
+          amount: params.amount,
+        });
+        return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
+      }
       // ========================================
 
       const reserve = this.getReserveBySymbol(params.asset);
@@ -720,12 +721,34 @@ export class SolendLendingClient {
   async getPositions(): Promise<LendingPosition[]> {
     try {
       this.ensureInitialized();
-      // Solend positions require fetching user's obligation account
-      // For now, return empty - would need to implement obligation parsing
-      logger.info('[SOLEND] Position fetching not yet implemented');
+
+      const SOLEND_PROGRAM_ID = new PublicKey('So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo');
+      const userPubkey = this.keypair.publicKey;
+
+      // Fetch user's obligation accounts from Solend program
+      const obligationAccounts = await this.connection.getProgramAccounts(SOLEND_PROGRAM_ID, {
+        filters: [
+          { dataSize: 1300 }, // Obligation account data size
+          { memcmp: { offset: 10, bytes: userPubkey.toBase58() } },
+        ],
+      });
+
+      if (obligationAccounts.length === 0) {
+        logger.info('[SOLEND] No obligation accounts found for user');
+        return [];
+      }
+
+      logger.info('[SOLEND] Found obligation accounts', {
+        count: obligationAccounts.length,
+        addresses: obligationAccounts.map(a => a.pubkey.toBase58()),
+      });
+
+      // Full obligation parsing requires Solend SDK layout deserialization
+      // For now, report found obligations without detailed position data
+      logger.warn('[SOLEND] Detailed obligation parsing pending - returning account count only');
       return [];
-    } catch (error) {
-      logger.error('[SOLEND] Failed to get positions', { error });
+    } catch (error: any) {
+      logger.error('[SOLEND] Failed to get positions', { error: error.message });
       return [];
     }
   }

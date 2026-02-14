@@ -85,18 +85,16 @@ export interface ArbitrageAnalystConfig extends AnalystConfig {
 
 export const DEFAULT_ARBITRAGE_CONFIG: ArbitrageAnalystConfig = {
   ...DEFAULT_ANALYST_CONFIG,
-  minConfidence: -10.0,           // TESTING: Accept ANY ML prediction (even negative!)
-  minSpreadPct: 0.01,             // TESTING: 0.01% minimum spread (EXTREMELY low!)
+  minConfidence: 0.60,            // 60% minimum ML confidence
+  minSpreadPct: 0.10,             // 10 bps minimum spread
   maxSpreadPct: 10.0,             // 10% max (scam filter)
-  maxSlippagePct: 5.0,            // TESTING: 5% max slippage (very high for testing)
-  minProfitAfterGasPct: 0.001,    // TESTING: 0.001% min profit (basically nothing!)
+  maxSlippagePct: 2.0,            // 2% max slippage
+  minProfitAfterGasPct: 0.05,     // 5 bps min profit after gas
   cexExchanges: ['binance', 'coinbase', 'kraken'],
-  // Direction rules (TESTING: Only DEX→CEX - no Binance balance for CEX→DEX)
-  allowDexToDex: true,            // DEX-to-DEX ENABLED (Orca→Meteora, etc.)
-  allowDexToCex: true,            // DEX-to-CEX ENABLED (Orca→Binance) ✅
-  allowCexToDex: false,           // CEX-to-DEX DISABLED (no USDT in Binance)
-  allowCexToCex: false,           // CEX-to-CEX disabled (transfer required)
-  // MEV protection
+  allowDexToDex: true,
+  allowDexToCex: true,
+  allowCexToDex: false,           // Requires CEX balance
+  allowCexToCex: false,           // Requires cross-exchange transfer
   useJitoBundles: true,
   maxConcurrentPositions: 5,
 };
@@ -266,14 +264,12 @@ export class ArbitrageAnalyst extends BaseAnalyst<ArbitrageAnalysisInput, Arbitr
     // Check if direction is allowed based on config
     const directionAllowed = this.isDirectionAllowed(direction);
 
-    // Final approval check (TESTING: Relaxed checks for testing)
     const approved =
       directionAllowed &&
       riskCheck.allowed &&
       arb.spreadPct >= this.arbConfig.minSpreadPct &&
       arb.spreadPct <= this.arbConfig.maxSpreadPct &&
-      // TESTING: Disabled profit check - allow negative profit for testing
-      // profitAfterGasPct >= this.arbConfig.minProfitAfterGasPct &&
+      profitAfterGasPct >= this.arbConfig.minProfitAfterGasPct &&
       confidence >= this.arbConfig.minConfidence;
 
     return {

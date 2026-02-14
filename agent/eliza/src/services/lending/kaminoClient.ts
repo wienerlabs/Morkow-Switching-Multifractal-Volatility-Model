@@ -309,27 +309,28 @@ export class KaminoLendingClient {
       }
       // ========================================
 
-      // ========== GUARDIAN PRE-EXECUTION VALIDATION - DISABLED FOR TESTING ==========
-      // const guardianParams: GuardianTradeParams = {
-      //   inputMint: params.asset,
-      //   outputMint: params.asset, // Same asset for lending
-      //   amountIn: params.amount,
-      //   amountInUsd: params.amount, // Approximate - lending amounts are usually in USD terms
-      //   slippageBps: 50, // Lending has minimal slippage
-      //   strategy: 'lending',
-      //   protocol: 'kamino',
-      //   walletAddress: this.keypair.publicKey.toBase58(),
-      // };
+      // ========== GUARDIAN PRE-EXECUTION VALIDATION ==========
+      const guardianParams: GuardianTradeParams = {
+        inputMint: params.asset,
+        outputMint: params.asset,
+        amountIn: params.amount,
+        amountInUsd: params.amount,
+        slippageBps: 50,
+        strategy: 'lending',
+        protocol: 'kamino',
+        walletAddress: this.keypair.publicKey.toBase58(),
+      };
 
-      // const guardianResult = await guardian.validate(guardianParams);
-      // if (!guardianResult.approved) {
-      //   logger.warn('[KAMINO] Guardian blocked deposit', {
-      //     reason: guardianResult.blockReason,
-      //     asset: params.asset,
-      //     amount: params.amount,
-      //   });
-      //   return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
-      // }
+      logger.info('[KAMINO] Running Guardian validation', { asset: params.asset, amount: params.amount });
+      const guardianResult = await guardian.validate(guardianParams);
+      if (!guardianResult.approved) {
+        logger.warn('[KAMINO] Guardian blocked deposit', {
+          reason: guardianResult.blockReason,
+          asset: params.asset,
+          amount: params.amount,
+        });
+        return { success: false, error: `Guardian blocked: ${guardianResult.blockReason}` };
+      }
       // ========================================
 
       const reserve = this.market!.getReserveBySymbol(params.asset);

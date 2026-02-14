@@ -52,12 +52,12 @@ export interface LPAnalystConfig extends AnalystConfig {
 
 export const DEFAULT_LP_CONFIG: LPAnalystConfig = {
   ...DEFAULT_ANALYST_CONFIG,
-  minConfidence: 0.30,            // 30% min confidence (lowered for mainnet testing)
+  minConfidence: 0.50,            // 50% min confidence
   maxApy: 500,                    // 500% max APY (scam filter)
-  minTvl: 50_000,                 // $50k min TVL (lowered for mainnet testing)
-  minVolumeTvlRatio: 0.3,         // 0.3 min volume/TVL ratio (production)
+  minTvl: 100_000,                // $100k min TVL
+  minVolumeTvlRatio: 0.3,         // 0.3 min volume/TVL ratio
   allowedTokens: ['SOL', 'USDC', 'USDT', 'JUP', 'BONK', 'mSOL', 'stSOL', 'jitoSOL', 'RAY', 'ORCA'],
-  minConfidenceThreshold: 0.30,  // 30% threshold (lowered for mainnet testing)
+  minConfidenceThreshold: 0.50,   // 50% threshold
 };
 
 /**

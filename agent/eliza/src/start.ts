@@ -19,6 +19,7 @@
 import 'dotenv/config';
 import { CRTXAgent } from './agents/crtxAgent.js';
 import { logger } from './services/logger.js';
+import { validateAgentConfig } from './config/production.js';
 
 async function main() {
   console.log('\n╔═══════════════════════════════════════════════════════════╗');
@@ -26,14 +27,25 @@ async function main() {
   console.log('╚═══════════════════════════════════════════════════════════╝\n');
 
   try {
+    const portfolioValueUsd = parseFloat(process.env.PORTFOLIO_VALUE_USD || '100');
+    const minConfidence = 0.60;
+
+    // Validate config before creating agent
+    const configCheck = validateAgentConfig({ minConfidence, portfolioValueUsd });
+    if (!configCheck.valid) {
+      console.error('❌ Invalid agent configuration:');
+      configCheck.errors.forEach(err => console.error(`   - ${err}`));
+      process.exit(1);
+    }
+
     // Create agent with interactive mode selection
     console.log('Initializing agent with interactive mode selection...\n');
-    
+
     const agent = await CRTXAgent.createInteractive({
-      portfolioValueUsd: 100,  // $100 capital
-      minConfidence: -10.0,  // TESTING: Accept ANY ML prediction
+      portfolioValueUsd,
+      minConfidence,
       minRiskAdjustedReturn: 1.0,
-      dryRun: false, // LIVE TRADING ENABLED - MAINNET
+      dryRun: false,
       volatility24h: 0.05,
     });
 
@@ -125,9 +137,10 @@ async function main() {
     // Initial run
     await runCycle();
 
-    // Periodic runs every 60 seconds
-    console.log('\n[CRTX] ⏰ Next cycle in 60 seconds...\n');
-    setInterval(runCycle, 60000);
+    // Periodic runs
+    const tradingCycleMs = parseInt(process.env.TRADING_CYCLE_MS || '60000', 10);
+    console.log(`\n[CRTX] ⏰ Next cycle in ${tradingCycleMs / 1000}s...\n`);
+    setInterval(runCycle, tradingCycleMs);
 
   } catch (error: any) {
     logger.error('[CRTX] Fatal error during startup', {

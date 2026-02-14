@@ -50,7 +50,7 @@ export interface AnalystConfig {
  * Default analyst configuration
  */
 export const DEFAULT_ANALYST_CONFIG: AnalystConfig = {
-  minConfidence: 0.50,  // TESTING: Lowered from 0.6 to accept more opportunities
+  minConfidence: 0.50,
   portfolioValueUsd: 10000,
   volatility24h: 0.05,
   verbose: true,

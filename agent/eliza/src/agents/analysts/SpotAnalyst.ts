@@ -73,10 +73,10 @@ export interface SpotAnalystConfig extends AnalystConfig {
 
 export const DEFAULT_SPOT_CONFIG: SpotAnalystConfig = {
   ...DEFAULT_ANALYST_CONFIG,
-  minConfidenceThreshold: 0.05,  // 5% minimum confidence (lowered for mainnet testing - ML returns 0%)
+  minConfidenceThreshold: 0.50,   // 50% minimum confidence
   mlWeight: 0.70,                 // 70% ML
   ruleWeight: 0.30,               // 30% rules
-  minLiquidity: 10_000,           // $10K (lowered for mainnet testing)
+  minLiquidity: 50_000,           // $50K minimum liquidity
   maxPositions: 4,
 };
 

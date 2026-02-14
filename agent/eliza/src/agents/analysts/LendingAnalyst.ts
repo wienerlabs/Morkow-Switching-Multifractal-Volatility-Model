@@ -49,12 +49,12 @@ export interface LendingAnalystConfig extends AnalystConfig {
 
 export const DEFAULT_LENDING_CONFIG: LendingAnalystConfig = {
   ...DEFAULT_ANALYST_CONFIG,
-  minConfidence: 0.25,            // 25% min confidence (lowered for mainnet testing)
-  minNetApy: 0.005,               // 0.5% min net APY (lowered for mainnet testing)
-  maxUtilization: 0.85,           // 85% max utilization (production)
-  minTvl: 50_000_000,             // $50M min TVL (production)
-  maxTier: 2,                     // Tier 1-2 only (production)
-  minConfidenceThreshold: 0.25,  // 25% threshold (lowered for mainnet testing)
+  minConfidence: 0.50,            // 50% min confidence
+  minNetApy: 0.02,                // 2% min net APY
+  maxUtilization: 0.85,           // 85% max utilization
+  minTvl: 50_000_000,             // $50M min TVL
+  maxTier: 2,                     // Tier 1-2 only
+  minConfidenceThreshold: 0.50,   // 50% threshold
 };
 
 /**
@@ -192,11 +192,9 @@ export class LendingAnalyst extends BaseAnalyst<LendingAnalysisInput, LendingOpp
     } else if (netApy < this.lendingConfig.minNetApy) {
       approved = false;
       rejectReason = `Net APY too low (${(netApy * 100).toFixed(2)}% < ${(this.lendingConfig.minNetApy * 100).toFixed(0)}%)`;
-    // TEMPORARILY DISABLED ML CHECK FOR TESTING
-    // } else if (!mlPrediction.shouldLend) {
-    //   approved = false;
-    //   rejectReason = `ML model rejected (confidence: ${(mlPrediction.confidence * 100).toFixed(1)}%)`;
-    // }
+    } else if (!mlPrediction.shouldLend) {
+      approved = false;
+      rejectReason = `ML model rejected (confidence: ${(mlPrediction.confidence * 100).toFixed(1)}%)`;
     }
 
     // Warnings

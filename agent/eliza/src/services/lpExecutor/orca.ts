@@ -106,7 +106,7 @@ export class OrcaExecutor implements IDexExecutor {
           protocol: 'orca',
         };
 
-        const portfolioValueUsd = 10000;
+        const portfolioValueUsd = params.portfolioValueUsd || 10000;
         const needsApproval = pmDecisionEngine.needsApproval(pmParams, portfolioValueUsd);
 
         if (needsApproval) {

@@ -291,7 +291,9 @@ export class PortfolioManager {
         dayStartTimestamp: this.state.dayStartTimestamp,
       };
 
-      fs.writeFileSync(this.stateFilePath, JSON.stringify(data, null, 2));
+      const tmpPath = this.stateFilePath + '.tmp';
+      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2));
+      fs.renameSync(tmpPath, this.stateFilePath);
       logger.info('Portfolio state saved', { path: this.stateFilePath });
     } catch (error) {
       logger.error('Failed to save portfolio state', { error });

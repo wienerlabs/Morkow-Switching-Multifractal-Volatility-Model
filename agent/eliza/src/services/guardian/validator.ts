@@ -460,6 +460,7 @@ class GuardianValidator {
       isValid: true,
       isBlacklisted: this.config.blacklistedAddresses.includes(mint),
       hasLiquidity: true,
+      isHoneypot: false,
       riskFlags: [],
     };
 
@@ -474,6 +475,7 @@ class GuardianValidator {
 
       if (!accountInfo) {
         result.isValid = false;
+        result.hasLiquidity = false;
         result.riskFlags.push('Mint account does not exist');
         return result;
       }
@@ -482,6 +484,36 @@ class GuardianValidator {
       const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
       if (accountInfo.owner.toBase58() !== TOKEN_PROGRAM_ID) {
         result.riskFlags.push('Not a valid SPL token');
+      }
+
+      // Check actual liquidity and honeypot indicators
+      try {
+        const largestAccounts = await this.connection.getTokenLargestAccounts(mintPubkey);
+
+        if (!largestAccounts.value || largestAccounts.value.length === 0) {
+          result.hasLiquidity = false;
+          result.riskFlags.push('No token accounts found - zero liquidity');
+        } else {
+          const topAccount = largestAccounts.value[0];
+          const totalSupplyInfo = await this.connection.getTokenSupply(mintPubkey);
+          const totalSupply = Number(totalSupplyInfo.value.amount);
+
+          if (totalSupply > 0) {
+            const topHolderPct = (Number(topAccount.amount) / totalSupply) * 100;
+
+            if (topHolderPct > 90) {
+              result.isHoneypot = true;
+              result.riskFlags.push(`Top holder owns ${topHolderPct.toFixed(1)}% of supply (potential honeypot)`);
+            }
+          }
+
+          if (largestAccounts.value.length < 5) {
+            result.isHoneypot = true;
+            result.riskFlags.push(`Very few holders (${largestAccounts.value.length}) - high honeypot risk`);
+          }
+        }
+      } catch (liquidityError: any) {
+        result.riskFlags.push(`Liquidity check failed: ${liquidityError.message}`);
       }
     } catch (error: any) {
       result.riskFlags.push(`Failed to validate mint: ${error.message}`);
