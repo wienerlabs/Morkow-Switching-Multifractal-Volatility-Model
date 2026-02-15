@@ -172,3 +172,37 @@ RISK_PARAMS = {
     'weekly_loss_limit': 0.10               # 10% weekly loss limit
 }
 
+# =============================================================================
+# A-LAMS-VaR Parameters
+# Asymmetric Liquidity-Adjusted Markov-Switching Value-at-Risk
+# =============================================================================
+
+VAR_PARAMS = {
+    # Regime configuration
+    'n_regimes': 5,                         # 5 volatility regimes
+    'confidence_levels': [0.95, 0.99],      # VaR confidence levels
+
+    # Estimation
+    'min_observations': 100,                # Min data points for estimation
+    'max_iter': 200,                        # L-BFGS-B max iterations
+    'tol': 1e-6,                            # Convergence tolerance
+    'asymmetry_prior': 0.15,                # δ prior ~ [0.127, 0.189]
+    'regularization': 1e-4,                 # L2 regularization on params
+
+    # Liquidity adjustment (AMM slippage)
+    'base_slippage_bps': 5.0,              # Base slippage in bps
+    'regime_slippage_multipliers': [0.5, 0.8, 1.0, 1.5, 3.0],  # Per-regime
+    'impact_exponent': 1.5,                 # Non-linear impact exponent
+    'max_slippage_bps': 500.0,              # Cap slippage at 5%
+
+    # Volatility regime thresholds (annualized, for regime detector bridge)
+    'regime_vol_thresholds': [0.20, 0.40, 0.65, 1.00],  # 4 thresholds -> 5 regimes
+    'regime_labels': [
+        'VERY_LOW_VOL',     # Regime 0: < 20% annualized
+        'LOW_VOL',          # Regime 1: 20-40%
+        'NORMAL',           # Regime 2: 40-65%
+        'HIGH_VOL',         # Regime 3: 65-100%
+        'CRISIS',           # Regime 4: > 100% annualized
+    ],
+}
+

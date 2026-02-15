@@ -4,10 +4,14 @@ Market Regime Detection Module
 Classifies market conditions as BULL, BEAR, or SIDEWAYS based on
 price action, trend strength, and volatility.
 
+Also provides a 5-regime volatility classification that maps directly
+to A-LAMS-VaR regime indices (0=very-low-vol ... 4=crisis).
+
 Used for:
 - Regime-specific model validation
 - Historical data labeling
 - Real-time regime detection
+- A-LAMS-VaR regime bridge
 """
 import numpy as np
 import pandas as pd
@@ -25,21 +29,58 @@ class MarketRegime(Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class VolatilityRegime(Enum):
+    """5-regime volatility classification for A-LAMS-VaR bridge."""
+    VERY_LOW_VOL = 0
+    LOW_VOL = 1
+    NORMAL = 2
+    HIGH_VOL = 3
+    CRISIS = 4
+
+
+@dataclass
+class VolatilityRegimeConfig:
+    """Configuration for 5-regime volatility classification (A-LAMS-VaR bridge)."""
+    # Annualized volatility thresholds (4 thresholds -> 5 regimes)
+    vol_thresholds: list[float] = field(
+        default_factory=lambda: [0.20, 0.40, 0.65, 1.00]
+    )
+    # Window for volatility estimation
+    volatility_window: int = 30
+
+
+@dataclass
+class VolatilityRegimeResult:
+    """Result of 5-regime volatility classification."""
+    regime: VolatilityRegime
+    regime_index: int          # 0-4, maps directly to A-LAMS-VaR regime k
+    annualized_volatility: float
+    timestamp: Optional[datetime] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "regime": self.regime.name,
+            "regime_index": self.regime_index,
+            "annualized_volatility": round(self.annualized_volatility, 4),
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+        }
+
+
 @dataclass
 class RegimeConfig:
     """Configuration for regime detection thresholds."""
     # Return thresholds (15% for strong directional move)
     bull_return_threshold: float = 0.15  # >15% gain = BULL
     bear_return_threshold: float = -0.15  # <-15% loss = BEAR
-    
+
     # Trend strength thresholds (0-1 scale, using price vs moving average)
     min_trend_strength: float = 0.6  # Need 60% trend strength for directional regime
-    
+
     # Window sizes (in periods - typically hours or days)
     return_window: int = 30  # Look at last 30 periods for returns
     volatility_window: int = 30  # Look at last 30 periods for volatility
     trend_window: int = 14  # 14-period trend calculation
-    
+
     # Volatility thresholds (annualized)
     high_volatility_threshold: float = 1.0  # Above 100% annualized vol
     low_volatility_threshold: float = 0.3   # Below 30% annualized vol
@@ -232,6 +273,43 @@ class RegimeDetector:
         """Get history of regime detections."""
         return self._regime_history.copy()
 
+    def classify_volatility_regime(
+        self,
+        price_data: pd.Series,
+        vol_config: Optional[VolatilityRegimeConfig] = None,
+        timestamp: Optional[datetime] = None,
+    ) -> VolatilityRegimeResult:
+        """
+        Classify current volatility into one of 5 A-LAMS-VaR regimes.
+
+        Args:
+            price_data: Series of prices
+            vol_config: Optional volatility regime config (uses defaults if None)
+            timestamp: Optional timestamp for the result
+
+        Returns:
+            VolatilityRegimeResult with regime index 0-4
+        """
+        cfg = vol_config or VolatilityRegimeConfig()
+
+        vol = self._calculate_volatility(price_data)
+
+        # Map volatility to regime index
+        regime_idx = len(cfg.vol_thresholds)  # default: highest regime
+        for i, threshold in enumerate(cfg.vol_thresholds):
+            if vol < threshold:
+                regime_idx = i
+                break
+
+        regime = VolatilityRegime(regime_idx)
+
+        return VolatilityRegimeResult(
+            regime=regime,
+            regime_index=regime_idx,
+            annualized_volatility=vol,
+            timestamp=timestamp,
+        )
+
     def clear_history(self) -> None:
         """Clear regime detection history."""
         self._regime_history = []
@@ -322,4 +400,33 @@ def label_data_with_regimes(
     df_out["regime_volatility"] = volatilities
 
     return df_out
+
+
+def classify_volatility(
+    price_data: pd.Series,
+    vol_thresholds: Optional[List[float]] = None,
+    window: int = 30,
+    timestamp: Optional[datetime] = None,
+) -> int:
+    """
+    Convenience function: classify current volatility into A-LAMS-VaR regime index.
+
+    Args:
+        price_data: Series of prices
+        vol_thresholds: Annualized vol thresholds (4 values -> 5 regimes).
+                        Defaults to [0.20, 0.40, 0.65, 1.00].
+        window: Lookback window for volatility calculation
+        timestamp: Optional timestamp
+
+    Returns:
+        Regime index 0-4 (0=very low vol, 4=crisis)
+    """
+    vol_config = VolatilityRegimeConfig(volatility_window=window)
+    if vol_thresholds is not None:
+        vol_config.vol_thresholds = vol_thresholds
+
+    reg_config = RegimeConfig(volatility_window=window)
+    detector = RegimeDetector(reg_config)
+    result = detector.classify_volatility_regime(price_data, vol_config, timestamp)
+    return result.regime_index
 

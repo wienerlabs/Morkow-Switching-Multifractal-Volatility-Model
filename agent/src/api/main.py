@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
-from .routes import predictions, execution, health, solana
+from .routes import predictions, execution, health, solana, risk
 from ..config import settings
 
 logger = structlog.get_logger()
@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(predictions.router, prefix="/api/v1", tags=["Predictions"])
     app.include_router(execution.router, prefix="/api/v1", tags=["Execution"])
     app.include_router(solana.router, prefix="/api/v1", tags=["Solana"])
+    app.include_router(risk.router, prefix="/api/v1", tags=["Risk"])
 
     return app
 
