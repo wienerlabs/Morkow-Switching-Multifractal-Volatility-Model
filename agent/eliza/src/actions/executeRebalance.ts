@@ -49,7 +49,7 @@ async function getSolPrice(): Promise<number> {
         return data.data.value;
       }
     } catch (error) {
-      logger.warn('[executeRebalance] Birdeye SOL price fetch failed:', error);
+      logger.warn('[executeRebalance] Birdeye SOL price fetch failed', { error: String(error) });
     }
   }
 
@@ -62,7 +62,7 @@ async function getSolPrice(): Promise<number> {
       return data.solana.usd;
     }
   } catch (error) {
-    logger.warn('[executeRebalance] CoinGecko SOL price fetch failed:', error);
+    logger.warn('[executeRebalance] CoinGecko SOL price fetch failed', { error: String(error) });
   }
 
   logger.warn(`[executeRebalance] All price sources failed, using conservative fallback: $${LAST_RESORT_SOL_PRICE}`);
@@ -117,7 +117,7 @@ async function get24hVolatility(): Promise<number> {
       return Math.max(0.01, Math.min(0.30, volatility));
     }
   } catch (error) {
-    logger.warn('[executeRebalance] Failed to calculate volatility:', error);
+    logger.warn('[executeRebalance] Failed to calculate volatility', { error: String(error) });
   }
   return FALLBACK_VOLATILITY;
 }
@@ -136,7 +136,7 @@ async function getWalletValue(
     const balanceUsd = balanceSol * solPrice;
     return { balanceSol, balanceUsd };
   } catch (error) {
-    logger.warn('[executeRebalance] Failed to get wallet balance:', error);
+    logger.warn('[executeRebalance] Failed to get wallet balance', { error: String(error) });
     return { balanceSol: 0, balanceUsd: 0 };
   }
 }

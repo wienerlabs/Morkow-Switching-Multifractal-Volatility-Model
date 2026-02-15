@@ -95,22 +95,39 @@ function generateLowFundingScenario(): FundingDataPoint[] {
 
 // ============= TESTS =============
 
+// Check if the ONNX model binary is available (not a Git LFS pointer)
+import { readFileSync, existsSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __test_filename = fileURLToPath(import.meta.url);
+const __test_dirname = dirname(__test_filename);
+const MODEL_FILE = resolve(__test_dirname, '../../../../../models/perps_predictor.onnx');
+
+function isOnnxModelAvailable(): boolean {
+  if (!existsSync(MODEL_FILE)) return false;
+  const head = readFileSync(MODEL_FILE, { encoding: 'utf-8', flag: 'r' }).slice(0, 40);
+  return !head.startsWith('version https://git-lfs');
+}
+
+const modelAvailable = isOnnxModelAvailable();
+
 describe('Perps ML Integration Tests', () => {
   let modelLoader: PerpsModelLoader;
   let featureExtractor: PerpsFeatureExtractor;
-  
+
   beforeAll(async () => {
     modelLoader = getPerpsModelLoader();
     await modelLoader.initialize();
     featureExtractor = createFeatureExtractor();
   });
-  
+
   afterAll(() => {
     PerpsModelLoader.resetInstance();
   });
 
   describe('1. Model Loading', () => {
-    it('should load ONNX model successfully', () => {
+    it.skipIf(!modelAvailable)('should load ONNX model successfully', () => {
       expect(modelLoader.isInitialized()).toBe(true);
     });
     
@@ -179,7 +196,7 @@ describe('Perps ML Integration Tests', () => {
     });
   });
 
-  describe('3. ML Pipeline (Data → Features → Prediction)', () => {
+  describe.skipIf(!modelAvailable)('3. ML Pipeline (Data → Features → Prediction)', () => {
     it('should run full prediction pipeline', async () => {
       const history = generateTestFundingHistory();
       const extractor = createFeatureExtractor();
@@ -251,7 +268,7 @@ describe('Perps ML Integration Tests', () => {
     });
   });
 
-  describe('4. Trading Agent Dry Run', () => {
+  describe.skipIf(!modelAvailable)('4. Trading Agent Dry Run', () => {
     let agent: PerpsTradingAgent;
 
     beforeAll(async () => {

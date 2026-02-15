@@ -92,7 +92,7 @@ class PnLTracker {
         });
       }
     } catch (err) {
-      logger.warn('Could not load existing P&L data:', err);
+      logger.warn('Could not load existing P&L data', { error: String(err) });
     }
   }
 

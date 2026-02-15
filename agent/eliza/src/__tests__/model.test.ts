@@ -2,9 +2,24 @@
  * Model Inference Tests
  */
 import { describe, it, expect, beforeAll } from 'vitest';
+import { existsSync, readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { lpRebalancerModel, type PoolFeatures } from '../inference/model.js';
 
-describe('LP Rebalancer Model', () => {
+const __test_filename = fileURLToPath(import.meta.url);
+const __test_dirname = dirname(__test_filename);
+const LP_MODEL_FILE = resolve(__test_dirname, '../../models/lp_rebalancer.onnx');
+
+function isOnnxModelAvailable(): boolean {
+  if (!existsSync(LP_MODEL_FILE)) return false;
+  const head = readFileSync(LP_MODEL_FILE, { encoding: 'utf-8', flag: 'r' }).slice(0, 40);
+  return !head.startsWith('version https://git-lfs');
+}
+
+const modelAvailable = isOnnxModelAvailable();
+
+describe.skipIf(!modelAvailable)('LP Rebalancer Model', () => {
   // Create mock features with all 61 fields
   const createMockFeatures = (): PoolFeatures => ({
     volume_1h: 1000000,

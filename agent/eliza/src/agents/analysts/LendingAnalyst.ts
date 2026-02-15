@@ -107,7 +107,7 @@ export class LendingAnalyst extends BaseAnalyst<LendingAnalysisInput, LendingOpp
       logger.info(`ℹ️ [${new Date().toISOString()}] [AGENT] [LendingAnalyst] ML model loaded`);
       return true;
     } catch (error) {
-      logger.error(`❌ [${new Date().toISOString()}] [AGENT] [LendingAnalyst] Failed to load ML model:`, error);
+      logger.error(`❌ [${new Date().toISOString()}] [AGENT] [LendingAnalyst] Failed to load ML model`, { error: String(error) });
       return false;
     }
   }

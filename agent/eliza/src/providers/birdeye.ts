@@ -181,7 +181,7 @@ export class BirdeyeProvider {
         const price = await this.getTokenPrice(token);
         results[token] = price;
       } catch (error) {
-        logger.error(`Failed to fetch price for ${token}:`, error);
+        logger.error(`Failed to fetch price for ${token}`, { error: String(error) });
       }
     });
 
@@ -236,7 +236,7 @@ export class BirdeyeProvider {
         v24hChangePercent: number;
       }>('/defi/v3/pair/overview/single', { address: poolAddress });
 
-      logger.info('📊 Pool data received:', JSON.stringify(data, null, 2));
+      logger.info(`📊 Pool data received: ${JSON.stringify(data, null, 2)}`);
 
       return {
         address: data.address || poolAddress,
@@ -247,7 +247,7 @@ export class BirdeyeProvider {
         priceChange24h: data.v24hChangePercent || 0,
       };
     } catch (error) {
-      logger.error('❌ Pool overview error:', error);
+      logger.error('❌ Pool overview error', { error: String(error) });
       throw error;
     }
   }

@@ -110,7 +110,7 @@ class FeatureBuilderService {
 
       return features;
     } catch (error) {
-      logger.error(`[FeatureBuilder] Error fetching features for ${pool.name}:`, error);
+      logger.error(`[FeatureBuilder] Error fetching features for ${pool.name}`, { error: String(error) });
       return await this.getFallbackFeatures(pool);
     }
   }
@@ -175,7 +175,7 @@ class FeatureBuilderService {
       this.ohlcvCache.set(cacheKey, { data, timestamp: Date.now() });
       return data;
     } catch (error) {
-      logger.error(`[FeatureBuilder] OHLCV fetch failed for ${tokenAddress}:`, error);
+      logger.error(`[FeatureBuilder] OHLCV fetch failed for ${tokenAddress}`, { error: String(error) });
       return cached?.data ?? [];
     }
   }
@@ -206,7 +206,7 @@ class FeatureBuilderService {
       this.tokenHistoryLastUpdate = Date.now();
       logger.info(`[FeatureBuilder] Token history updated: SOL=${this.tokenPriceHistory.SOL.length}h, USDC=${this.tokenPriceHistory.USDC.length}h`);
     } catch (error) {
-      logger.error('[FeatureBuilder] Failed to update token history:', error);
+      logger.error('[FeatureBuilder] Failed to update token history', { error: String(error) });
     }
   }
 

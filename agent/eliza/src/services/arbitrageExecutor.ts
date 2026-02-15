@@ -278,15 +278,15 @@ async function executeJupiterSwap(
   const transaction = VersionedTransaction.deserialize(txBuffer);
 
   logger.info('[JUPITER] 🔍 Transaction details:');
-  logger.info('[JUPITER]   - Fee payer:', transaction.message.staticAccountKeys[0]?.toBase58());
-  logger.info('[JUPITER]   - Our wallet:', keypair.publicKey.toBase58());
-  logger.info('[JUPITER]   - Signatures before signing:', transaction.signatures.length);
+  logger.info(`[JUPITER]   - Fee payer: ${transaction.message.staticAccountKeys[0]?.toBase58()}`);
+  logger.info(`[JUPITER]   - Our wallet: ${keypair.publicKey.toBase58()}`);
+  logger.info(`[JUPITER]   - Signatures before signing: ${transaction.signatures.length}`);
 
   // Sign the transaction with our wallet (normal flow, not gasless)
   logger.info('[JUPITER] Signing transaction with our wallet...');
   transaction.sign([keypair]);
 
-  logger.info('[JUPITER]   - Signatures after signing:', transaction.signatures.length);
+  logger.info(`[JUPITER]   - Signatures after signing: ${transaction.signatures.length}`);
 
   const txid = await connection.sendTransaction(transaction, {
     skipPreflight: false,
@@ -309,7 +309,7 @@ async function executeJupiterSwap(
     // Check if transaction failed
     if (status?.value?.err) {
       logger.info(`[JUPITER] ❌ Transaction FAILED!`);
-      logger.info(`[JUPITER] Error:`, JSON.stringify(status.value.err));
+      logger.info(`[JUPITER] Error: ${JSON.stringify(status.value.err)}`);
       throw new Error(`Jupiter swap transaction failed: ${JSON.stringify(status.value.err)}`);
     }
 
@@ -1084,7 +1084,7 @@ export class ArbitrageExecutor {
 
   private async getBinanceDepositAddress(symbol: string): Promise<string> {
     const response = await binanceGetDepositAddress(this.config, symbol, 'SOL');
-    logger.info(`[ARBITRAGE] 🔍 Binance deposit response:`, JSON.stringify(response, null, 2));
+    logger.info(`[ARBITRAGE] 🔍 Binance deposit response: ${JSON.stringify(response, null, 2)}`);
     logger.info(`[ARBITRAGE] 🔍 Deposit address: ${response.address}`);
     logger.info(`[ARBITRAGE] 🔍 Address tag: ${response.tag || 'none'}`);
     return response.address;
