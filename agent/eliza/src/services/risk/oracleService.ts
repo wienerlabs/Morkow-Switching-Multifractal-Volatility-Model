@@ -8,6 +8,7 @@
  */
 import { Connection, PublicKey } from '@solana/web3.js';
 import { logger } from '../logger.js';
+import { getSolanaConnection } from '../solana/connection.js';
 import type { OracleConfig, OracleStatus } from './types.js';
 
 // ============= ORACLE CONSTANTS =============
@@ -52,11 +53,13 @@ export class OracleService {
   private birdeyeApiKey?: string;
 
   constructor(
-    rpcUrl: string = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
+    rpcUrl?: string,
     config: Partial<OracleConfig> = {},
     birdeyeApiKey?: string
   ) {
-    this.connection = new Connection(rpcUrl, 'confirmed');
+    this.connection = rpcUrl
+      ? new Connection(rpcUrl, 'confirmed')
+      : getSolanaConnection();
     this.config = { ...DEFAULT_ORACLE_CONFIG, ...config };
     this.birdeyeApiKey = birdeyeApiKey || process.env.BIRDEYE_API_KEY;
   }

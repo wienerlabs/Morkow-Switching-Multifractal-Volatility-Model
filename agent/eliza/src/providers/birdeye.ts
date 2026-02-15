@@ -44,6 +44,7 @@ export const TOKENS = {
 } as const;
 
 import { logger } from '../services/logger.js';
+import { resilientFetch, Queues } from '../services/resilience.js';
 
 // Interval mapping
 const INTERVAL_MAP: Record<string, string> = {
@@ -62,10 +63,6 @@ export class BirdeyeProvider {
   private apiKey: string;
   private headers: Record<string, string>;
 
-  // Rate limiting: 60 rpm = 1 request per second
-  private static lastRequestTime = 0;
-  private static readonly MIN_REQUEST_INTERVAL = 1100; // 1.1 seconds between requests (safe margin)
-
   constructor(apiKey: string) {
     this.apiKey = apiKey;
     this.headers = {
@@ -75,22 +72,7 @@ export class BirdeyeProvider {
     };
   }
 
-  /**
-   * Wait to respect rate limit (60 rpm)
-   */
-  private async waitForRateLimit(): Promise<void> {
-    const now = Date.now();
-    const timeSinceLastRequest = now - BirdeyeProvider.lastRequestTime;
-
-    if (timeSinceLastRequest < BirdeyeProvider.MIN_REQUEST_INTERVAL) {
-      const waitTime = BirdeyeProvider.MIN_REQUEST_INTERVAL - timeSinceLastRequest;
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-    }
-
-    BirdeyeProvider.lastRequestTime = Date.now();
-  }
-
-  private async request<T>(endpoint: string, params?: Record<string, string | number>, retries = 3): Promise<T> {
+  private async request<T>(endpoint: string, params?: Record<string, string | number>): Promise<T> {
     const url = new URL(`${this.baseUrl}${endpoint}`);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -98,66 +80,26 @@ export class BirdeyeProvider {
       });
     }
 
-    let lastError: Error | null = null;
+    // Uses Birdeye queue (1 req/1.1s) + 3 retries with exponential backoff
+    const response = await resilientFetch(url.toString(), { headers: this.headers }, {
+      queue: Queues.birdeye(),
+      label: `birdeye${endpoint}`,
+      retries: 3,
+      fetchTimeout: 30000,
+      minTimeout: 2000,
+      maxTimeout: 16000,
+    });
 
-    for (let attempt = 0; attempt < retries; attempt++) {
-      try {
-        // Respect rate limit before each request
-        await this.waitForRateLimit();
-
-        // Add timeout (30 seconds)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-        try {
-          const response = await fetch(url.toString(), {
-            headers: this.headers,
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
-
-          // Handle rate limiting with exponential backoff
-          if (response.status === 429) {
-            const waitTime = Math.pow(2, attempt + 1) * 2000; // 4s, 8s, 16s for rate limit
-            logger.warn(`⚠️ Birdeye rate limited (429). Waiting ${waitTime}ms before retry ${attempt + 1}/${retries}`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            continue;
-          }
-
-          if (!response.ok) {
-            throw new Error(`Birdeye API error: ${response.status} ${response.statusText}`);
-          }
-
-          const data = await response.json() as { success: boolean; data: T };
-          if (!data.success) {
-            throw new Error(`Birdeye API returned error: ${JSON.stringify(data)}`);
-          }
-
-          return data.data;
-        } catch (fetchError: any) {
-          clearTimeout(timeoutId);
-
-          // Retry on timeout
-          if ((fetchError.name === 'AbortError' || fetchError.cause?.code === 'UND_ERR_CONNECT_TIMEOUT') && attempt < retries - 1) {
-            const waitTime = Math.pow(2, attempt) * 2000;
-            logger.warn(`⚠️ Birdeye timeout (30s). Retrying in ${waitTime}ms (attempt ${attempt + 1}/${retries})`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            continue;
-          }
-
-          throw fetchError;
-        }
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt < retries - 1) {
-          const waitTime = Math.pow(2, attempt) * 1000;
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-        }
-      }
+    if (!response.ok) {
+      throw new Error(`Birdeye API error: ${response.status} ${response.statusText}`);
     }
 
-    throw lastError || new Error('Birdeye API request failed after retries');
+    const data = await response.json() as { success: boolean; data: T };
+    if (!data.success) {
+      throw new Error(`Birdeye API returned error: ${JSON.stringify(data)}`);
+    }
+
+    return data.data;
   }
 
   async getTokenPrice(tokenAddress: string): Promise<TokenPrice> {

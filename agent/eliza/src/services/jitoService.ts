@@ -15,6 +15,7 @@ import {
 } from '@solana/web3.js';
 import { JitoJsonRpcClient } from 'jito-js-rpc';
 import { logger } from './logger.js';
+import { resilientFetch } from './resilience.js';
 
 // Jito endpoints
 const JITO_ENDPOINTS = {
@@ -281,7 +282,7 @@ export async function checkJitoHealth(network: 'mainnet' | 'devnet' = 'mainnet')
 }
 
 /**
- * Get current Jito tip statistics
+ * Get current Jito tip statistics from the Jito bundle tip API
  */
 export async function getJitoTipStats(): Promise<{
   minTip: number;
@@ -289,15 +290,38 @@ export async function getJitoTipStats(): Promise<{
   maxTip: number;
 } | null> {
   try {
-    // This would fetch from Jito's tip stats API
-    // For now, return reasonable defaults
+    const resp = await resilientFetch(
+      'https://bundles.jito.wtf/api/v1/bundles/tip_floor',
+      undefined,
+      { label: 'jito/tip_floor', retries: 2, fetchTimeout: 10000 },
+    );
+    const data = await resp.json() as Array<{
+      landed_tips_25th_percentile: number;
+      landed_tips_50th_percentile: number;
+      landed_tips_75th_percentile: number;
+      landed_tips_95th_percentile: number;
+      landed_tips_99th_percentile: number;
+    }>;
+
+    if (!data || data.length === 0) {
+      return null;
+    }
+
+    // Jito returns values in SOL — convert to lamports
+    const stats = data[0];
     return {
-      minTip: 1000,        // 0.000001 SOL
-      medianTip: 10000,    // 0.00001 SOL
-      maxTip: 100000,      // 0.0001 SOL
+      minTip: Math.floor(stats.landed_tips_25th_percentile * 1e9),
+      medianTip: Math.floor(stats.landed_tips_50th_percentile * 1e9),
+      maxTip: Math.floor(stats.landed_tips_95th_percentile * 1e9),
     };
-  } catch {
-    return null;
+  } catch (e) {
+    logger.warn('[Jito] Failed to fetch tip stats', { error: String(e) });
+    // Return safe defaults if API is down
+    return {
+      minTip: 1000,
+      medianTip: 10000,
+      maxTip: 100000,
+    };
   }
 }
 

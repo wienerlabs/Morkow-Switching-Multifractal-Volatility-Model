@@ -13,9 +13,12 @@
  */
 import { Connection } from '@solana/web3.js';
 import { logger } from '../logger.js';
+import { getDb } from '../db/index.js';
+import { getSolanaConnection } from '../solana/connection.js';
 import { getPortfolioManager, type PortfolioManager } from '../portfolioManager.js';
 import { OracleService, DEFAULT_ORACLE_CONFIG } from './oracleService.js';
 import { GasService, DEFAULT_GAS_CONFIG, COMPUTE_UNITS } from './gasService.js';
+import type Database from 'better-sqlite3';
 import type {
   GlobalRiskConfig,
   GlobalRiskStatus,
@@ -77,7 +80,8 @@ export class GlobalRiskManager {
   private oracleService: OracleService;
   private gasService: GasService;
   private connection: Connection;
-  
+  private db: Database.Database;
+
   // Drawdown tracking
   private peakValueUsd: number = 0;
   private dayStartValueUsd: number = 0;
@@ -86,18 +90,18 @@ export class GlobalRiskManager {
   private dayStartTimestamp: number = 0;
   private weekStartTimestamp: number = 0;
   private monthStartTimestamp: number = 0;
-  
+
   // Circuit breaker state
   private circuitBreakerState: CircuitBreakerState = 'ACTIVE';
   private lastCircuitBreakerTrigger?: Date;
   private circuitBreakerReason?: string;
-  
+
   // Position tracking for exposure calculation
   private trackedPositions: Map<string, TrackedPosition> = new Map();
-  
+
   // Alerts
   private alerts: RiskAlert[] = [];
-  
+
   // Price cache for exposure calculations
   private priceCache: Map<string, number> = new Map();
 
@@ -110,24 +114,125 @@ export class GlobalRiskManager {
     dryRun: boolean = false
   ) {
     this.config = { ...DEFAULT_GLOBAL_RISK_CONFIG, ...config };
-    this.connection = new Connection(
-      rpcUrl || process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
-      'confirmed'
-    );
+    this.connection = rpcUrl
+      ? new Connection(rpcUrl, 'confirmed')
+      : getSolanaConnection();
 
     this.isDryRun = dryRun;
+    this.db = getDb();
     this.portfolioManager = getPortfolioManager();
     this.oracleService = new OracleService(rpcUrl, this.config.oracleConfig);
     this.gasService = new GasService(rpcUrl, this.config.gasBudgetConfig);
 
-    // Initialize period tracking
-    this.initializePeriodTracking();
+    // Try to load persisted risk state first
+    const loaded = this.loadRiskState();
+    if (!loaded) {
+      // No persisted state — initialize fresh period tracking
+      this.initializePeriodTracking();
+    }
+
+    // Load persisted alerts
+    this.loadAlerts();
 
     logger.info('GlobalRiskManager initialized', {
       drawdownLimits: this.config.drawdownLimits,
       exposureLimits: this.config.exposureLimits,
       dryRun: this.isDryRun,
+      circuitBreaker: this.circuitBreakerState,
+      restoredFromDb: loaded,
     });
+  }
+
+  // ============= RISK STATE PERSISTENCE (SQLite) =============
+
+  private loadRiskState(): boolean {
+    try {
+      const row = this.db.prepare('SELECT * FROM risk_state WHERE id = 1').get() as any;
+      if (!row) return false;
+
+      this.circuitBreakerState = row.circuit_breaker_state as CircuitBreakerState;
+      this.circuitBreakerReason = row.circuit_breaker_reason || undefined;
+      this.lastCircuitBreakerTrigger = row.last_circuit_breaker_trigger
+        ? new Date(row.last_circuit_breaker_trigger)
+        : undefined;
+      this.peakValueUsd = row.peak_value_usd;
+      this.dayStartValueUsd = row.day_start_value_usd;
+      this.weekStartValueUsd = row.week_start_value_usd;
+      this.monthStartValueUsd = row.month_start_value_usd;
+      this.dayStartTimestamp = row.day_start_timestamp;
+      this.weekStartTimestamp = row.week_start_timestamp;
+      this.monthStartTimestamp = row.month_start_timestamp;
+
+      logger.info('Risk state restored from DB', {
+        circuitBreaker: this.circuitBreakerState,
+        peakValue: this.peakValueUsd,
+      });
+      return true;
+    } catch (error) {
+      logger.error('Failed to load risk state from DB', { error });
+      return false;
+    }
+  }
+
+  private persistRiskState(): void {
+    try {
+      this.db.prepare(`
+        INSERT OR REPLACE INTO risk_state
+        (id, circuit_breaker_state, circuit_breaker_reason, last_circuit_breaker_trigger,
+         peak_value_usd, day_start_value_usd, week_start_value_usd, month_start_value_usd,
+         day_start_timestamp, week_start_timestamp, month_start_timestamp)
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        this.circuitBreakerState,
+        this.circuitBreakerReason || null,
+        this.lastCircuitBreakerTrigger ? this.lastCircuitBreakerTrigger.getTime() : null,
+        this.peakValueUsd,
+        this.dayStartValueUsd,
+        this.weekStartValueUsd,
+        this.monthStartValueUsd,
+        this.dayStartTimestamp,
+        this.weekStartTimestamp,
+        this.monthStartTimestamp,
+      );
+    } catch (error) {
+      logger.error('Failed to persist risk state', { error });
+    }
+  }
+
+  private persistAlert(alert: RiskAlert): void {
+    try {
+      this.db.prepare(`
+        INSERT OR REPLACE INTO risk_alerts (id, timestamp, severity, category, message, data)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        alert.id,
+        alert.timestamp.getTime(),
+        alert.severity,
+        alert.category,
+        alert.message,
+        alert.data ? JSON.stringify(alert.data) : null,
+      );
+    } catch (error) {
+      logger.error('Failed to persist risk alert', { error });
+    }
+  }
+
+  private loadAlerts(): void {
+    try {
+      const rows = this.db.prepare(
+        'SELECT * FROM risk_alerts ORDER BY timestamp DESC LIMIT 100'
+      ).all() as any[];
+      this.alerts = rows.map(r => ({
+        id: r.id,
+        timestamp: new Date(r.timestamp),
+        severity: r.severity,
+        category: r.category,
+        message: r.message,
+        data: r.data ? JSON.parse(r.data) : undefined,
+      })).reverse();
+    } catch (error) {
+      logger.error('Failed to load risk alerts from DB', { error });
+    }
   }
 
   /**
@@ -136,29 +241,31 @@ export class GlobalRiskManager {
   private initializePeriodTracking(): void {
     const now = Date.now();
     const currentValue = this.portfolioManager.getTotalValueUsd();
-    
+
     // Initialize peak
     this.peakValueUsd = currentValue;
-    
+
     // Initialize day start
     const dayStart = new Date(now);
     dayStart.setUTCHours(0, 0, 0, 0);
     this.dayStartTimestamp = dayStart.getTime();
     this.dayStartValueUsd = currentValue;
-    
+
     // Initialize week start (Monday)
     const weekStart = new Date(now);
     weekStart.setUTCHours(0, 0, 0, 0);
     weekStart.setUTCDate(weekStart.getUTCDate() - weekStart.getUTCDay() + 1);
     this.weekStartTimestamp = weekStart.getTime();
     this.weekStartValueUsd = currentValue;
-    
+
     // Initialize month start
     const monthStart = new Date(now);
     monthStart.setUTCHours(0, 0, 0, 0);
     monthStart.setUTCDate(1);
     this.monthStartTimestamp = monthStart.getTime();
     this.monthStartValueUsd = currentValue;
+
+    this.persistRiskState();
   }
 
   /**
@@ -168,12 +275,15 @@ export class GlobalRiskManager {
     const now = Date.now();
     const currentValue = this.portfolioManager.getTotalValueUsd();
 
+    let changed = false;
+
     // Check day reset
     const todayStart = new Date(now);
     todayStart.setUTCHours(0, 0, 0, 0);
     if (todayStart.getTime() > this.dayStartTimestamp) {
       this.dayStartTimestamp = todayStart.getTime();
       this.dayStartValueUsd = currentValue;
+      changed = true;
       logger.info('Day reset - drawdown tracking reset');
     }
 
@@ -184,6 +294,7 @@ export class GlobalRiskManager {
     if (thisWeekStart.getTime() > this.weekStartTimestamp) {
       this.weekStartTimestamp = thisWeekStart.getTime();
       this.weekStartValueUsd = currentValue;
+      changed = true;
       logger.info('Week reset - drawdown tracking reset');
     }
 
@@ -194,11 +305,16 @@ export class GlobalRiskManager {
     if (thisMonthStart.getTime() > this.monthStartTimestamp) {
       this.monthStartTimestamp = thisMonthStart.getTime();
       this.monthStartValueUsd = currentValue;
+      changed = true;
       // Also reset circuit breaker on new month if in LOCKDOWN
       if (this.circuitBreakerState === 'LOCKDOWN') {
         this.circuitBreakerState = 'ACTIVE';
         logger.info('Month reset - circuit breaker reset from LOCKDOWN');
       }
+    }
+
+    if (changed) {
+      this.persistRiskState();
     }
   }
 
@@ -246,11 +362,18 @@ export class GlobalRiskManager {
       triggerReason = `Daily drawdown ${dailyDrawdownPct.toFixed(2)}% >= ${this.config.drawdownLimits.daily}%`;
     }
 
+    // Update peak value in DB
+    if (currentValue > this.peakValueUsd) {
+      this.persistRiskState();
+    }
+
     // Update state if changed
     if (newState !== this.circuitBreakerState && newState !== 'ACTIVE') {
       this.circuitBreakerState = newState;
       this.lastCircuitBreakerTrigger = new Date();
       this.circuitBreakerReason = triggerReason;
+
+      this.persistRiskState();
 
       this.addAlert({
         severity: newState === 'LOCKDOWN' ? 'emergency' : 'critical',
@@ -305,6 +428,7 @@ export class GlobalRiskManager {
 
     this.circuitBreakerState = 'ACTIVE';
     this.circuitBreakerReason = undefined;
+    this.persistRiskState();
     logger.info('Circuit breaker manually reset');
     return true;
   }
@@ -494,8 +618,9 @@ export class GlobalRiskManager {
     };
 
     this.alerts.push(alert);
+    this.persistAlert(alert);
 
-    // Keep only last 100 alerts
+    // Keep only last 100 alerts in memory
     if (this.alerts.length > 100) {
       this.alerts = this.alerts.slice(-100);
     }

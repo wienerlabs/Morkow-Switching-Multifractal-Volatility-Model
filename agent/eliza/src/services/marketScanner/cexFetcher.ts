@@ -1,9 +1,12 @@
 /**
  * CEX Price Fetcher - Binance, Coinbase, Kraken
+ *
+ * Uses resilient fetch with retry + per-exchange rate-limited queues.
  */
 
 import type { CEXPrice } from './types.js';
 import { logger } from '../logger.js';
+import { resilientFetch, Queues } from '../resilience.js';
 
 const BINANCE_API = 'https://api.binance.com/api/v3';
 const COINBASE_API = 'https://api.coinbase.com/v2';
@@ -16,41 +19,28 @@ const SYMBOL_MAP: Record<string, Record<string, string>> = {
   kraken: { SOL: 'SOLUSD', BTC: 'XXBTZUSD', ETH: 'XETHZUSD' },
 };
 
-async function fetchWithTimeout(url: string, timeout = 20000): Promise<Response> {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  try {
-    const resp = await fetch(url, { signal: controller.signal });
-    clearTimeout(id);
-    return resp;
-  } catch (e: any) {
-    clearTimeout(id);
-    // Log timeout errors for debugging
-    if (e.name === 'AbortError' || e.cause?.code === 'UND_ERR_CONNECT_TIMEOUT') {
-      logger.info(`[CEX] Timeout (${timeout}ms) for ${url}`);
-    }
-    throw e;
-  }
-}
-
 export async function fetchBinancePrices(symbols: string[]): Promise<CEXPrice[]> {
   const prices: CEXPrice[] = [];
   const binanceSymbols = symbols.map(s => SYMBOL_MAP.binance[s]).filter(Boolean);
-  
+
   if (binanceSymbols.length === 0) return prices;
-  
+
   try {
     const url = `${BINANCE_API}/ticker/24hr?symbols=${JSON.stringify(binanceSymbols)}`;
-    const resp = await fetchWithTimeout(url);
+    const resp = await resilientFetch(url, undefined, {
+      queue: Queues.binance(),
+      label: 'binance/ticker',
+      retries: 3,
+    });
     const data = await resp.json() as Array<{
       symbol: string; lastPrice: string; priceChangePercent: string;
       quoteVolume: string; bidPrice: string; askPrice: string;
     }>;
-    
+
     for (const item of data) {
       const symbol = Object.entries(SYMBOL_MAP.binance).find(([, v]) => v === item.symbol)?.[0];
       if (!symbol) continue;
-      
+
       const bid = parseFloat(item.bidPrice);
       const ask = parseFloat(item.askPrice);
       prices.push({
@@ -66,27 +56,29 @@ export async function fetchBinancePrices(symbols: string[]): Promise<CEXPrice[]>
       });
     }
   } catch (e) {
-    logger.error('[Binance] Fetch error:', { error: String(e) });
+    logger.error('[Binance] Fetch error after retries:', { error: String(e) });
   }
   return prices;
 }
 
 export async function fetchCoinbasePrices(symbols: string[]): Promise<CEXPrice[]> {
   const prices: CEXPrice[] = [];
-  
+  const queue = Queues.coinbase();
+
   for (const symbol of symbols) {
     const pair = SYMBOL_MAP.coinbase[symbol];
     if (!pair) continue;
-    
+
     try {
-      const [spotResp, statsResp] = await Promise.all([
-        fetchWithTimeout(`${COINBASE_API}/prices/${pair}/spot`),
-        fetchWithTimeout(`${COINBASE_API}/prices/${pair}/historic?period=day`).catch(() => null),
-      ]);
-      
-      const spotData = await spotResp.json() as { data: { amount: string } };
+      const resp = await resilientFetch(
+        `${COINBASE_API}/prices/${pair}/spot`,
+        undefined,
+        { queue, label: `coinbase/${pair}`, retries: 2 },
+      );
+
+      const spotData = await resp.json() as { data: { amount: string } };
       const price = parseFloat(spotData.data.amount);
-      
+
       prices.push({
         symbol,
         price,
@@ -95,11 +87,7 @@ export async function fetchCoinbasePrices(symbols: string[]): Promise<CEXPrice[]
         timestamp: Date.now(),
       });
     } catch (e) {
-      // Silently fail for timeouts
-      const msg = e instanceof Error ? e.message : 'Unknown';
-      if (!msg.includes('aborted')) {
-        logger.warn(`[Coinbase] ${symbol} failed`);
-      }
+      logger.warn(`[Coinbase] ${symbol} failed after retries`, { error: String(e) });
     }
   }
   return prices;
@@ -108,18 +96,22 @@ export async function fetchCoinbasePrices(symbols: string[]): Promise<CEXPrice[]
 export async function fetchKrakenPrices(symbols: string[]): Promise<CEXPrice[]> {
   const prices: CEXPrice[] = [];
   const krakenPairs = symbols.map(s => SYMBOL_MAP.kraken[s]).filter(Boolean);
-  
+
   if (krakenPairs.length === 0) return prices;
-  
+
   try {
     const url = `${KRAKEN_API}/Ticker?pair=${krakenPairs.join(',')}`;
-    const resp = await fetchWithTimeout(url);
+    const resp = await resilientFetch(url, undefined, {
+      queue: Queues.kraken(),
+      label: 'kraken/ticker',
+      retries: 3,
+    });
     const data = await resp.json() as { result: Record<string, { c: string[]; b: string[]; a: string[]; v: string[] }> };
-    
+
     for (const [pair, info] of Object.entries(data.result || {})) {
       const symbol = Object.entries(SYMBOL_MAP.kraken).find(([, v]) => v === pair)?.[0];
       if (!symbol) continue;
-      
+
       const bid = parseFloat(info.b[0]);
       const ask = parseFloat(info.a[0]);
       prices.push({
@@ -134,11 +126,7 @@ export async function fetchKrakenPrices(symbols: string[]): Promise<CEXPrice[]> 
       });
     }
   } catch (e) {
-    // Silently fail - Kraken sometimes times out
-    const msg = e instanceof Error ? e.message : 'Unknown';
-    if (!msg.includes('aborted')) {
-      logger.warn('[Kraken] Fetch failed');
-    }
+    logger.warn('[Kraken] Fetch failed after retries', { error: String(e) });
   }
   return prices;
 }
@@ -151,4 +139,3 @@ export async function fetchAllCEXPrices(symbols: string[]): Promise<CEXPrice[]> 
   ]);
   return [...binance, ...coinbase, ...kraken];
 }
-

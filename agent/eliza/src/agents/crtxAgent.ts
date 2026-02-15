@@ -18,6 +18,7 @@
  */
 
 import { Keypair, Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { getSolanaConnection, getActiveRpcUrl, recordRpcFailure, recordRpcSuccess } from '../services/solana/connection.js';
 import { TOKEN_PROGRAM_ID, getMint } from '@solana/spl-token';
 import bs58 from 'bs58';
 import { RiskManager } from '../services/riskManager.js';
@@ -394,10 +395,14 @@ export class CRTXAgent {
    * Initialize wallet from private key
    */
   private initializeWallet(): void {
-    // Initialize Solana connection
-    const rpcUrl = this.config.solanaRpcUrl || 'https://api.mainnet-beta.solana.com';
-    this.connection = new Connection(rpcUrl, 'confirmed');
-    logger.info('[CRTX] Solana connection initialized', { rpcUrl: rpcUrl.slice(0, 30) + '...' });
+    // Initialize Solana connection — use failover unless explicit rpcUrl in config
+    if (this.config.solanaRpcUrl) {
+      this.connection = new Connection(this.config.solanaRpcUrl, 'confirmed');
+      logger.info('[CRTX] Solana connection initialized (config override)', { rpcUrl: this.config.solanaRpcUrl.slice(0, 30) + '...' });
+    } else {
+      this.connection = getSolanaConnection();
+      logger.info('[CRTX] Solana connection initialized (failover)', { rpcUrl: getActiveRpcUrl().slice(0, 30) + '...' });
+    }
 
     if (!this.config.solanaPrivateKey) {
       logger.info('[CRTX] No wallet configured (dry-run mode only)');
@@ -562,6 +567,7 @@ export class CRTXAgent {
 
       // Fetch SOL balance
       const solBalance = await this.connection.getBalance(walletAddress);
+      recordRpcSuccess();
       const solAmount = solBalance / LAMPORTS_PER_SOL;
 
       // Fetch SOL price from multiple sources (fallback chain)
@@ -662,6 +668,7 @@ export class CRTXAgent {
 
       return walletInfo;
     } catch (error) {
+      recordRpcFailure();
       logger.error('[CRTX] Failed to fetch wallet info', { error });
       return null;
     }

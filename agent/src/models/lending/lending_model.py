@@ -36,16 +36,16 @@ SOLANA_LENDING_PARAMS = {
     # Lending-specific hyperparameters
     'n_estimators': 200,
     'max_depth': 8,
-    'learning_rate': 0.03,
+    'learning_rate': 0.05,
     'subsample': 0.7,
     'colsample_bytree': 0.9,
-    'gamma': 0.15,
-    'reg_alpha': 0.2,
-    'reg_lambda': 1.5,
+    'gamma': 0.05,
+    'reg_alpha': 0.05,
+    'reg_lambda': 0.8,
     # Binary classification for LEND vs NO_LEND
     'objective': 'binary:logistic',
     'eval_metric': ['auc', 'logloss'],
-    'min_child_weight': 5,
+    'min_child_weight': 3,
     'scale_pos_weight': 1.0,  # Balanced classes expected
 }
 
@@ -86,19 +86,19 @@ class LendingModel(BaseModel):
         return xgb.XGBClassifier(
             n_estimators=self.params.get("n_estimators", 200),
             max_depth=self.params.get("max_depth", 8),
-            learning_rate=self.params.get("learning_rate", 0.03),
+            learning_rate=self.params.get("learning_rate", 0.05),
             subsample=self.params.get("subsample", 0.7),
             colsample_bytree=self.params.get("colsample_bytree", 0.9),
-            gamma=self.params.get("gamma", 0.15),
-            reg_alpha=self.params.get("reg_alpha", 0.2),
-            reg_lambda=self.params.get("reg_lambda", 1.5),
-            min_child_weight=self.params.get("min_child_weight", 5),
+            gamma=self.params.get("gamma", 0.05),
+            reg_alpha=self.params.get("reg_alpha", 0.05),
+            reg_lambda=self.params.get("reg_lambda", 0.8),
+            min_child_weight=self.params.get("min_child_weight", 3),
             scale_pos_weight=self.params.get("scale_pos_weight", 1.0),
             objective="binary:logistic",
             eval_metric=["auc", "logloss"],
             tree_method="hist",
             random_state=42,
-            early_stopping_rounds=self.training_config.get("early_stopping_rounds", 30),
+            early_stopping_rounds=self.training_config.get("early_stopping_rounds", 50),
             use_label_encoder=False,
         )
     

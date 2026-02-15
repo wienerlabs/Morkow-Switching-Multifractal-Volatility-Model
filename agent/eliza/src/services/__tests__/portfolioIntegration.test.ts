@@ -27,10 +27,10 @@ const PRIVATE_KEY = process.env.SOLANA_PRIVATE_KEY;
 const TEST_AMOUNT_USD = 2; // Minimum test amount
 const MIN_SOL_BALANCE = 0.05; // Minimum SOL needed for gas
 
-// Test state file (separate from production)
+// Test DB file (separate from production)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const TEST_STATE_FILE = path.join(__dirname, '../../data/test_portfolio_state.json');
+const TEST_DB_PATH = path.join(__dirname, '../../data/test_cortex.db');
 
 // ============= TYPES =============
 
@@ -77,14 +77,35 @@ async function getSolBalance(connection: Connection, publicKey: PublicKey): Prom
 }
 
 /**
- * Reset PortfolioManager singleton for clean test state
+ * Reset PortfolioManager singleton and DB for clean test state
  */
-function resetPortfolioManager(): void {
-  // Clear the singleton instance by reimporting
-  // This is a workaround since the singleton is module-scoped
+function resetTestState(): void {
   try {
-    if (fs.existsSync(TEST_STATE_FILE)) {
-      fs.unlinkSync(TEST_STATE_FILE);
+    // Close DB connection
+    const { closeDb, resetDb } = require('../db/index.js');
+    closeDb();
+    resetDb();
+  } catch {
+    // Ignore if not loaded yet
+  }
+  try {
+    // Reset singleton
+    const { resetPortfolioManager } = require('../portfolioManager.js');
+    resetTestState();
+  } catch {
+    // Ignore
+  }
+  try {
+    // Delete test DB file
+    if (fs.existsSync(TEST_DB_PATH)) {
+      fs.unlinkSync(TEST_DB_PATH);
+    }
+    // Delete WAL/SHM files if they exist
+    if (fs.existsSync(TEST_DB_PATH + '-wal')) {
+      fs.unlinkSync(TEST_DB_PATH + '-wal');
+    }
+    if (fs.existsSync(TEST_DB_PATH + '-shm')) {
+      fs.unlinkSync(TEST_DB_PATH + '-shm');
     }
   } catch {
     // Ignore cleanup errors
@@ -98,8 +119,7 @@ async function createTestPortfolioManager() {
   // Dynamic import to get fresh instance
   const { PortfolioManager } = await import('../portfolioManager.js');
   return new PortfolioManager({
-    stateFilePath: TEST_STATE_FILE,
-    autoSave: true,
+    dbPath: TEST_DB_PATH,
     initialCapitalUsd: 1000,
   });
 }
@@ -147,12 +167,12 @@ describe('PortfolioManager REAL Integration Tests', () => {
     ctx = { connection, keypair, walletAddress, solBalance, canExecuteRealTx };
 
     // Clean up test state
-    resetPortfolioManager();
+    resetTestState();
   });
 
   afterAll(async () => {
     // Cleanup test state file
-    resetPortfolioManager();
+    resetTestState();
     console.log('\n✅ Test cleanup complete');
   });
 
@@ -162,7 +182,7 @@ describe('PortfolioManager REAL Integration Tests', () => {
     let pm: Awaited<ReturnType<typeof createTestPortfolioManager>>;
 
     beforeEach(async () => {
-      resetPortfolioManager();
+      resetTestState();
       pm = await createTestPortfolioManager();
     });
 
@@ -277,7 +297,7 @@ describe('PortfolioManager REAL Integration Tests', () => {
     let pm: Awaited<ReturnType<typeof createTestPortfolioManager>>;
 
     beforeEach(async () => {
-      resetPortfolioManager();
+      resetTestState();
       pm = await createTestPortfolioManager();
     });
 
@@ -385,7 +405,7 @@ describe('PortfolioManager REAL Integration Tests', () => {
     let pm: Awaited<ReturnType<typeof createTestPortfolioManager>>;
 
     beforeEach(async () => {
-      resetPortfolioManager();
+      resetTestState();
       pm = await createTestPortfolioManager();
     });
 
@@ -466,7 +486,7 @@ describe('PortfolioManager REAL Integration Tests', () => {
     let pm: Awaited<ReturnType<typeof createTestPortfolioManager>>;
 
     beforeEach(async () => {
-      resetPortfolioManager();
+      resetTestState();
       pm = await createTestPortfolioManager();
     });
 
@@ -530,7 +550,7 @@ describe('PortfolioManager REAL Integration Tests', () => {
 
   describe('End-to-End Portfolio Tracking', () => {
     it('should track multiple strategy positions simultaneously', async () => {
-      resetPortfolioManager();
+      resetTestState();
       const pm = await createTestPortfolioManager();
 
       // Open LP position

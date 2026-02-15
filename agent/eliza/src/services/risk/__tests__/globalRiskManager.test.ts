@@ -21,6 +21,44 @@ import type { TrackedPosition } from '../types.js';
 
 // ============= MOCKS =============
 
+// Mock DB
+const mockDbStatements = new Map<string, any>();
+const mockDb = {
+  prepare: (sql: string) => ({
+    get: (..._args: any[]) => {
+      // Return null for risk_state (no persisted state)
+      if (sql.includes('risk_state')) return null;
+      return null;
+    },
+    all: (..._args: any[]) => {
+      // Return empty array for risk_alerts
+      return [];
+    },
+    run: (..._args: any[]) => ({ changes: 1 }),
+  }),
+  pragma: () => {},
+  exec: () => {},
+  transaction: (fn: () => void) => fn,
+};
+
+vi.mock('../../db/index.js', () => ({
+  getDb: () => mockDb,
+}));
+
+// Mock Solana failover connection — returns a mock Connection-like object
+vi.mock('../../solana/connection.js', () => ({
+  getSolanaConnection: () => ({
+    getRecentPrioritizationFees: () => Promise.resolve([
+      { slot: 1, prioritizationFee: 1000 },
+      { slot: 2, prioritizationFee: 2000 },
+    ]),
+    getBalance: () => Promise.resolve(5_000_000_000),
+  }),
+  recordRpcFailure: () => {},
+  recordRpcSuccess: () => {},
+  getActiveRpcUrl: () => 'https://fake',
+}));
+
 // Mock portfolioManager
 const mockPortfolioState = {
   totalValueUsd: 10000,

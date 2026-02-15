@@ -6,6 +6,7 @@
  */
 import { Connection } from '@solana/web3.js';
 import { logger } from '../logger.js';
+import { getSolanaConnection, recordRpcFailure } from '../solana/connection.js';
 import type { GasBudgetConfig, GasBudgetStatus } from './types.js';
 
 // ============= CONSTANTS =============
@@ -40,10 +41,12 @@ export class GasService {
   private lastFeeUpdate: number = 0;
 
   constructor(
-    rpcUrl: string = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
+    rpcUrl?: string,
     config: Partial<GasBudgetConfig> = {}
   ) {
-    this.connection = new Connection(rpcUrl, 'confirmed');
+    this.connection = rpcUrl
+      ? new Connection(rpcUrl, 'confirmed')
+      : getSolanaConnection();
     this.config = { ...DEFAULT_GAS_CONFIG, ...config };
   }
 
@@ -70,6 +73,7 @@ export class GasService {
       logger.debug('Fetched priority fees', { count: fees.length, sample: fees.slice(0, 5) });
       return fees;
     } catch (error) {
+      recordRpcFailure();
       logger.error('Failed to fetch priority fees', { error });
       return [];
     }

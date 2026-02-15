@@ -2,28 +2,12 @@
  * Portfolio Manager
  *
  * Tracks wallet balances, positions, trade history, and PnL.
- * Persists state to JSON file for crash recovery.
- *
- * Features:
- * - Multi-asset balance tracking (SOL, USDC, tokens)
- * - LP position management with entry price/time
- * - Trade history with full execution details
- * - Realized + unrealized PnL calculation
- * - JSON file persistence (no DB dependency)
- *
- * Created: 2026-01-07
+ * Persists state to SQLite for crash-safe recovery.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
 import { logger } from './logger.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Default portfolio state file location
-const DEFAULT_STATE_FILE = path.join(__dirname, '../../data/portfolio_state.json');
+import { getDb } from './db/index.js';
+import type Database from 'better-sqlite3';
 
 // ============= TYPES =============
 
@@ -42,19 +26,13 @@ export interface LPPosition {
   dex: string;
   token0: string;
   token1: string;
-
-  // Entry details
   entryTime: number;
   entryPriceUsd: number;
   entryApy: number;
   capitalUsd: number;
-
-  // Current state
   currentValueUsd: number;
   feesEarnedUsd: number;
   impermanentLossUsd: number;
-
-  // Exit details (null if still open)
   exitTime?: number;
   exitPriceUsd?: number;
   realizedPnlUsd?: number;
@@ -66,19 +44,13 @@ export interface PerpsPositionRecord {
   market: string;
   side: 'long' | 'short';
   leverage: number;
-
-  // Entry details
   entryTime: number;
   entryPrice: number;
   sizeUsd: number;
   collateralUsd: number;
-
-  // Current state
   currentPrice?: number;
   unrealizedPnlUsd: number;
   fundingPaidUsd: number;
-
-  // Exit details (null if still open)
   exitTime?: number;
   exitPrice?: number;
   realizedPnlUsd?: number;
@@ -88,19 +60,13 @@ export interface TradeRecord {
   id: string;
   type: 'arbitrage' | 'lp_entry' | 'lp_exit' | 'perps_open' | 'perps_close' | 'swap';
   timestamp: number;
-
-  // What was traded
   asset: string;
   side: 'buy' | 'sell' | 'deposit' | 'withdraw';
   amountUsd: number;
-
-  // Execution details
   venue: string;
   txSignature?: string;
   fees: number;
   slippage?: number;
-
-  // Result
   pnlUsd: number;
   mlConfidence?: number;
   notes?: string;
@@ -109,37 +75,10 @@ export interface TradeRecord {
 export interface PortfolioState {
   version: number;
   lastUpdated: number;
-
-  // Balances
   balances: Map<string, TokenBalance>;
   totalValueUsd: number;
-
-  // Positions
   lpPositions: Map<string, LPPosition>;
   perpsPositions: Map<string, PerpsPositionRecord>;
-
-  // History & Stats
-  trades: TradeRecord[];
-
-  // PnL
-  realizedPnlUsd: number;
-  unrealizedPnlUsd: number;
-  totalFeesUsd: number;
-
-  // Daily tracking
-  dailyPnlUsd: number;
-  dailyTradeCount: number;
-  dayStartTimestamp: number;
-}
-
-// Serializable version for JSON persistence
-interface PortfolioStateJSON {
-  version: number;
-  lastUpdated: number;
-  balances: Record<string, TokenBalance>;
-  totalValueUsd: number;
-  lpPositions: Record<string, LPPosition>;
-  perpsPositions: Record<string, PerpsPositionRecord>;
   trades: TradeRecord[];
   realizedPnlUsd: number;
   unrealizedPnlUsd: number;
@@ -153,21 +92,15 @@ interface PortfolioStateJSON {
 
 export class PortfolioManager {
   private state: PortfolioState;
-  private stateFilePath: string;
-  private autoSave: boolean;
-  private saveDebounceTimer: NodeJS.Timeout | null = null;
+  private db: Database.Database;
 
   constructor(options: {
-    stateFilePath?: string;
-    autoSave?: boolean;
     initialCapitalUsd?: number;
+    dbPath?: string;
   } = {}) {
-    this.stateFilePath = options.stateFilePath || DEFAULT_STATE_FILE;
-    this.autoSave = options.autoSave ?? true;
+    this.db = getDb(options.dbPath);
 
-    // Try to load existing state, or create new
     const loaded = this.loadState();
-
     if (loaded) {
       this.state = loaded;
       logger.info('PortfolioManager loaded existing state', {
@@ -177,16 +110,16 @@ export class PortfolioManager {
       });
     } else {
       this.state = this.createInitialState(options.initialCapitalUsd || 10000);
+      this.persistPortfolioState();
       logger.info('PortfolioManager created new state', {
         initialCapital: options.initialCapitalUsd || 10000,
       });
     }
 
-    // Check if we need to reset daily counters
     this.checkDailyReset();
   }
 
-  // ============= STATE PERSISTENCE =============
+  // ============= STATE PERSISTENCE (SQLite) =============
 
   private createInitialState(initialCapitalUsd: number): PortfolioState {
     const now = Date.now();
@@ -206,7 +139,6 @@ export class PortfolioManager {
       dayStartTimestamp: this.getDayStart(now),
     };
 
-    // Initialize with USDC balance
     state.balances.set('USDC', {
       symbol: 'USDC',
       mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
@@ -227,89 +159,163 @@ export class PortfolioManager {
   private checkDailyReset(): void {
     const todayStart = this.getDayStart(Date.now());
     if (this.state.dayStartTimestamp < todayStart) {
-      // New day - reset daily counters
       this.state.dailyPnlUsd = 0;
       this.state.dailyTradeCount = 0;
       this.state.dayStartTimestamp = todayStart;
+      this.persistPortfolioState();
       logger.info('Daily counters reset for new day');
     }
   }
 
   private loadState(): PortfolioState | null {
     try {
-      if (!fs.existsSync(this.stateFilePath)) {
-        return null;
+      const row = this.db.prepare('SELECT * FROM portfolio_state WHERE id = 1').get() as any;
+      if (!row) return null;
+
+      const balances = new Map<string, TokenBalance>();
+      const balanceRows = this.db.prepare('SELECT * FROM balances').all() as any[];
+      for (const b of balanceRows) {
+        balances.set(b.symbol, {
+          symbol: b.symbol,
+          mint: b.mint,
+          balance: b.balance,
+          valueUsd: b.value_usd,
+          lastUpdated: b.last_updated,
+        });
       }
 
-      const json = fs.readFileSync(this.stateFilePath, 'utf-8');
-      const data: PortfolioStateJSON = JSON.parse(json);
+      const lpPositions = new Map<string, LPPosition>();
+      const perpsPositions = new Map<string, PerpsPositionRecord>();
+      const positionRows = this.db.prepare('SELECT * FROM positions').all() as any[];
+      for (const p of positionRows) {
+        const data = JSON.parse(p.data);
+        if (p.type === 'lp') {
+          lpPositions.set(p.id, data);
+        } else {
+          perpsPositions.set(p.id, data);
+        }
+      }
 
-      // Convert from JSON to PortfolioState (Maps)
+      const tradeRows = this.db.prepare(
+        'SELECT * FROM trades ORDER BY timestamp DESC LIMIT 200'
+      ).all() as any[];
+      const trades: TradeRecord[] = tradeRows.map(t => ({
+        id: t.id,
+        type: t.type,
+        timestamp: t.timestamp,
+        asset: t.asset,
+        side: t.side,
+        amountUsd: t.amount_usd,
+        venue: t.venue,
+        txSignature: t.tx_signature || undefined,
+        fees: t.fees,
+        slippage: t.slippage ?? undefined,
+        pnlUsd: t.pnl_usd,
+        mlConfidence: t.ml_confidence ?? undefined,
+        notes: t.notes || undefined,
+      })).reverse();
+
       return {
-        version: data.version,
-        lastUpdated: data.lastUpdated,
-        balances: new Map(Object.entries(data.balances)),
-        totalValueUsd: data.totalValueUsd,
-        lpPositions: new Map(Object.entries(data.lpPositions)),
-        perpsPositions: new Map(Object.entries(data.perpsPositions)),
-        trades: data.trades,
-        realizedPnlUsd: data.realizedPnlUsd,
-        unrealizedPnlUsd: data.unrealizedPnlUsd,
-        totalFeesUsd: data.totalFeesUsd,
-        dailyPnlUsd: data.dailyPnlUsd,
-        dailyTradeCount: data.dailyTradeCount,
-        dayStartTimestamp: data.dayStartTimestamp,
+        version: row.version,
+        lastUpdated: row.last_updated,
+        balances,
+        totalValueUsd: row.total_value_usd,
+        lpPositions,
+        perpsPositions,
+        trades,
+        realizedPnlUsd: row.realized_pnl_usd,
+        unrealizedPnlUsd: row.unrealized_pnl_usd,
+        totalFeesUsd: row.total_fees_usd,
+        dailyPnlUsd: row.daily_pnl_usd,
+        dailyTradeCount: row.daily_trade_count,
+        dayStartTimestamp: row.day_start_timestamp,
       };
     } catch (error) {
-      logger.error('Failed to load portfolio state', { error, path: this.stateFilePath });
+      logger.error('Failed to load portfolio state from DB', { error });
       return null;
     }
   }
 
+  private persistPortfolioState(): void {
+    try {
+      this.db.prepare(`
+        INSERT OR REPLACE INTO portfolio_state
+        (id, version, last_updated, total_value_usd, realized_pnl_usd, unrealized_pnl_usd,
+         total_fees_usd, daily_pnl_usd, daily_trade_count, day_start_timestamp)
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        this.state.version,
+        Date.now(),
+        this.state.totalValueUsd,
+        this.state.realizedPnlUsd,
+        this.state.unrealizedPnlUsd,
+        this.state.totalFeesUsd,
+        this.state.dailyPnlUsd,
+        this.state.dailyTradeCount,
+        this.state.dayStartTimestamp,
+      );
+    } catch (error) {
+      logger.error('Failed to persist portfolio state', { error });
+    }
+  }
+
+  private persistBalance(b: TokenBalance): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO balances (symbol, mint, balance, value_usd, last_updated)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(b.symbol, b.mint, b.balance, b.valueUsd, b.lastUpdated);
+  }
+
+  private persistPosition(type: 'lp' | 'perps', pos: LPPosition | PerpsPositionRecord): void {
+    const isOpen = !('exitTime' in pos && pos.exitTime);
+    this.db.prepare(`
+      INSERT OR REPLACE INTO positions (id, type, data, is_open, created_at, closed_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      pos.id,
+      type,
+      JSON.stringify(pos),
+      isOpen ? 1 : 0,
+      'entryTime' in pos ? pos.entryTime : Date.now(),
+      'exitTime' in pos && pos.exitTime ? pos.exitTime : null,
+    );
+  }
+
+  private persistTrade(trade: TradeRecord): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO trades
+      (id, type, timestamp, asset, side, amount_usd, venue, tx_signature, fees, slippage, pnl_usd, ml_confidence, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      trade.id, trade.type, trade.timestamp, trade.asset, trade.side,
+      trade.amountUsd, trade.venue, trade.txSignature || null,
+      trade.fees, trade.slippage ?? null, trade.pnlUsd,
+      trade.mlConfidence ?? null, trade.notes || null,
+    );
+  }
+
   saveState(): void {
     try {
-      // Ensure directory exists
-      const dir = path.dirname(this.stateFilePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      // Convert Maps to objects for JSON
-      const data: PortfolioStateJSON = {
-        version: this.state.version,
-        lastUpdated: Date.now(),
-        balances: Object.fromEntries(this.state.balances),
-        totalValueUsd: this.state.totalValueUsd,
-        lpPositions: Object.fromEntries(this.state.lpPositions),
-        perpsPositions: Object.fromEntries(this.state.perpsPositions),
-        trades: this.state.trades,
-        realizedPnlUsd: this.state.realizedPnlUsd,
-        unrealizedPnlUsd: this.state.unrealizedPnlUsd,
-        totalFeesUsd: this.state.totalFeesUsd,
-        dailyPnlUsd: this.state.dailyPnlUsd,
-        dailyTradeCount: this.state.dailyTradeCount,
-        dayStartTimestamp: this.state.dayStartTimestamp,
-      };
-
-      const tmpPath = this.stateFilePath + '.tmp';
-      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2));
-      fs.renameSync(tmpPath, this.stateFilePath);
-      logger.info('Portfolio state saved', { path: this.stateFilePath });
+      const txn = this.db.transaction(() => {
+        this.persistPortfolioState();
+        for (const b of this.state.balances.values()) {
+          this.persistBalance(b);
+        }
+        for (const pos of this.state.lpPositions.values()) {
+          this.persistPosition('lp', pos);
+        }
+        for (const pos of this.state.perpsPositions.values()) {
+          this.persistPosition('perps', pos);
+        }
+      });
+      txn();
     } catch (error) {
       logger.error('Failed to save portfolio state', { error });
     }
   }
 
   private scheduleSave(): void {
-    if (!this.autoSave) return;
-
-    // Debounce saves to avoid excessive writes
-    if (this.saveDebounceTimer) {
-      clearTimeout(this.saveDebounceTimer);
-    }
-    this.saveDebounceTimer = setTimeout(() => {
-      this.saveState();
-    }, 1000);
+    this.persistPortfolioState();
   }
 
   // ============= BALANCE MANAGEMENT =============
@@ -323,6 +329,7 @@ export class PortfolioManager {
       lastUpdated: Date.now(),
     };
     this.state.balances.set(symbol, tokenBalance);
+    this.persistBalance(tokenBalance);
     this.recalculateTotalValue();
     this.scheduleSave();
   }
@@ -340,13 +347,11 @@ export class PortfolioManager {
     for (const balance of this.state.balances.values()) {
       total += balance.valueUsd;
     }
-    // Add LP position values
     for (const position of this.state.lpPositions.values()) {
       if (!position.exitTime) {
         total += position.currentValueUsd;
       }
     }
-    // Add perps position values
     for (const position of this.state.perpsPositions.values()) {
       if (!position.exitTime) {
         total += position.collateralUsd + position.unrealizedPnlUsd;
@@ -384,8 +389,8 @@ export class PortfolioManager {
     };
 
     this.state.lpPositions.set(id, position);
+    this.persistPosition('lp', position);
 
-    // Record trade
     this.recordTrade({
       type: 'lp_entry',
       asset: params.poolName,
@@ -412,7 +417,7 @@ export class PortfolioManager {
     if (update.feesEarnedUsd !== undefined) position.feesEarnedUsd = update.feesEarnedUsd;
     if (update.impermanentLossUsd !== undefined) position.impermanentLossUsd = update.impermanentLossUsd;
 
-    // Update unrealized PnL
+    this.persistPosition('lp', position);
     this.state.unrealizedPnlUsd = this.calculateUnrealizedPnl();
     this.recalculateTotalValue();
     this.scheduleSave();
@@ -426,12 +431,12 @@ export class PortfolioManager {
     position.exitPriceUsd = exitValueUsd;
     position.realizedPnlUsd = exitValueUsd - position.capitalUsd;
 
-    // Update realized PnL
     this.state.realizedPnlUsd += position.realizedPnlUsd;
     this.state.dailyPnlUsd += position.realizedPnlUsd;
     this.state.dailyTradeCount += 1;
 
-    // Record trade
+    this.persistPosition('lp', position);
+
     this.recordTrade({
       type: 'lp_exit',
       asset: position.poolName,
@@ -485,8 +490,8 @@ export class PortfolioManager {
     };
 
     this.state.perpsPositions.set(id, position);
+    this.persistPosition('perps', position);
 
-    // Record trade
     this.recordTrade({
       type: 'perps_open',
       asset: params.market,
@@ -515,6 +520,7 @@ export class PortfolioManager {
     if (update.unrealizedPnlUsd !== undefined) position.unrealizedPnlUsd = update.unrealizedPnlUsd;
     if (update.fundingPaidUsd !== undefined) position.fundingPaidUsd = update.fundingPaidUsd;
 
+    this.persistPosition('perps', position);
     this.state.unrealizedPnlUsd = this.calculateUnrealizedPnl();
     this.recalculateTotalValue();
     this.scheduleSave();
@@ -527,17 +533,16 @@ export class PortfolioManager {
     position.exitTime = Date.now();
     position.exitPrice = exitPrice;
 
-    // Calculate realized PnL
     const priceDiff = exitPrice - position.entryPrice;
     const direction = position.side === 'long' ? 1 : -1;
     position.realizedPnlUsd = (priceDiff / position.entryPrice) * position.sizeUsd * direction - position.fundingPaidUsd - fees;
 
-    // Update state
     this.state.realizedPnlUsd += position.realizedPnlUsd;
     this.state.dailyPnlUsd += position.realizedPnlUsd;
     this.state.dailyTradeCount += 1;
 
-    // Record trade
+    this.persistPosition('perps', position);
+
     this.recordTrade({
       type: 'perps_close',
       asset: position.market,
@@ -587,16 +592,9 @@ export class PortfolioManager {
 
     this.state.trades.push(trade);
     this.state.totalFeesUsd += params.fees;
-
-    // Keep only last 1000 trades to prevent unbounded growth
-    if (this.state.trades.length > 1000) {
-      this.state.trades = this.state.trades.slice(-1000);
-    }
+    this.persistTrade(trade);
   }
 
-  /**
-   * Public method for recording arbitrage trades
-   */
   recordArbitrageTrade(params: {
     asset: string;
     amountUsd: number;
@@ -608,11 +606,10 @@ export class PortfolioManager {
   }): void {
     this.recordTrade({
       type: 'arbitrage',
-      side: 'buy', // Arbitrage involves both buy and sell
+      side: 'buy',
       ...params,
     });
 
-    // Update realized PnL
     this.state.realizedPnlUsd += params.pnlUsd;
     this.state.dailyPnlUsd += params.pnlUsd;
     this.state.dailyTradeCount += 1;
@@ -622,28 +619,41 @@ export class PortfolioManager {
   }
 
   getRecentTrades(limit = 50): TradeRecord[] {
-    return this.state.trades.slice(-limit).reverse();
+    const rows = this.db.prepare(
+      'SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?'
+    ).all(limit) as any[];
+
+    return rows.map(t => ({
+      id: t.id,
+      type: t.type,
+      timestamp: t.timestamp,
+      asset: t.asset,
+      side: t.side,
+      amountUsd: t.amount_usd,
+      venue: t.venue,
+      txSignature: t.tx_signature || undefined,
+      fees: t.fees,
+      slippage: t.slippage ?? undefined,
+      pnlUsd: t.pnl_usd,
+      mlConfidence: t.ml_confidence ?? undefined,
+      notes: t.notes || undefined,
+    }));
   }
 
   // ============= PNL CALCULATIONS =============
 
   private calculateUnrealizedPnl(): number {
     let unrealized = 0;
-
-    // LP positions
     for (const pos of this.state.lpPositions.values()) {
       if (!pos.exitTime) {
         unrealized += pos.currentValueUsd - pos.capitalUsd;
       }
     }
-
-    // Perps positions
     for (const pos of this.state.perpsPositions.values()) {
       if (!pos.exitTime) {
         unrealized += pos.unrealizedPnlUsd;
       }
     }
-
     return unrealized;
   }
 
@@ -672,8 +682,6 @@ export class PortfolioManager {
     return this.state;
   }
 
-  // ============= SUMMARY =============
-
   getSummary(): {
     totalValueUsd: number;
     realizedPnlUsd: number;
@@ -691,7 +699,7 @@ export class PortfolioManager {
       totalPnlUsd: this.state.realizedPnlUsd + this.state.unrealizedPnlUsd,
       openLpPositions: this.getOpenLPPositions().length,
       openPerpsPositions: Array.from(this.state.perpsPositions.values()).filter(p => !p.exitTime).length,
-      totalTrades: this.state.trades.length,
+      totalTrades: (this.db.prepare('SELECT COUNT(*) as cnt FROM trades').get() as any).cnt,
       dailyPnlUsd: this.state.dailyPnlUsd,
     };
   }
@@ -702,9 +710,8 @@ export class PortfolioManager {
 let portfolioManagerInstance: PortfolioManager | null = null;
 
 export function getPortfolioManager(options?: {
-  stateFilePath?: string;
-  autoSave?: boolean;
   initialCapitalUsd?: number;
+  dbPath?: string;
 }): PortfolioManager {
   if (!portfolioManagerInstance) {
     portfolioManagerInstance = new PortfolioManager(options);
@@ -712,3 +719,6 @@ export function getPortfolioManager(options?: {
   return portfolioManagerInstance;
 }
 
+export function resetPortfolioManager(): void {
+  portfolioManagerInstance = null;
+}

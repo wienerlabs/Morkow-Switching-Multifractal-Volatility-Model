@@ -57,12 +57,12 @@ ARBITRAGE_PARAMS = {
 LENDING_PARAMS = {
     'n_estimators': 200,
     'max_depth': 8,
-    'learning_rate': 0.03,
+    'learning_rate': 0.05,
     'subsample': 0.7,
     'colsample_bytree': 0.9,
-    'gamma': 0.15,
-    'reg_alpha': 0.2,
-    'reg_lambda': 1.5,
+    'gamma': 0.05,
+    'reg_alpha': 0.05,
+    'reg_lambda': 0.8,
     'objective': 'reg:squarederror',
     'eval_metric': 'rmse',
     'tree_method': 'hist',
@@ -95,7 +95,7 @@ TRAINING_CONFIG = {
     'split_method': 'time_based',
     'cv_folds': 5,
     'cv_strategy': 'TimeSeriesSplit',
-    'early_stopping_rounds': 20,
+    'early_stopping_rounds': 50,
     'verbose_eval': 10
 }
 

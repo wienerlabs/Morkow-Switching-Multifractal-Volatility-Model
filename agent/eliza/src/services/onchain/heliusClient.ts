@@ -17,6 +17,7 @@
 
 import { logger } from '../logger.js';
 import { PublicKey, Connection } from '@solana/web3.js';
+import { resilientFetchJson, Queues } from '../resilience.js';
 
 // ============= TYPES =============
 
@@ -226,7 +227,7 @@ export class HeliusClient {
   }
 
   /**
-   * Fetch token metadata
+   * Fetch token metadata — uses Helius DAS API for real creation timestamp
    */
   private async fetchTokenMetadata(mint: PublicKey): Promise<TokenMetadata> {
     try {
@@ -235,10 +236,51 @@ export class HeliusClient {
       // Get token supply info
       const supply = await this.connection.getTokenSupply(mint);
 
-      // Estimate creation date (this is approximate)
-      // In production, you'd use Helius enhanced API or transaction history
-      // We could use accountInfo.lamports to estimate age, but for now use default
-      const createdAt = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000); // Default to 6 months ago
+      // Try Helius DAS API for real asset metadata (includes creation time)
+      let createdAt = new Date();
+      if (this.apiKey) {
+        try {
+          const dasResp = await resilientFetchJson<{
+            result: {
+              content?: { metadata?: { created?: string } };
+              token_info?: { decimals?: number; supply?: number };
+            };
+          }>(
+            `https://mainnet.helius-rpc.com/?api-key=${this.apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 'get-asset',
+                method: 'getAsset',
+                params: { id: mint.toBase58() },
+              }),
+            },
+            { queue: Queues.helius(), label: 'helius/getAsset', retries: 2, fetchTimeout: 15000 },
+          );
+          if (dasResp.result?.content?.metadata?.created) {
+            createdAt = new Date(dasResp.result.content.metadata.created);
+          }
+          this.requestCount++;
+        } catch {
+          // Fall through to signature-based estimation
+        }
+      }
+
+      // If DAS didn't give us a date, estimate from oldest signature
+      if (createdAt.getTime() >= Date.now() - 60_000) {
+        try {
+          const sigs = await this.connection.getSignaturesForAddress(mint, { limit: 1 });
+          if (sigs.length > 0 && sigs[0].blockTime) {
+            createdAt = new Date(sigs[0].blockTime * 1000);
+          }
+          this.requestCount++;
+        } catch {
+          // Use current time as last resort
+        }
+      }
+
       const age = Math.floor((Date.now() - createdAt.getTime()) / (24 * 60 * 60 * 1000));
 
       return {
@@ -267,22 +309,71 @@ export class HeliusClient {
 
   /**
    * Fetch recent large transfers (whale activity)
+   * Uses Helius enhanced transactions API to detect large token movements
    */
   private async fetchRecentLargeTransfers(mint: PublicKey): Promise<LargeTransfer[]> {
+    if (!this.apiKey) {
+      return []; // Enhanced API requires API key
+    }
+
     try {
       this.requestCount++;
 
-      // Get recent signatures for this token
-      // Note: This is a simplified version. In production, you'd use Helius enhanced API
-      // to get parsed transaction data with transfer amounts
+      // Get recent signatures for this mint
+      const signatures = await this.connection.getSignaturesForAddress(mint, { limit: 50 });
+      if (signatures.length === 0) return [];
 
-      // For now, return empty array as we'd need enhanced API to parse transfers
-      // In production, use Helius enhanced transactions API:
-      // const signatures = await this.connection.getSignaturesForAddress(mint, { limit: 100 });
-      // Then parse each transaction to extract transfer amounts
-      return [];
+      this.requestCount++;
+
+      // Use Helius enhanced transactions API to parse transfer amounts
+      const sigList = signatures.slice(0, 20).map(s => s.signature);
+      const parsed = await resilientFetchJson<Array<{
+        signature: string;
+        timestamp: number;
+        tokenTransfers?: Array<{
+          fromUserAccount: string;
+          toUserAccount: string;
+          tokenAmount: number;
+          mint: string;
+        }>;
+      }>>(
+        `https://api.helius.xyz/v0/transactions/?api-key=${this.apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transactions: sigList }),
+        },
+        { queue: Queues.helius(), label: 'helius/parsedTxns', retries: 2, fetchTimeout: 20000 },
+      );
+
+      const transfers: LargeTransfer[] = [];
+      const mintStr = mint.toBase58();
+
+      for (const tx of parsed) {
+        if (!tx.tokenTransfers) continue;
+        for (const transfer of tx.tokenTransfers) {
+          if (transfer.mint !== mintStr) continue;
+          // Consider "large" as any transfer — the caller filters by context
+          if (transfer.tokenAmount > 0) {
+            transfers.push({
+              signature: tx.signature,
+              from: transfer.fromUserAccount || 'unknown',
+              to: transfer.toUserAccount || 'unknown',
+              amount: transfer.tokenAmount,
+              timestamp: new Date(tx.timestamp * 1000),
+            });
+          }
+        }
+      }
+
+      logger.info('[HeliusClient] Whale transfers fetched', {
+        mint: mintStr,
+        transferCount: transfers.length,
+      });
+
+      return transfers;
     } catch (error: any) {
-      logger.error('[HeliusClient] Failed to fetch transfers', {
+      logger.warn('[HeliusClient] Failed to fetch transfers', {
         mint: mint.toBase58(),
         error: error.message,
       });

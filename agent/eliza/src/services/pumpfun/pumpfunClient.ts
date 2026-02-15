@@ -6,6 +6,7 @@
 import { Connection, Keypair, PublicKey, VersionedTransaction, TransactionMessage, SystemProgram } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { logger } from '../logger.js';
+import { getSolanaConnection, recordRpcFailure, recordRpcSuccess } from '../solana/connection.js';
 import { guardian } from '../guardian/index.js';
 import type { GuardianTradeParams } from '../guardian/types.js';
 import { sendWithJito } from '../jitoService.js';
@@ -125,9 +126,8 @@ export class PumpFunClient {
       logger.info('[PumpFunClient] No wallet configured - read-only mode');
     }
 
-    // Initialize Solana connection
-    const rpcUrl = process.env.SOLANA_RPC_URL || process.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
-    this.connection = new Connection(rpcUrl, 'confirmed');
+    // Initialize Solana connection — uses failover connection
+    this.connection = getSolanaConnection();
 
     this.useJito = process.env.PUMPFUN_USE_JITO !== 'false';
     this.jitoTipLamports = parseInt(process.env.PUMPFUN_JITO_TIP_LAMPORTS || '10000', 10);
@@ -592,6 +592,7 @@ export class PumpFunClient {
         lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
       }, 'confirmed');
 
+      recordRpcSuccess();
       logger.info('[PumpFunClient] Trade executed via RPC', { signature });
 
       return {
@@ -601,6 +602,7 @@ export class PumpFunClient {
       };
 
     } catch (error: any) {
+      recordRpcFailure();
       logger.error('[PumpFunClient] Trade execution failed', {
         action: params.action,
         mint: params.mint,
