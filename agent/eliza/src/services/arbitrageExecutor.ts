@@ -17,6 +17,7 @@ import { Connection, VersionedTransaction, Keypair, PublicKey } from '@solana/we
 import crypto from 'crypto';
 import { getSolPrice, DEFAULT_GAS_SOL } from './marketData.js';
 import { getGlobalRiskManager } from './risk/index.js';
+import { getDebateClient } from './risk/debateClient.js';
 import { getPortfolioManager } from './portfolioManager.js';
 import { guardian } from './guardian/index.js';
 import type { GuardianTradeParams } from './guardian/types.js';
@@ -967,6 +968,21 @@ export class ArbitrageExecutor {
    * Determine best direction and execute
    */
   async execute(opp: ArbitrageOpportunity, amountUsd: number = 1000): Promise<ArbitrageResult> {
+    // ========== OUTCOME CIRCUIT BREAKER CHECK ==========
+    try {
+      const debateClient = getDebateClient();
+      const blocked = await debateClient.isStrategyBlocked('arbitrage');
+      if (blocked) {
+        logger.warn('[ARBITRAGE] Strategy blocked by outcome circuit breaker');
+        return this.errorResult(opp, 'cex-to-dex', 'Arbitrage strategy blocked by outcome circuit breaker (too many consecutive failures)');
+      }
+    } catch (error) {
+      logger.warn('[ARBITRAGE] Outcome circuit breaker check failed, proceeding', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    // =================================================
+
     // ========== PM APPROVAL CHECK (before Guardian) ==========
     if (pmDecisionEngine.isEnabled()) {
       const pmParams: QueueTradeParams = {
@@ -1037,6 +1053,7 @@ export class ArbitrageExecutor {
       protocol: 'arbitrage',
       sizeUsd: amountUsd,
       walletBalanceSol,
+      strategyType: 'arb',
     });
 
     if (!riskCheck.canTrade) {
@@ -1051,7 +1068,50 @@ export class ArbitrageExecutor {
         return this.errorResult(opp, 'cex-to-dex', `Risk check failed: ${riskCheck.blockReasons.join('; ')}`);
       }
     }
+
+    // Apply A-LAMS regime-based position scaling
+    const regimeScale = riskCheck.alamsVar?.regimePositionScale ?? 1.0;
+    if (regimeScale < 1.0) {
+      const originalAmount = amountUsd;
+      amountUsd = amountUsd * regimeScale;
+      logger.info(`[ARBITRAGE] Regime scaling applied: $${originalAmount.toFixed(0)} → $${amountUsd.toFixed(0)} (${regimeScale}x)`);
+    }
     // ========================================
+
+    // ========== ADVERSARIAL DEBATE CHECK ==========
+    if (amountUsd > 2000) {
+      try {
+        const debateClient = getDebateClient();
+        const debateResult = await debateClient.runDebate({
+          token: opp.symbol,
+          direction: `arb_${opp.buyExchange}_to_${opp.sellExchange}`,
+          trade_size_usd: amountUsd,
+          strategy: 'arbitrage',
+        });
+
+        logger.info('[ARBITRAGE] Debate result', {
+          symbol: opp.symbol,
+          decision: debateResult.final_decision,
+          confidence: debateResult.final_confidence,
+          recommended_size_pct: debateResult.recommended_size_pct,
+        });
+
+        if (debateResult.final_decision === 'reject') {
+          logger.warn('[ARBITRAGE] Trade rejected by adversarial debate', {
+            symbol: opp.symbol,
+            amountUsd,
+            reasoning: debateResult.rounds?.[debateResult.num_rounds - 1]?.arbitrator?.reasoning,
+          });
+          return this.errorResult(opp, 'cex-to-dex', `Adversarial debate rejected (confidence: ${debateResult.final_confidence.toFixed(2)})`);
+        }
+      } catch (error) {
+        logger.warn('[ARBITRAGE] Debate API unreachable, proceeding with trade', {
+          symbol: opp.symbol,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    // ==============================================
 
     const minSpread = this.config.minSpreadPct;
     const feeEstimate = 0.25; // Conservative fee estimate covering most exchanges
@@ -1079,21 +1139,41 @@ export class ArbitrageExecutor {
     const buyIsCex = isCex(opp.buyExchange);
     const sellIsCex = isCex(opp.sellExchange);
 
+    let result: ArbitrageResult;
     if (buyIsCex && !sellIsCex) {
-      // CEX → DEX (buy on Binance, sell on Jupiter)
-      return this.executeCexToDex(opp, amountUsd);
+      result = await this.executeCexToDex(opp, amountUsd);
     } else if (!buyIsCex && sellIsCex) {
-      // DEX → CEX (buy on Jupiter, sell on Binance)
       logger.info(`[ARBITRAGE] DEX→CEX path (deposit delays ~15min)`);
-      return this.executeDexToCex(opp, amountUsd);
+      result = await this.executeDexToCex(opp, amountUsd);
     } else if (!buyIsCex && !sellIsCex) {
-      // DEX → DEX (buy on Orca, sell on Meteora via Jupiter)
-      return this.executeDexToDex(opp, amountUsd);
+      result = await this.executeDexToDex(opp, amountUsd);
     } else {
-      // CEX → CEX (not supported)
       logger.info(`[ARBITRAGE] ⚠️ CEX→CEX not supported`);
       return this.errorResult(opp, 'cex-to-cex', 'CEX→CEX not supported');
     }
+
+    // ========== RECORD TRADE OUTCOME ==========
+    try {
+      const debateClient = getDebateClient();
+      debateClient.recordTradeOutcome({
+        strategy: 'arbitrage',
+        success: result.success,
+        pnl: result.netProfit,
+        loss_type: !result.success ? 'execution_failure' : undefined,
+        details: result.success
+          ? `Arb ${result.direction}: ${result.profitPct.toFixed(2)}% profit on ${opp.symbol}`
+          : `Arb failed: ${result.error}`,
+      }).catch(err => logger.warn('[ARBITRAGE] Failed to record trade outcome', {
+        error: err instanceof Error ? err.message : String(err),
+      }));
+    } catch (error) {
+      logger.warn('[ARBITRAGE] Failed to record trade outcome', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    // ==========================================
+
+    return result;
   }
 
   // ============= HELPERS =============

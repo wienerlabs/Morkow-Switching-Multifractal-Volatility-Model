@@ -9,6 +9,7 @@
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { logger } from '../logger.js';
 import { getGlobalRiskManager } from '../risk/index.js';
+import { getDebateClient } from '../risk/debateClient.js';
 import { getPortfolioManager } from '../portfolioManager.js';
 import type {
   SupportedDex,
@@ -83,6 +84,26 @@ export class LPExecutor {
       };
     }
 
+    // ========== OUTCOME CIRCUIT BREAKER CHECK ==========
+    try {
+      const debateClient = getDebateClient();
+      const blocked = await debateClient.isStrategyBlocked('lp');
+      if (blocked) {
+        logger.warn('[LPExecutor] LP strategy blocked by outcome circuit breaker', {
+          pool: params.pool.name,
+        });
+        return {
+          success: false,
+          error: 'LP strategy blocked by outcome circuit breaker (too many consecutive losses)',
+        };
+      }
+    } catch (error) {
+      logger.warn('[LPExecutor] Outcome circuit breaker check failed, proceeding', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    // =================================================
+
     // ========== GLOBAL RISK CHECK ==========
     // Check all risk limits before executing deposit
     const riskManager = getGlobalRiskManager(undefined, this.config.rpcUrl, this.config.dryRun);
@@ -91,6 +112,7 @@ export class LPExecutor {
       protocol: dex,
       sizeUsd: params.amountUsd,
       walletBalanceSol: this.walletBalanceSol,
+      strategyType: 'lp',
     });
 
     if (!riskCheck.canTrade) {
@@ -111,7 +133,58 @@ export class LPExecutor {
         };
       }
     }
+
+    // Apply A-LAMS regime-based position scaling
+    const regimeScale = riskCheck.alamsVar?.regimePositionScale ?? 1.0;
+    if (regimeScale < 1.0) {
+      const originalAmount = params.amountUsd;
+      params = { ...params, amountUsd: params.amountUsd * regimeScale };
+      logger.info('[LPExecutor] Regime scaling applied', {
+        pool: params.pool.name,
+        originalAmount,
+        scaledAmount: params.amountUsd,
+        regimeScale,
+      });
+    }
     // ========================================
+
+    // ========== ADVERSARIAL DEBATE CHECK ==========
+    if (params.amountUsd > 1000) {
+      try {
+        const debateClient = getDebateClient();
+        const debateResult = await debateClient.runDebate({
+          token: params.pool.token0.symbol,
+          direction: 'lp_deposit',
+          trade_size_usd: params.amountUsd,
+          strategy: 'lp',
+        });
+
+        logger.info('[LPExecutor] Debate result', {
+          pool: params.pool.name,
+          decision: debateResult.final_decision,
+          confidence: debateResult.final_confidence,
+          recommended_size_pct: debateResult.recommended_size_pct,
+        });
+
+        if (debateResult.final_decision === 'reject') {
+          logger.warn('[LPExecutor] Deposit rejected by adversarial debate', {
+            pool: params.pool.name,
+            amountUsd: params.amountUsd,
+            reasoning: debateResult.rounds?.[debateResult.num_rounds - 1]?.arbitrator?.reasoning,
+          });
+          return {
+            success: false,
+            error: `Adversarial debate rejected LP deposit (confidence: ${debateResult.final_confidence.toFixed(2)})`,
+          };
+        }
+      } catch (error) {
+        logger.warn('[LPExecutor] Debate API unreachable, proceeding with deposit', {
+          pool: params.pool.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    // ==============================================
 
     // Check price impact first
     const impact = await executor.calculatePriceImpact(params.pool, params.amountUsd);
@@ -165,6 +238,26 @@ export class LPExecutor {
     }
     // ================================================
 
+    // ========== RECORD TRADE OUTCOME ==========
+    try {
+      const debateClient = getDebateClient();
+      debateClient.recordTradeOutcome({
+        strategy: 'lp',
+        success: result.success,
+        pnl: result.success ? 0 : -params.amountUsd * 0.01,
+        details: result.success
+          ? `LP deposit to ${params.pool.name} on ${dex}`
+          : `LP deposit failed: ${result.error}`,
+      }).catch(err => logger.warn('[LPExecutor] Failed to record trade outcome', {
+        error: err instanceof Error ? err.message : String(err),
+      }));
+    } catch (error) {
+      logger.warn('[LPExecutor] Failed to record trade outcome', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    // ==========================================
+
     return result;
   }
 
@@ -194,18 +287,40 @@ export class LPExecutor {
     });
 
     // ========== CLOSE POSITION IN PORTFOLIO ==========
+    let realizedPnl = 0;
     if (result.success && params.portfolioPositionId) {
       const portfolioManager = getPortfolioManager();
       const exitValueUsd = result.amountUsd || 0;
-      const pnlUsd = portfolioManager.closeLPPosition(params.portfolioPositionId, exitValueUsd);
+      realizedPnl = portfolioManager.closeLPPosition(params.portfolioPositionId, exitValueUsd);
 
       logger.info('[LPExecutor] Position closed in portfolio', {
         portfolioPositionId: params.portfolioPositionId,
         exitValueUsd,
-        realizedPnlUsd: pnlUsd,
+        realizedPnlUsd: realizedPnl,
       });
     }
     // ================================================
+
+    // ========== RECORD TRADE OUTCOME ==========
+    try {
+      const debateClient = getDebateClient();
+      debateClient.recordTradeOutcome({
+        strategy: 'lp',
+        success: result.success,
+        pnl: realizedPnl,
+        loss_type: !result.success ? 'withdrawal_failure' : undefined,
+        details: result.success
+          ? `LP withdrawal from ${params.pool.name}`
+          : `LP withdrawal failed: ${result.error}`,
+      }).catch(err => logger.warn('[LPExecutor] Failed to record withdraw outcome', {
+        error: err instanceof Error ? err.message : String(err),
+      }));
+    } catch (error) {
+      logger.warn('[LPExecutor] Failed to record withdraw outcome', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    // ==========================================
 
     return result;
   }

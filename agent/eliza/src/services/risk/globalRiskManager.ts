@@ -39,7 +39,11 @@ import type {
   GasBudgetStatus,
   ALAMSVaRStatus,
   ALAMSVaRConfig,
+  StrategyVaRThresholds,
+  StrategyType,
+  StrategyRiskTier,
 } from './types.js';
+import { STRATEGY_RISK_TIERS } from './types.js';
 
 // ============= DEFAULT CONFIGURATION =============
 
@@ -70,6 +74,30 @@ export const DEFAULT_GLOBAL_RISK_CONFIG: GlobalRiskConfig = {
   oracleConfig: DEFAULT_ORACLE_CONFIG,
   gasBudgetConfig: DEFAULT_GAS_CONFIG,
 };
+
+// ============= PER-STRATEGY VAR THRESHOLDS =============
+
+export const DEFAULT_STRATEGY_VAR_THRESHOLDS: StrategyVaRThresholds = {
+  spot: parseFloat(process.env.ALAMS_VAR_THRESHOLD_SPOT || '0.08'),
+  lp: parseFloat(process.env.ALAMS_VAR_THRESHOLD_LP || '0.06'),
+  arb: parseFloat(process.env.ALAMS_VAR_THRESHOLD_ARB || '0.05'),
+  perps: parseFloat(process.env.ALAMS_VAR_THRESHOLD_PERPS || '0.03'),
+  leverage: parseFloat(process.env.ALAMS_VAR_THRESHOLD_PERPS || '0.03'),
+  margin: parseFloat(process.env.ALAMS_VAR_THRESHOLD_PERPS || '0.03'),
+};
+
+// ============= REGIME POSITION SCALING =============
+
+export function getPositionScaleForRegime(regime: number): number {
+  if (regime >= 4) return 0.25;
+  if (regime === 3) return 0.5;
+  if (regime === 2) return 0.75;
+  return 1.0;
+}
+
+export function getStrategyRiskTier(strategyType: StrategyType): StrategyRiskTier {
+  return STRATEGY_RISK_TIERS[strategyType] ?? 'medium';
+}
 
 // Major assets for classification
 const MAJOR_ASSETS = ['BTC', 'ETH', 'SOL', 'USDC', 'USDT'];
@@ -838,6 +866,7 @@ export class GlobalRiskManager {
     protocol: string;
     sizeUsd: number;
     walletBalanceSol: number;
+    strategyType?: StrategyType;
   }): Promise<GlobalRiskStatus> {
     const blockReasons: string[] = [];
     const oracleStatuses = new Map<string, OracleStatus>();
@@ -890,7 +919,12 @@ export class GlobalRiskManager {
       blockReasons.push('Insufficient gas reserve for emergency exit');
     }
 
-    // 6. A-LAMS VaR check (Python API — non-blocking)
+    // 6. A-LAMS VaR check — BLOCKING for high-risk strategies, non-blocking for others
+    const strategy = params.strategyType ?? 'spot';
+    const riskTier = getStrategyRiskTier(strategy);
+    const thresholds = this.config.strategyVarThresholds ?? DEFAULT_STRATEGY_VAR_THRESHOLDS;
+    const maxVar = thresholds[strategy] ?? thresholds.spot;
+
     let alamsVar: ALAMSVaRStatus = { available: false, result: null };
     try {
       const varResult = await this.alamsClient.calculateVaR({
@@ -898,36 +932,52 @@ export class GlobalRiskManager {
         trade_size_usd: params.sizeUsd,
       });
 
+      const regimeScale = getPositionScaleForRegime(varResult.current_regime);
+
       alamsVar = {
         available: true,
         result: varResult,
         fetchedAt: Date.now(),
+        regimePositionScale: regimeScale,
       };
 
-      // Block if total VaR exceeds max acceptable loss
-      const maxVar = this.config.alamsVarConfig?.maxAcceptableVarPct ?? 0.05;
       if (varResult.var_total > maxVar) {
         blockReasons.push(
-          `A-LAMS VaR ${(varResult.var_total * 100).toFixed(2)}% exceeds ${(maxVar * 100).toFixed(1)}% limit`
+          `A-LAMS VaR ${(varResult.var_total * 100).toFixed(2)}% exceeds ${strategy} threshold ${(maxVar * 100).toFixed(1)}%`
         );
       }
 
-      // Block if in crisis regime (index 4 = highest volatility)
       if (varResult.current_regime >= 4) {
         blockReasons.push(
           `A-LAMS crisis regime detected (regime ${varResult.current_regime})`
         );
       }
     } catch (error) {
-      // A-LAMS failure is non-blocking — log and continue
+      const errMsg = error instanceof Error ? error.message : 'Unknown error';
       alamsVar = {
         available: false,
         result: null,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errMsg,
       };
-      logger.warn('A-LAMS VaR check unavailable', {
-        error: error instanceof Error ? error.message : error,
-      });
+
+      if (riskTier === 'high') {
+        // BLOCKING for high-risk strategies — fail-safe
+        blockReasons.push(
+          `A-LAMS VaR API unreachable — blocking ${strategy} trade (high-risk fail-safe)`
+        );
+        logger.error('A-LAMS VaR unreachable — BLOCKING high-risk trade', {
+          strategy,
+          riskTier,
+          error: errMsg,
+        });
+      } else {
+        // Non-blocking for low/medium — warn and continue
+        logger.warn('A-LAMS VaR check unavailable — proceeding (non-blocking)', {
+          strategy,
+          riskTier,
+          error: errMsg,
+        });
+      }
     }
 
     const canTrade = blockReasons.length === 0;
