@@ -158,6 +158,14 @@ JUPITER_TIMEOUT = float(os.environ.get("JUPITER_TIMEOUT", "30"))
 JUPITER_MAX_RETRIES = int(os.environ.get("JUPITER_MAX_RETRIES", "3"))
 JUPITER_SLIPPAGE_BPS = int(os.environ.get("JUPITER_SLIPPAGE_BPS", "100"))
 
+# ── Unified Slippage (per-strategy, basis points) ──
+
+SLIPPAGE_ARBITRAGE_BPS = int(os.environ.get("SLIPPAGE_ARBITRAGE_BPS", str(JUPITER_SLIPPAGE_BPS)))
+SLIPPAGE_SPOT_BPS = int(os.environ.get("SLIPPAGE_SPOT_BPS", "100"))
+SLIPPAGE_LENDING_BPS = int(os.environ.get("SLIPPAGE_LENDING_BPS", "50"))
+SLIPPAGE_LP_DEPOSIT_BPS = int(os.environ.get("SLIPPAGE_LP_DEPOSIT_BPS", "100"))
+SLIPPAGE_LP_WITHDRAW_BPS = int(os.environ.get("SLIPPAGE_LP_WITHDRAW_BPS", "50"))
+
 # ── Execution Layer (Wave 9) ──
 
 EXECUTION_ENABLED = os.environ.get("EXECUTION_ENABLED", "false").lower() == "true"

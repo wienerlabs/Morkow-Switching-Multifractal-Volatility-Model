@@ -60,6 +60,12 @@ export interface CortexConfig {
     lpDeposit: number;
     lpWithdraw: number;
   };
+
+  // Redis
+  redis: {
+    url: string;
+    enabled: boolean;
+  };
 }
 
 /**
@@ -123,6 +129,12 @@ export function loadConfig(): CortexConfig {
       lending: parseInt(process.env.SLIPPAGE_LENDING_BPS || '50', 10),
       lpDeposit: parseInt(process.env.SLIPPAGE_LP_DEPOSIT_BPS || '100', 10),
       lpWithdraw: parseInt(process.env.SLIPPAGE_LP_WITHDRAW_BPS || '50', 10),
+    },
+
+    // Redis
+    redis: {
+      url: process.env.REDIS_URL || process.env.PERSISTENCE_REDIS_URL || '',
+      enabled: process.env.REDIS_ENABLED !== 'false',
     },
   };
 }

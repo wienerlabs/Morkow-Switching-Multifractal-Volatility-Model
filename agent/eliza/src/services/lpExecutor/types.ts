@@ -5,6 +5,7 @@
  */
 
 import type { Keypair, PublicKey } from '@solana/web3.js';
+import { config as prodConfig } from '../../config/production.js';
 
 // Supported DEXs
 export type SupportedDex = 'orca' | 'raydium' | 'meteora';
@@ -135,16 +136,20 @@ export interface IDexExecutor {
 export interface ExecutorConfig {
   rpcUrl: string;
   defaultSlippageBps: number;
+  depositSlippageBps?: number;   // Override for deposit (from SLIPPAGE_LP_DEPOSIT_BPS)
+  withdrawSlippageBps?: number;  // Override for withdraw (from SLIPPAGE_LP_WITHDRAW_BPS)
   maxPriceImpactPct: number;
   confirmationTimeout: number;  // ms
   priorityFeeLamports?: number;
   dryRun?: boolean;  // If true, simulate trades without executing
 }
 
-// Default configuration
+// Default configuration — reads from centralized config (production.ts)
 export const DEFAULT_EXECUTOR_CONFIG: ExecutorConfig = {
-  rpcUrl: 'https://api.mainnet-beta.solana.com',
-  defaultSlippageBps: 50,       // 0.5%
+  rpcUrl: prodConfig.solanaRpcUrl,
+  defaultSlippageBps: prodConfig.slippage.lpDeposit,
+  depositSlippageBps: prodConfig.slippage.lpDeposit,    // 100 BPS from env
+  withdrawSlippageBps: prodConfig.slippage.lpWithdraw,  // 50 BPS from env
   maxPriceImpactPct: 1.0,       // Max 1% price impact
   confirmationTimeout: 60000,   // 60 seconds
   priorityFeeLamports: 100000,  // 0.0001 SOL priority fee

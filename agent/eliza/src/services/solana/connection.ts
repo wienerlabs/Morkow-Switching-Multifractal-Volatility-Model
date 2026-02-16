@@ -10,6 +10,7 @@
 
 import { Connection } from '@solana/web3.js';
 import { logger } from '../logger.js';
+import { writeEndpointHealth, isEndpointFlaggedDown } from './rpcHealthStore.js';
 
 const LATENCY_WINDOW_SIZE = 20;
 
@@ -92,6 +93,8 @@ function buildEndpoints(): EndpointState[] {
 }
 
 function isEndpointHealthy(ep: EndpointState): boolean {
+  // Check if other process (Python) flagged this endpoint as down
+  if (isEndpointFlaggedDown(ep.url)) return false;
   if (ep.failCount < MAX_FAIL_BEFORE_COOLDOWN) return true;
   return Date.now() - ep.lastFailure > COOLDOWN_MS;
 }
@@ -137,6 +140,15 @@ export function recordRpcFailure(latencyMs?: number): void {
       failCount: ep.failCount,
     });
 
+    // Sync to Redis for cross-process awareness
+    writeEndpointHealth(ep.url, {
+      status: deriveEndpointStatus(ep),
+      failCount: ep.failCount,
+      lastFailure: ep.lastFailure,
+      avgLatencyMs: ep.avgLatencyMs,
+      successRate: ep.totalRequests > 0 ? ep.successCount / ep.totalRequests : 1,
+    });
+
     // Force a new connection on next call
     if (ep.failCount >= MAX_FAIL_BEFORE_COOLDOWN) {
       activeConnection = null;
@@ -160,6 +172,15 @@ export function recordRpcSuccess(latencyMs?: number): void {
     if (latencyMs !== undefined) {
       pushLatency(ep, latencyMs);
     }
+
+    // Sync to Redis for cross-process awareness
+    writeEndpointHealth(ep.url, {
+      status: deriveEndpointStatus(ep),
+      failCount: ep.failCount,
+      lastFailure: ep.lastFailure,
+      avgLatencyMs: ep.avgLatencyMs,
+      successRate: ep.totalRequests > 0 ? ep.successCount / ep.totalRequests : 1,
+    });
   }
 }
 

@@ -7,7 +7,10 @@ Mirrors the TypeScript connection.ts failover pattern for the Python backend:
   - Shared singleton for all Solana data API calls
 """
 
+import asyncio
 import atexit
+import hashlib
+import json as _json
 import logging
 import os
 import time
@@ -85,6 +88,7 @@ class EndpointHealth:
         self.last_success_at = time.time()
         self.fail_count = 0
         self.latency_window.append(latency_ms)
+        _fire_and_forget_write(self.host, self)
 
     def record_failure(self, latency_ms: float) -> None:
         self.fail_count += 1
@@ -92,6 +96,7 @@ class EndpointHealth:
         self.last_failure_at = time.time()
         self.total_requests += 1
         self.latency_window.append(latency_ms)
+        _fire_and_forget_write(self.host, self)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -156,7 +161,9 @@ class ResilientClient:
         return self._health[host]
 
     def _should_skip(self, host: str) -> bool:
-        """Check if host is in cooldown (too many recent failures)."""
+        """Check if host is in cooldown or flagged down by other process."""
+        if is_endpoint_flagged_down(host):
+            return True
         health = self._health.get(host)
         if health is None:
             return False
@@ -295,6 +302,109 @@ def _calc_backoff(attempt: int) -> float:
     """Exponential backoff: base * 2^attempt, capped at max."""
     backoff = BACKOFF_BASE_MS * (2 ** attempt)
     return min(backoff, BACKOFF_MAX_MS)
+
+
+# ── Redis Shared Health Sync ──
+
+_REDIS_KEY_PREFIX = "rpc:health:"
+_REDIS_TTL = 120  # seconds
+
+_redis_client: Any | None = None  # redis.asyncio.Redis
+_shared_health_cache: dict[str, dict[str, Any]] = {}
+
+
+def _url_to_key(url: str) -> str:
+    h = hashlib.sha256(url.encode()).hexdigest()[:16]
+    return f"{_REDIS_KEY_PREFIX}{h}"
+
+
+async def init_rpc_health_redis() -> None:
+    """Initialize async Redis client for RPC health sharing. No-op if unavailable."""
+    global _redis_client
+    redis_url = os.environ.get("REDIS_URL", os.environ.get("PERSISTENCE_REDIS_URL", ""))
+    if not redis_url or os.environ.get("REDIS_ENABLED") == "false":
+        logger.info("[RPC-PY] Redis disabled — shared health sync off")
+        return
+    try:
+        import redis.asyncio as aioredis
+        _redis_client = aioredis.from_url(redis_url, decode_responses=True, socket_connect_timeout=5)
+        await _redis_client.ping()
+        logger.info("[RPC-PY] Redis connected for RPC health sync")
+    except Exception as exc:
+        logger.warning("[RPC-PY] Redis init failed — shared health sync off: %s", exc)
+        _redis_client = None
+
+
+async def close_rpc_health_redis() -> None:
+    """Close the Redis client."""
+    global _redis_client
+    if _redis_client:
+        try:
+            await _redis_client.aclose()
+        except Exception:
+            pass
+        _redis_client = None
+
+
+def _fire_and_forget_write(host: str, health: EndpointHealth) -> None:
+    """Non-blocking Redis SET of endpoint health."""
+    if _redis_client is None:
+        return
+    value = _json.dumps({
+        "url": host,
+        "status": health.status,
+        "failCount": health.fail_count,
+        "lastFailure": health.last_failure,
+        "avgLatencyMs": round(health.avg_latency_ms, 2),
+        "successRate": round(health.success_rate, 3),
+        "writer": "python",
+        "updatedAt": int(time.time() * 1000),
+    })
+    key = _url_to_key(host)
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_redis_client.setex(key, _REDIS_TTL, value))
+    except RuntimeError:
+        pass  # No event loop — skip
+
+
+async def refresh_shared_health() -> None:
+    """Read all shared health entries from Redis into local cache."""
+    global _shared_health_cache
+    if _redis_client is None:
+        return
+    try:
+        keys: list[str] = []
+        async for key in _redis_client.scan_iter(match=f"{_REDIS_KEY_PREFIX}*", count=50):
+            keys.append(key)
+        if not keys:
+            _shared_health_cache = {}
+            return
+        values = await _redis_client.mget(*keys)
+        new_cache: dict[str, dict[str, Any]] = {}
+        for val in values:
+            if val:
+                try:
+                    parsed = _json.loads(val)
+                    new_cache[parsed.get("url", "")] = parsed
+                except Exception:
+                    pass
+        _shared_health_cache = new_cache
+    except Exception as exc:
+        logger.warning("[RPC-PY] Shared health refresh failed: %s", exc)
+
+
+def is_endpoint_flagged_down(host: str) -> bool:
+    """Check if the TS process flagged this endpoint as down."""
+    entry = _shared_health_cache.get(host)
+    if not entry:
+        return False
+    if entry.get("writer") == "python":
+        return False
+    age_ms = int(time.time() * 1000) - entry.get("updatedAt", 0)
+    if age_ms > _REDIS_TTL * 1000:
+        return False
+    return entry.get("status") == "down"
 
 
 # ── Shared singleton ──

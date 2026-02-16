@@ -21,6 +21,12 @@ vi.mock('../services/logger.js', () => ({
   }
 }));
 
+// Mock getSolPrice to return a deterministic value
+vi.mock('../services/marketData.js', () => ({
+  getSolPrice: vi.fn().mockResolvedValue(200),
+  DEFAULT_GAS_SOL: 0.002,
+}));
+
 describe('ArbitrageFeatureExtractor', () => {
   let extractor: ArbitrageFeatureExtractor;
   
@@ -84,7 +90,7 @@ describe('ArbitrageFeatureExtractor', () => {
   });
   
   it('should extract cost features correctly', async () => {
-    const features = await extractor.extractFeatures(mockOpportunity, 200);
+    const features = await extractor.extractFeatures(mockOpportunity);
     
     // gas_gwei should be 0 for Solana
     const gasGweiIdx = ARBITRAGE_FEATURE_NAMES.indexOf('gas_gwei');

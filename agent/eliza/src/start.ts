@@ -1,17 +1,17 @@
 #!/usr/bin/env tsx
 /**
  * CRTX Agent - Main Startup Script
- * 
+ *
  * Starts the CRTX trading agent with interactive mode selection.
  * User can choose between NORMAL (conservative) and AGGRESSIVE (higher risk) modes.
- * 
+ *
  * Usage:
  *   npm start
  *   npm run start:agent
- * 
+ *
  * Or directly:
  *   npx tsx src/start.ts
- * 
+ *
  * Environment Variables:
  *   TRADING_MODE - Set to 'NORMAL' or 'AGGRESSIVE' to skip interactive prompt
  */
@@ -22,7 +22,17 @@ import { CRTXAgent } from './agents/crtxAgent.js';
 import { logger } from './services/logger.js';
 import { validateAgentConfig } from './config/production.js';
 import { getHealthMetrics, resetHealthMetrics } from './services/solana/connection.js';
+import { initRpcHealthStore, closeRpcHealthStore, refreshSharedHealth } from './services/solana/rpcHealthStore.js';
 import { initCalibration, stopCalibrationSchedule } from './services/calibration.js';
+import {
+  performHealthCheck,
+  recordCycleStart,
+  recordCycleSuccess,
+  recordCycleError,
+  setCalibrationStatus,
+} from './services/healthMonitor.js';
+
+let sharedHealthTimer: ReturnType<typeof setInterval> | null = null;
 
 async function main() {
   logger.info('\n╔═══════════════════════════════════════════════════════════╗');
@@ -54,8 +64,20 @@ async function main() {
 
     logger.info('\n✅ Agent initialized successfully!\n');
 
+    // Initialize Redis RPC health store (non-blocking)
+    initRpcHealthStore().then(() => {
+      // Start periodic shared health refresh (every 30s)
+      sharedHealthTimer = setInterval(() => {
+        refreshSharedHealth().catch(() => {});
+      }, 30_000);
+    }).catch((err) => {
+      logger.warn('[RpcHealthStore] Init failed, continuing without shared health', { error: String(err) });
+    });
+
     // Calibrate A-LAMS model (fire-and-forget — does not block startup)
-    initCalibration().catch((err) => {
+    initCalibration().then(() => {
+      setCalibrationStatus(true);
+    }).catch((err) => {
       logger.error('[Calibration] Unexpected error during init', { error: String(err) });
     });
 
@@ -82,9 +104,35 @@ async function main() {
     // Start Lending position monitoring
     agent.startLendingMonitoring();
 
-    // Start lightweight health monitoring server
+    // Start health monitoring server
     const healthPort = parseInt(process.env.HEALTH_PORT || '9090', 10);
     const healthServer = createServer((req, res) => {
+      // Full health check — returns 200 (healthy/degraded) or 503 (unhealthy)
+      if (req.method === 'GET' && req.url === '/health') {
+        const check = performHealthCheck();
+        const statusCode = check.healthy ? 200 : 503;
+        res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(check));
+        return;
+      }
+
+      // Readiness — is the agent ready to trade?
+      if (req.method === 'GET' && req.url === '/ready') {
+        const check = performHealthCheck();
+        const ready = check.checks.rpc.ok && check.checks.tradingLoop.totalCycles > 0;
+        res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ready }));
+        return;
+      }
+
+      // Liveness — is the process alive?
+      if (req.method === 'GET' && req.url === '/live') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ alive: true }));
+        return;
+      }
+
+      // RPC-specific health metrics
       if (req.method === 'GET' && req.url === '/health/rpc') {
         const report = getHealthMetrics();
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -97,11 +145,12 @@ async function main() {
         res.end(JSON.stringify({ ok: true }));
         return;
       }
+
       res.writeHead(404);
       res.end();
     });
     healthServer.listen(healthPort, () => {
-      logger.info(`[Health] RPC health endpoint at http://localhost:${healthPort}/health/rpc`);
+      logger.info(`[Health] Endpoints at http://localhost:${healthPort}/health, /ready, /live, /health/rpc`);
     });
 
     // Handle graceful shutdown
@@ -109,6 +158,9 @@ async function main() {
       logger.info('\n\n🛑 Shutting down gracefully...');
       healthServer.close();
       stopCalibrationSchedule();
+
+      if (sharedHealthTimer) clearInterval(sharedHealthTimer);
+      closeRpcHealthStore().catch(() => {});
 
       agent.stopLPMonitoring();
       agent.stopSpotMonitoring();
@@ -125,6 +177,7 @@ async function main() {
 
     // Run continuous trading loop
     const runCycle = async () => {
+      recordCycleStart();
       try {
         logger.info('\n[CRTX] 🔄 Starting trading cycle...');
         const result = await agent.run();
@@ -152,11 +205,13 @@ async function main() {
         logger.info(`   Daily Trades: ${state.dailyTradeCount}`);
         logger.info(`   Current Position: ${state.currentPositionPct.toFixed(2)}%`);
 
+        recordCycleSuccess();
       } catch (error: any) {
         logger.error('[CRTX] Error in trading cycle', {
           error: error.message,
           stack: error.stack,
         });
+        recordCycleError();
       }
     };
 
@@ -182,4 +237,3 @@ main().catch((error) => {
   logger.error('[CRTX] Unhandled error', { error: String(error) });
   process.exit(1);
 });
-

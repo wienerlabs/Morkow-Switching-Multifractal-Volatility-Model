@@ -21,6 +21,7 @@ from cortex.cache import cache, setup_cache
 from cortex.config import API_VERSION, METRICS_ENABLED
 from cortex.logging import setup_logging
 from cortex.persistence import close_persistence, init_persistence
+from cortex.data.rpc_failover import init_rpc_health_redis, close_rpc_health_redis
 
 setup_logging()
 logger = structlog.get_logger("cortex_risk_engine")
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
     await setup_cache()
 
     await init_persistence()
+    await init_rpc_health_redis()
     total = 0
     for store in ALL_STORES:
         total += await store.restore()
@@ -46,6 +48,7 @@ async def lifespan(app: FastAPI):
     if persisted:
         logger.info("Persisted %d model state(s) to Redis", persisted)
 
+    await close_rpc_health_redis()
     await close_persistence()
     await cache.close()
     logger.info("CortexAgent Risk Engine shutting down")
