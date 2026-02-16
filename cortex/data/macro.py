@@ -4,19 +4,16 @@ Fetches from CoinGecko and Alternative.me with TTL-based caching to respect
 rate limits.  All functions are synchronous and safe for FastAPI sync routes.
 """
 
-import atexit
 import logging
 import time
 from typing import Any
 
-import httpx
-
 from cortex.config import COINGECKO_BASE, FEAR_GREED_URL, MACRO_CACHE_TTL
+from cortex.data.rpc_failover import get_resilient_pool
 
 logger = logging.getLogger(__name__)
 
-_pool = httpx.Client(timeout=15)
-atexit.register(_pool.close)
+_pool = get_resilient_pool()
 
 _macro_cache: dict[str, Any] = {}
 _cache_ts: float = 0.0

@@ -4,7 +4,6 @@ Fetches OHLCV, funding rates, and liquidity metrics from on-chain sources.
 Outputs DataFrames compatible with the existing yfinance-based pipeline.
 """
 
-import atexit
 import os
 import logging
 from datetime import datetime, timezone
@@ -12,27 +11,17 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-import httpx
 
 from cortex.config import (
     BIRDEYE_BASE,
     DRIFT_DATA_API,
     RAYDIUM_API,
-    SOLANA_HTTP_TIMEOUT,
-    SOLANA_MAX_CONNECTIONS,
-    SOLANA_MAX_KEEPALIVE,
 )
+from cortex.data.rpc_failover import get_resilient_pool
 
 logger = logging.getLogger(__name__)
 
-_pool = httpx.Client(
-    timeout=SOLANA_HTTP_TIMEOUT,
-    limits=httpx.Limits(
-        max_connections=SOLANA_MAX_CONNECTIONS,
-        max_keepalive_connections=SOLANA_MAX_KEEPALIVE,
-    ),
-)
-atexit.register(_pool.close)
+_pool = get_resilient_pool()
 
 # Well-known SPL token mint addresses
 TOKEN_REGISTRY: dict[str, str] = {

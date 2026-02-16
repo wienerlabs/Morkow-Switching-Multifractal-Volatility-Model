@@ -11,7 +11,6 @@ Supports:
 No hardcoded feed IDs. The entire Pyth crypto market is accessible.
 """
 
-import atexit
 import logging
 import time
 from collections import deque
@@ -24,13 +23,12 @@ from cortex.config import (
     PYTH_FEED_CACHE_TTL,
     PYTH_HERMES_URL,
     PYTH_SSE_TIMEOUT,
-    SOLANA_HTTP_TIMEOUT,
 )
+from cortex.data.rpc_failover import get_resilient_pool
 
 logger = logging.getLogger(__name__)
 
-_pool = httpx.Client(timeout=SOLANA_HTTP_TIMEOUT)
-atexit.register(_pool.close)
+_pool = get_resilient_pool()
 
 # ── Feed registry cache ──
 _feed_cache: list[dict[str, Any]] = []

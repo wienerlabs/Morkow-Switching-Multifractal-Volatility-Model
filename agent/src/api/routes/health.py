@@ -5,6 +5,8 @@ from datetime import datetime
 from fastapi import APIRouter, Response
 from pydantic import BaseModel
 
+from cortex.data.rpc_failover import get_resilient_pool
+
 router = APIRouter()
 
 
@@ -50,8 +52,15 @@ async def readiness_check() -> dict:
 async def liveness_check() -> dict:
     """
     Liveness check for Kubernetes.
-    
+
     Returns 200 if service is alive.
     """
     return {"alive": True}
+
+
+@router.get("/health/rpc")
+async def rpc_health() -> dict:
+    """RPC/API endpoint health metrics — per-host latency, success rate, status."""
+    pool = get_resilient_pool()
+    return pool.get_all_health()
 

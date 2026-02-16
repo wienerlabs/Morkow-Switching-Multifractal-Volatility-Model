@@ -14,39 +14,29 @@ References:
 """
 from __future__ import annotations
 
-import atexit
 import logging
 import math
 import time
 from typing import Any
 
-import httpx
 import numpy as np
 
 from cortex.config import (
     HELIUS_API_KEY,
     HELIUS_RPC_URL,
     ONCHAIN_CACHE_TTL,
-    ONCHAIN_HTTP_TIMEOUT,
-    ONCHAIN_MAX_CONNECTIONS,
     RAYDIUM_API,
     RAYDIUM_AMM_V4,
     RAYDIUM_CLMM,
     ORCA_WHIRLPOOL,
     METEORA_DLMM,
 )
+from cortex.data.rpc_failover import get_resilient_pool
 from cortex.data.solana import DEX_PROGRAMS
 
 logger = logging.getLogger(__name__)
 
-_pool = httpx.Client(
-    timeout=ONCHAIN_HTTP_TIMEOUT,
-    limits=httpx.Limits(
-        max_connections=ONCHAIN_MAX_CONNECTIONS,
-        max_keepalive_connections=5,
-    ),
-)
-atexit.register(_pool.close)
+_pool = get_resilient_pool()
 
 _DEX_PROGRAM_SET = set(DEX_PROGRAMS.values())
 
