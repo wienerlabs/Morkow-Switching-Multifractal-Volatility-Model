@@ -24,6 +24,7 @@ import type { GuardianTradeParams } from './guardian/types.js';
 import { pmDecisionEngine, approvalQueue } from './pm/index.js';
 import type { QueueTradeParams } from './pm/types.js';
 import { createJupiterApiClient } from '@jup-ag/api';
+import { config as prodConfig } from '../config/production.js';
 import { logger } from './logger.js';
 
 // ============= TYPES =============
@@ -264,7 +265,7 @@ async function getJupiterQuote(
   outputMint: string,
   amountLamports: number,
   walletAddress: string,
-  slippageBps: number = 100
+  slippageBps: number = prodConfig.slippage.arbitrage
 ): Promise<JupiterQuote> {
   const apiKey = process.env.JUPITER_API_KEY;
 
@@ -1033,7 +1034,7 @@ export class ArbitrageExecutor {
       outputMint: token.mint,
       amountIn: amountUsd,
       amountInUsd: amountUsd,
-      slippageBps: 100,
+      slippageBps: prodConfig.slippage.arbitrage,
       strategy: 'arbitrage',
       protocol: `${opp.buyExchange}-${opp.sellExchange}`,
       walletAddress: this.keypair?.publicKey.toBase58() || '',

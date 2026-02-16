@@ -13,6 +13,7 @@
  */
 
 import type { ArbitrageOpportunity } from '../marketScanner/types.js';
+import { getSolPrice } from '../marketData.js';
 import { logger } from '../logger.js';
 
 // Feature names expected by the ONNX model (from metadata)
@@ -95,29 +96,31 @@ export class ArbitrageFeatureExtractor {
    * Extract features from an arbitrage opportunity
    */
   async extractFeatures(
-    opportunity: ArbitrageOpportunity,
-    solPrice: number = 200
+    opportunity: ArbitrageOpportunity
   ): Promise<Float32Array> {
     const symbol = opportunity.symbol;
     const now = new Date();
-    
+
+    // Fetch live SOL price for cost calculations
+    const solPrice = await getSolPrice();
+
     // Get or create history for this symbol
     let hist = this.history.get(symbol);
     if (!hist) {
       hist = { spreads: [], volumes: [], prices: [], timestamps: [] };
       this.history.set(symbol, hist);
     }
-    
+
     // Add current data to history
     const currentSpread = opportunity.spreadPct;
     const currentVolume = this.estimateVolume(opportunity);
     const currentPrice = (opportunity.buyPrice + opportunity.sellPrice) / 2;
-    
+
     hist.spreads.push(currentSpread);
     hist.volumes.push(currentVolume);
     hist.prices.push(currentPrice);
     hist.timestamps.push(now);
-    
+
     // Trim history to max size
     if (hist.spreads.length > this.maxHistorySize) {
       hist.spreads.shift();
@@ -125,10 +128,10 @@ export class ArbitrageFeatureExtractor {
       hist.prices.shift();
       hist.timestamps.shift();
     }
-    
+
     // Calculate features
     const features = this.calculateFeatures(opportunity, hist, solPrice, now);
-    
+
     // Convert to Float32Array in correct order
     return this.toFloat32Array(features);
   }

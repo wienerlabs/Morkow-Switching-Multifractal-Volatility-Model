@@ -211,7 +211,7 @@ export class LPExecutor {
 
     const result = await executor.deposit({
       ...params,
-      slippageBps: params.slippageBps ?? this.config.defaultSlippageBps,
+      slippageBps: params.slippageBps ?? this.config.depositSlippageBps ?? this.config.defaultSlippageBps,
     });
 
     // ========== TRACK POSITION IN PORTFOLIO ==========
@@ -283,7 +283,7 @@ export class LPExecutor {
 
     const result = await executor.withdraw({
       ...params,
-      slippageBps: params.slippageBps ?? this.config.defaultSlippageBps,
+      slippageBps: params.slippageBps ?? this.config.withdrawSlippageBps ?? this.config.defaultSlippageBps,
     });
 
     // ========== CLOSE POSITION IN PORTFOLIO ==========
