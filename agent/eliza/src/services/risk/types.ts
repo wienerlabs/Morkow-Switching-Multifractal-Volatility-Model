@@ -113,7 +113,20 @@ export interface GasBudgetStatus {
   canAffordEmergencyExit: boolean;
 }
 
-// ============= GLOBAL RISK STATUS =============
+// ============= STRATEGY RISK TIERS =============
+
+export type StrategyRiskTier = 'low' | 'medium' | 'high';
+
+export type StrategyType = 'spot' | 'lp' | 'arb' | 'perps' | 'leverage' | 'margin';
+
+export const STRATEGY_RISK_TIERS: Record<StrategyType, StrategyRiskTier> = {
+  lp: 'low',
+  spot: 'low',
+  arb: 'medium',
+  perps: 'high',
+  leverage: 'high',
+  margin: 'high',
+};
 
 // ============= A-LAMS VaR (Python API) =============
 
@@ -141,9 +154,19 @@ export interface ALAMSVaRStatus {
   result: ALAMSVaRResult | null;
   error?: string;
   fetchedAt?: number;
+  regimePositionScale?: number;
 }
 
 // ============= GLOBAL RISK STATUS =============
+
+export interface StrategyVaRThresholds {
+  spot: number;
+  lp: number;
+  arb: number;
+  perps: number;
+  leverage: number;
+  margin: number;
+}
 
 export interface GlobalRiskConfig {
   drawdownLimits: DrawdownLimits;
@@ -152,6 +175,7 @@ export interface GlobalRiskConfig {
   oracleConfig: OracleConfig;
   gasBudgetConfig: GasBudgetConfig;
   alamsVarConfig?: ALAMSVaRConfig;
+  strategyVarThresholds?: StrategyVaRThresholds;
 }
 
 export interface GlobalRiskStatus {

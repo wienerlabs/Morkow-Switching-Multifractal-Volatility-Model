@@ -434,6 +434,7 @@ export class PerpsTradingAgent {
       protocol: this.config.preferredVenue,
       sizeUsd: this.config.positionSizeUsd,
       walletBalanceSol,
+      strategyType: 'perps',
     });
 
     if (!riskCheck.canTrade) {
@@ -453,10 +454,16 @@ export class PerpsTradingAgent {
     }
     // ========================================
 
+    // Apply A-LAMS regime-based position scaling
+    const regimeScale = riskCheck.alamsVar?.regimePositionScale ?? 1.0;
+    const scaledSize = this.config.positionSizeUsd * regimeScale;
+
     logger.info('Executing ML-predicted trade', {
       market,
       side,
-      size: this.config.positionSizeUsd,
+      size: scaledSize,
+      originalSize: this.config.positionSizeUsd,
+      regimeScale,
       confidence: prediction.confidence,
       fundingRate: signal.fundingRate,
       riskStatus: riskCheck.circuitBreakerState,
@@ -467,7 +474,7 @@ export class PerpsTradingAgent {
         venue: this.config.preferredVenue,
         market,
         side,
-        size: this.config.positionSizeUsd,
+        size: scaledSize,
         leverage: this.config.leverage,
       });
 
