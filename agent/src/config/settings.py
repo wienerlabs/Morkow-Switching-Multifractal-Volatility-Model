@@ -100,7 +100,7 @@ class Settings(BaseModel):
 
     # API Server Configuration
     api_host: str = Field(default="0.0.0.0")
-    api_port: int = Field(default=8000)
+    api_port: int = Field(default_factory=lambda: int(os.getenv("AGENT_API_PORT", "8001")))
     cors_origins: list[str] = Field(
         default_factory=lambda: os.getenv(
             "CORS_ORIGINS",

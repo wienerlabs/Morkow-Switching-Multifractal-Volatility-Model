@@ -32,7 +32,12 @@ export type {
   GlobalRiskStatus,
   RiskAlert,
   TrackedPosition,
+  StrategyRiskTier,
+  StrategyType,
+  StrategyVaRThresholds,
 } from './types.js';
+
+export { STRATEGY_RISK_TIERS } from './types.js';
 
 // Global Risk Manager
 export {
@@ -43,6 +48,9 @@ export {
   DEFAULT_DRAWDOWN_LIMITS,
   DEFAULT_EXPOSURE_LIMITS,
   DEFAULT_STOP_LOSS_CONFIG,
+  DEFAULT_STRATEGY_VAR_THRESHOLDS,
+  getPositionScaleForRegime,
+  getStrategyRiskTier,
 } from './globalRiskManager.js';
 
 // Oracle Service
@@ -74,6 +82,12 @@ export {
   type PnLAttributionReport,
   type ComponentInfluence,
 } from './pnlAttribution.js';
+
+// Regime mapping (A-LAMS → TS)
+export {
+  mapAlamsRegimeToMarketRegime,
+  ALAMS_REGIME_POSITION_SCALE,
+} from '../analysis/regimeDetector.js';
 
 // Debate Client
 export {

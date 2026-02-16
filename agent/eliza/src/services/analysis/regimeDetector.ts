@@ -18,6 +18,29 @@ export enum MarketRegime {
   UNKNOWN = 'UNKNOWN',
 }
 
+/**
+ * Map A-LAMS 5-regime index to TS MarketRegime.
+ * A-LAMS: 0=very-low-vol, 1=low-vol, 2=normal, 3=high-vol, 4=crisis
+ */
+export function mapAlamsRegimeToMarketRegime(alamsRegime: number): MarketRegime {
+  if (alamsRegime <= 1) return MarketRegime.BULL;
+  if (alamsRegime === 2) return MarketRegime.SIDEWAYS;
+  // regimes 3 and 4 both map to BEAR (crisis is a severe BEAR)
+  return MarketRegime.BEAR;
+}
+
+/**
+ * Position scaling factors per A-LAMS regime.
+ * Crisis (4) is stricter than regular BEAR (3).
+ */
+export const ALAMS_REGIME_POSITION_SCALE: Record<number, number> = {
+  0: 1.0,    // very-low-vol → full
+  1: 1.0,    // low-vol → full
+  2: 0.75,   // normal → 75%
+  3: 0.5,    // high-vol → 50%
+  4: 0.25,   // crisis → 25%
+};
+
 export interface RegimeConfig {
   returnWindow: number;           // Periods for return calculation (default: 30)
   volatilityWindow: number;       // Periods for volatility calculation (default: 20)
@@ -64,16 +87,79 @@ export class RegimeDetector {
   private currentRegime: MarketRegime = MarketRegime.UNKNOWN;
   private lastRegimeChange: Date | null = null;
   private onRegimeChange?: (event: RegimeChangeEvent) => void;
-  
+
+  // A-LAMS override: when set, getCurrentRegime() returns this instead of TS-detected regime
+  private regimeOverride: MarketRegime | null = null;
+  private regimeOverrideAlamsIndex: number | null = null;
+  private regimeOverrideAt: Date | null = null;
+
   constructor(config: Partial<RegimeConfig> = {}, onRegimeChange?: (event: RegimeChangeEvent) => void) {
     this.config = { ...DEFAULT_REGIME_CONFIG, ...config };
     this.onRegimeChange = onRegimeChange;
-    
+
     logger.info('RegimeDetector initialized', {
       returnWindow: this.config.returnWindow,
       bullThreshold: `>${this.config.bullReturnThreshold * 100}%`,
       bearThreshold: `<${this.config.bearReturnThreshold * 100}%`,
     });
+  }
+
+  /**
+   * Set regime from A-LAMS model (overrides TS-based detection).
+   * When set, getCurrentRegime() returns the A-LAMS-derived regime.
+   */
+  setRegimeOverride(alamsRegime: number): void {
+    const mapped = mapAlamsRegimeToMarketRegime(alamsRegime);
+    const tsRegime = this.currentRegime;
+
+    if (mapped !== tsRegime && tsRegime !== MarketRegime.UNKNOWN) {
+      logger.warn('A-LAMS regime differs from TS regime detector', {
+        alamsRegime,
+        alamsRegimeMapped: mapped,
+        tsRegime,
+      });
+    }
+
+    const previous = this.regimeOverride;
+    this.regimeOverride = mapped;
+    this.regimeOverrideAlamsIndex = alamsRegime;
+    this.regimeOverrideAt = new Date();
+
+    if (previous !== null && previous !== mapped) {
+      logger.warn('A-LAMS regime override changed', {
+        previous,
+        new: mapped,
+        alamsRegime,
+      });
+
+      if (this.onRegimeChange) {
+        this.onRegimeChange({
+          previousRegime: previous,
+          newRegime: mapped,
+          timestamp: this.regimeOverrideAt,
+          confidence: 1.0,
+        });
+      }
+    }
+  }
+
+  clearRegimeOverride(): void {
+    if (this.regimeOverride !== null) {
+      logger.info('A-LAMS regime override cleared, falling back to TS detection');
+    }
+    this.regimeOverride = null;
+    this.regimeOverrideAlamsIndex = null;
+    this.regimeOverrideAt = null;
+  }
+
+  /** Returns true if A-LAMS regime override is active. */
+  hasRegimeOverride(): boolean {
+    return this.regimeOverride !== null;
+  }
+
+  /** Returns the raw A-LAMS regime index (0-4) if override is active, else null. */
+  getAlamsRegimeIndex(): number | null {
+    return this.regimeOverrideAlamsIndex;
   }
   
   /**
@@ -147,9 +233,16 @@ export class RegimeDetector {
   }
   
   /**
-   * Get current regime without recalculating
+   * Get current regime. Returns A-LAMS override if active, otherwise TS-detected regime.
    */
   getCurrentRegime(): MarketRegime {
+    return this.regimeOverride ?? this.currentRegime;
+  }
+
+  /**
+   * Get TS-detected regime (ignores A-LAMS override).
+   */
+  getTSDetectedRegime(): MarketRegime {
     return this.currentRegime;
   }
   

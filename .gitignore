@@ -291,5 +291,8 @@ FIXES_APPLIED.md
 **/QUICK_REFERENCE.md
 **/state-*.md
 
+# Debate tiered storage (runtime data)
+data/debates/
+
 # Anchor
 .anchor/

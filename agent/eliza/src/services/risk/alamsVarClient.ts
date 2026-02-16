@@ -19,7 +19,7 @@ import type { ALAMSVaRResult, ALAMSVaRConfig } from './types.js';
 // ============= CONFIGURATION =============
 
 const DEFAULT_ALAMS_CONFIG: ALAMSVaRConfig = {
-  apiUrl: process.env.ALAMS_API_URL || 'http://localhost:8000/api/v1',
+  apiUrl: process.env.ALAMS_API_URL || 'http://localhost:8001/api/v1',
   timeoutMs: parseInt(process.env.ALAMS_VAR_TIMEOUT_MS || '5000', 10),
   maxAcceptableVarPct: parseFloat(process.env.ALAMS_MAX_ACCEPTABLE_VAR || '0.05'),
   cacheTtlMs: parseInt(process.env.ALAMS_CACHE_TTL_MS || '5000', 10),

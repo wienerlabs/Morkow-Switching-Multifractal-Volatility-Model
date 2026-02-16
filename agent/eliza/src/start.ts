@@ -22,6 +22,7 @@ import { CRTXAgent } from './agents/crtxAgent.js';
 import { logger } from './services/logger.js';
 import { validateAgentConfig } from './config/production.js';
 import { getHealthMetrics, resetHealthMetrics } from './services/solana/connection.js';
+import { initCalibration, stopCalibrationSchedule } from './services/calibration.js';
 
 async function main() {
   logger.info('\n╔═══════════════════════════════════════════════════════════╗');
@@ -52,6 +53,11 @@ async function main() {
     });
 
     logger.info('\n✅ Agent initialized successfully!\n');
+
+    // Calibrate A-LAMS model (fire-and-forget — does not block startup)
+    initCalibration().catch((err) => {
+      logger.error('[Calibration] Unexpected error during init', { error: String(err) });
+    });
 
     // Display wallet assets dynamically from blockchain
     logger.info('[CRTX] 💰 Fetching wallet assets from Solana blockchain...');
@@ -102,6 +108,7 @@ async function main() {
     process.on('SIGINT', () => {
       logger.info('\n\n🛑 Shutting down gracefully...');
       healthServer.close();
+      stopCalibrationSchedule();
 
       agent.stopLPMonitoring();
       agent.stopSpotMonitoring();

@@ -17,7 +17,7 @@ import type { DebateResult, OutcomeCircuitBreakerStatus } from './types.js';
 
 // ============= CONFIGURATION =============
 
-const DEFAULT_API_URL = process.env.CORTEX_API_URL || 'http://localhost:8000';
+const DEFAULT_API_URL = process.env.CORTEX_API_URL || 'http://localhost:8000/api/v1';
 const DEFAULT_TIMEOUT_MS = parseInt(process.env.DEBATE_TIMEOUT_MS || '10000', 10);
 
 interface DebateClientConfig {

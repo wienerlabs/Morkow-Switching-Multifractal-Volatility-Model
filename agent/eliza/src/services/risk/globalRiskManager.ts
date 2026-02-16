@@ -20,6 +20,7 @@ import { OracleService, DEFAULT_ORACLE_CONFIG } from './oracleService.js';
 import { GasService, DEFAULT_GAS_CONFIG, COMPUTE_UNITS } from './gasService.js';
 import type Database from 'better-sqlite3';
 import { ALAMSVaRClient } from './alamsVarClient.js';
+import { RegimeDetector } from '../analysis/regimeDetector.js';
 import type {
   GlobalRiskConfig,
   GlobalRiskStatus,
@@ -140,6 +141,9 @@ export class GlobalRiskManager {
   // Dry-run mode flag (allows simulation without wallet)
   private isDryRun: boolean = false;
 
+  // Optional RegimeDetector for A-LAMS regime sync
+  private regimeDetector: RegimeDetector | null = null;
+
   constructor(
     config: Partial<GlobalRiskConfig> = {},
     rpcUrl?: string,
@@ -174,6 +178,22 @@ export class GlobalRiskManager {
       circuitBreaker: this.circuitBreakerState,
       restoredFromDb: loaded,
     });
+  }
+
+  /**
+   * Register a RegimeDetector so A-LAMS regime overrides propagate to it.
+   */
+  setRegimeDetector(detector: RegimeDetector): void {
+    this.regimeDetector = detector;
+  }
+
+  /**
+   * Sync A-LAMS regime to the TS RegimeDetector (if registered).
+   */
+  private syncAlamsRegimeToDetector(alamsRegime: number): void {
+    if (this.regimeDetector) {
+      this.regimeDetector.setRegimeOverride(alamsRegime);
+    }
   }
 
   // ============= RISK STATE PERSISTENCE (SQLite) =============
@@ -940,6 +960,9 @@ export class GlobalRiskManager {
         fetchedAt: Date.now(),
         regimePositionScale: regimeScale,
       };
+
+      // Sync A-LAMS regime to TS RegimeDetector
+      this.syncAlamsRegimeToDetector(varResult.current_regime);
 
       if (varResult.var_total > maxVar) {
         blockReasons.push(

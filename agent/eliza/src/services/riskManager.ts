@@ -9,7 +9,7 @@
  * Source: models/lp_rebalancer/metadata/risk_analysis.json
  */
 import { logger } from './logger.js';
-import { MarketRegime, RegimeDetector, RegimeResult } from './analysis/regimeDetector.js';
+import { MarketRegime, RegimeDetector, RegimeResult, ALAMS_REGIME_POSITION_SCALE } from './analysis/regimeDetector.js';
 import { benchmarkMonitor } from './monitoring/benchmarkMonitor.js';
 
 /**
@@ -291,6 +291,7 @@ export class RiskManager {
     portfolioValueUsd: number;
     currentRegime: MarketRegime;
     modelTrainingRegimes?: { BULL: number; BEAR: number; SIDEWAYS: number };
+    alamsRegimeIndex?: number | null;
   }): {
     positionPct: number;
     positionUsd: number;
@@ -304,6 +305,7 @@ export class RiskManager {
       portfolioValueUsd,
       currentRegime,
       modelTrainingRegimes,
+      alamsRegimeIndex,
     } = params;
 
     const warnings: string[] = [];
@@ -317,8 +319,19 @@ export class RiskManager {
 
     let positionPct = baseResult.positionPct;
 
-    // Apply regime-specific scaling
-    const regimeScaling = this.limits.regimePositionScaling[currentRegime] || 0.5;
+    // Use A-LAMS fine-grained scaling when available, fall back to TS regime scaling
+    let regimeScaling: number;
+    let regimeSource: string;
+    if (alamsRegimeIndex != null && alamsRegimeIndex in ALAMS_REGIME_POSITION_SCALE) {
+      regimeScaling = ALAMS_REGIME_POSITION_SCALE[alamsRegimeIndex];
+      regimeSource = `alams-regime-${alamsRegimeIndex}`;
+      if (alamsRegimeIndex >= 4) {
+        warnings.push(`Crisis regime (A-LAMS ${alamsRegimeIndex}) — position scaled to ${regimeScaling * 100}%`);
+      }
+    } else {
+      regimeScaling = this.limits.regimePositionScaling[currentRegime] || 0.5;
+      regimeSource = `ts-${currentRegime}`;
+    }
     positionPct *= regimeScaling;
 
     // Additional scaling if model has little training data in current regime
@@ -362,7 +375,7 @@ export class RiskManager {
     return {
       positionPct: Math.round(positionPct * 10) / 10,
       positionUsd: Math.round(positionUsd),
-      rationale: `${baseResult.rationale} × regime_adj=${regimeAdjustment.toFixed(2)} (${currentRegime})`,
+      rationale: `${baseResult.rationale} × regime_adj=${regimeAdjustment.toFixed(2)} (${regimeSource})`,
       regimeAdjustment,
       warnings,
     };
