@@ -189,8 +189,8 @@ class TestGuardianUnit:
         )
         assert isinstance(result["approved"], bool)
         assert 0 <= result["risk_score"] <= 100
-        # 4 of 5 components present (no news) → confidence = 0.85
-        assert result["confidence"] == 0.85
+        # 4 of 6 components present (no news, no alams) → confidence = 0.65
+        assert result["confidence"] == 0.65
         assert len(result["component_scores"]) == 4
         assert result["recommended_size"] > 0
 
