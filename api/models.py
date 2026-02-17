@@ -1637,3 +1637,80 @@ class PortfolioOptCompareResponse(BaseModel):
     n_assets: int
     n_observations: int
     timestamp: datetime
+
+
+# ── Walk-Forward Backtesting ──────────────────────────────────────
+
+
+class WalkForwardRequest(BaseModel):
+    token: str = Field(..., description="Token key from _model_store (must be calibrated)")
+    min_train_window: int = Field(120, ge=30, le=500, description="Minimum training window in days")
+    step_size: int = Field(1, ge=1, le=20, description="Steps between out-of-sample points")
+    refit_interval: int = Field(20, ge=1, le=100, description="Steps between model recalibrations")
+    expanding: bool = Field(True, description="True=expanding window, False=rolling")
+    max_train_window: Optional[int] = Field(None, ge=50, description="Max window size for rolling mode")
+    confidence: float = Field(95.0, gt=50.0, le=99.99, description="VaR confidence level (%)")
+    num_states: int = Field(5, ge=2, le=10)
+    method: str = Field("empirical", pattern="^(mle|grid|empirical|hybrid)$")
+    use_student_t: bool = False
+    nu: float = Field(5.0, gt=2.0)
+
+
+class WalkForwardKupiecResult(BaseModel):
+    statistic: float
+    p_value: float
+    pass_: bool = Field(alias="pass")
+    violation_rate: Optional[float] = None
+    expected_rate: Optional[float] = None
+
+    class Config:
+        populate_by_name = True
+
+
+class WalkForwardRegimeResult(BaseModel):
+    regime: int
+    regime_name: str
+    n_obs: int
+    n_violations: int
+    violation_rate: float
+    mean_return: Optional[float] = None
+    volatility: Optional[float] = None
+    sharpe: Optional[float] = None
+    kupiec: Optional[WalkForwardKupiecResult] = None
+    insufficient_data: bool = False
+
+
+class WalkForwardParameterStability(BaseModel):
+    n_refits: int
+    stable: bool
+    sigma_low: Optional[dict] = None
+    sigma_high: Optional[dict] = None
+
+
+class WalkForwardHealthCheck(BaseModel):
+    pass_: bool = Field(alias="pass")
+    flags: list[str]
+
+    class Config:
+        populate_by_name = True
+
+
+class WalkForwardReportResponse(BaseModel):
+    token: str
+    overall: dict
+    per_regime: list[WalkForwardRegimeResult]
+    parameter_stability: WalkForwardParameterStability
+    health: WalkForwardHealthCheck
+    n_calibration_snapshots: int
+    elapsed_ms: float
+    timestamp: datetime
+
+
+class HistoricalExportResponse(BaseModel):
+    token: str
+    n_observations: int
+    regime_timeline: list[dict]
+    regime_statistics: list[dict]
+    calibration: dict
+    calibrated_at: str
+    timestamp: str
