@@ -7,12 +7,13 @@ import pandas as pd
 from fastapi import HTTPException
 
 from api.models import CalibrateRequest
-from cortex.persistence import PersistentStore
+from cortex.persistence import PersistentStore, VersionedPersistentStore
 
 logger = logging.getLogger(__name__)
 
 # Persistent model state (per-token) — backed by Redis when available
-_model_store: PersistentStore = PersistentStore("model")
+# Uses VersionedPersistentStore for rollback capability (keeps last N versions)
+_model_store: VersionedPersistentStore = VersionedPersistentStore("model")
 _portfolio_store: PersistentStore = PersistentStore("portfolio")
 _evt_store: PersistentStore = PersistentStore("evt")
 _copula_store: PersistentStore = PersistentStore("copula")
@@ -31,13 +32,16 @@ _kelly_store: PersistentStore = _get_kelly_store()
 from cortex.debate import _get_debate_outcome_store
 _debate_outcome_store: PersistentStore = _get_debate_outcome_store()
 
+# Liquidity snapshot time series (per pool address)
+_liquidity_store: PersistentStore = PersistentStore("liquidity")
+
 # Comparison cache is ephemeral — no need to persist
 _comparison_cache: dict[str, tuple[pd.DataFrame, float]] = {}
 
 ALL_STORES: list[PersistentStore] = [
     _model_store, _portfolio_store, _evt_store, _copula_store,
     _hawkes_store, _rough_store, _svj_store, _circuit_breaker_store,
-    _kelly_store, _debate_outcome_store,
+    _kelly_store, _debate_outcome_store, _liquidity_store,
 ]
 
 _PORTFOLIO_KEY = "default"
