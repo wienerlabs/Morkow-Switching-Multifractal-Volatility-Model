@@ -105,6 +105,8 @@ def execute_trade(
     news_data: dict | None = None,
     slippage_bps: int | None = None,
     force: bool = False,
+    strategy: str | None = None,
+    post_execution_callback: Any = None,
 ) -> dict[str, Any]:
     """Execute a trade through the full safety pipeline.
 
@@ -117,16 +119,19 @@ def execute_trade(
         model_data..news_data: Risk model outputs for Guardian.
         slippage_bps: Override slippage (capped at EXECUTION_MAX_SLIPPAGE_BPS).
         force: Skip Guardian check (DANGEROUS, for emergency use only).
+        strategy: Strategy name (spot, lp, arb, perp, lending) for CB feedback.
+        post_execution_callback: Optional callback(entry_dict) after execution.
     """
     token_short = token_mint[:8] + "..."
     slippage = min(slippage_bps or EXECUTION_MAX_SLIPPAGE_BPS, EXECUTION_MAX_SLIPPAGE_BPS)
 
-    entry = {
+    entry: dict[str, Any] = {
         "token_mint": token_mint,
         "direction": direction,
         "amount": amount,
         "trade_size_usd": trade_size_usd,
         "slippage_bps": slippage,
+        "strategy": strategy,
         "timestamp": time.time(),
     }
 
@@ -180,8 +185,74 @@ def execute_trade(
         entry.update({"status": "failed", "error": str(e)})
         logger.error("Trade execution failed for %s: %s", token_short, e)
 
+    # Auto-record to circuit breaker when strategy is known and no callback overrides
+    if strategy and post_execution_callback is None:
+        _auto_record_to_cb(entry)
+
+    if post_execution_callback is not None:
+        try:
+            post_execution_callback(entry)
+        except Exception as cb_err:
+            logger.warning("Post-execution callback error: %s", cb_err)
+
     _log_execution(entry)
     return entry
+
+
+def _auto_record_to_cb(entry: dict[str, Any]) -> None:
+    """Record execution result to circuit breaker and guardian outcome trackers."""
+    strategy = entry.get("strategy")
+    if not strategy:
+        return
+    status = entry.get("status", "")
+    success = status == "executed"
+    loss_type = "execution_failure" if status == "failed" else ""
+
+    try:
+        from cortex.circuit_breaker import record_trade_outcome
+        record_trade_outcome(
+            strategy=strategy, success=success, pnl=0.0,
+            loss_type=loss_type,
+            details=f"auto-recorded from execute_trade: {status}",
+        )
+    except Exception as e:
+        logger.warning("CB auto-record failed: %s", e)
+
+    try:
+        from cortex.guardian import record_trade_outcome as guardian_record
+        guardian_record(pnl=0.0, size=entry.get("trade_size_usd", 0.0),
+                        token=entry.get("token_mint", ""))
+    except Exception as e:
+        logger.warning("Guardian auto-record failed: %s", e)
+
+
+def record_execution_result(
+    token_mint: str,
+    strategy: str,
+    success: bool,
+    pnl: float = 0.0,
+    trade_size_usd: float = 0.0,
+    loss_type: str = "",
+    details: str = "",
+) -> dict[str, Any]:
+    """Record a post-exit trade result to both circuit breaker and guardian.
+
+    Use this for recording realized PnL after a position is closed,
+    separate from the initial execution auto-recording (which records pnl=0).
+    """
+    from cortex.circuit_breaker import record_trade_outcome
+    from cortex.guardian import record_trade_outcome as guardian_record
+
+    cb_status = record_trade_outcome(
+        strategy=strategy, success=success, pnl=pnl,
+        loss_type=loss_type, details=details,
+    )
+    guardian_record(pnl=pnl, size=trade_size_usd, token=token_mint)
+    logger.info(
+        "Execution result recorded: %s strategy=%s success=%s pnl=%.2f",
+        token_mint[:8], strategy, success, pnl,
+    )
+    return cb_status
 
 
 def get_execution_log(limit: int = 50) -> list[dict[str, Any]]:

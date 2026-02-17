@@ -278,6 +278,10 @@ DEBATE_PRIOR_MAX = float(os.environ.get("DEBATE_PRIOR_MAX", "0.7"))
 COPULA_RISK_GATE_ENABLED = os.environ.get("COPULA_RISK_GATE_ENABLED", "false").lower() == "true"
 TAIL_DEPENDENCE_THRESHOLD = float(os.environ.get("TAIL_DEPENDENCE_THRESHOLD", "0.5"))
 
+# ── Recalibration ──
+RECALIBRATION_INTERVAL_HOURS = float(os.environ.get("RECALIBRATION_INTERVAL_HOURS", "24"))
+RECALIBRATION_ENABLED = os.environ.get("RECALIBRATION_ENABLED", "true").lower() == "true"
+
 # ── API ──
 
 API_VERSION = os.environ.get("API_VERSION", "1.2.0")
