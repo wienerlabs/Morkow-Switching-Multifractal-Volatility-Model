@@ -1504,3 +1504,127 @@ class TokenInfoResponse(BaseModel):
     created_at: str | int | None = None
     dex_platform: str = ""
     timestamp: datetime
+
+
+# ── Vine Copula Models ────────────────────────────────────────────
+
+
+class VineCopulaFitRequest(BaseModel):
+    structure: str = Field("rvine", pattern="^(rvine|cvine|dvine)$")
+    family_set: list[str] | None = Field(None, description="Copula families to consider. None = all.")
+
+
+class VineCopulaFitResponse(BaseModel):
+    engine: str
+    structure: str
+    n_obs: int
+    n_assets: int
+    families_used: list[str]
+    log_likelihood: float
+    n_params: int
+    aic: float
+    bic: float
+    timestamp: datetime
+
+
+class VineCopulaVaRResponse(BaseModel):
+    vine_var: float
+    gaussian_var: float
+    var_ratio: float
+    engine: str
+    structure: str
+    n_params: int
+    n_simulations: int
+    alpha: float
+    timestamp: datetime
+
+
+class VineCopulaSimulateResponse(BaseModel):
+    n_samples: int
+    n_assets: int
+    sample_mean: list[float]
+    sample_std: list[float]
+    timestamp: datetime
+
+
+# ── ccxt Data Feed Models ─────────────────────────────────────────
+
+
+class CcxtOHLCVRequest(BaseModel):
+    symbol: str = Field(..., description="Trading pair, e.g. BTC/USDT")
+    timeframe: str = Field("1d", description="Candle interval")
+    limit: int = Field(500, ge=1, le=2000)
+    exchange: str | None = Field(None, description="Exchange ID. None = default.")
+
+
+class CcxtOHLCVResponse(BaseModel):
+    symbol: str
+    exchange: str
+    timeframe: str
+    n_candles: int
+    first_timestamp: str
+    last_timestamp: str
+    last_close: float
+    timestamp: datetime
+
+
+class CcxtOrderBookResponse(BaseModel):
+    symbol: str
+    exchange: str
+    best_bid: float
+    best_ask: float
+    mid_price: float
+    spread: float
+    spread_bps: float
+    bid_depth: float
+    ask_depth: float
+    timestamp: datetime
+
+
+class CcxtTickerResponse(BaseModel):
+    symbol: str
+    exchange: str
+    last: float | None
+    high: float | None
+    low: float | None
+    volume: float | None
+    quote_volume: float | None
+    change_pct: float | None
+    vwap: float | None
+    bid: float | None
+    ask: float | None
+    timestamp: datetime
+
+
+class CcxtExchangesResponse(BaseModel):
+    exchanges: list[str]
+    count: int
+
+
+# ── Portfolio Optimization Models ─────────────────────────────────
+
+
+class PortfolioOptRequest(BaseModel):
+    tokens: list[str] = Field(..., min_length=2, description="Ticker symbols or trading pairs")
+    period: str = Field("2y", description="Data period (e.g. '1y', '2y')")
+    data_source: DataSource = DataSource.YFINANCE
+    cvar_beta: float = Field(0.95, gt=0.5, le=0.999)
+    max_weight: float = Field(0.40, gt=0.0, le=1.0)
+
+
+class PortfolioOptWeights(BaseModel):
+    method: str
+    engine: str
+    weights: dict[str, float]
+    expected_return: float
+    cvar: float | None = None
+    cvar_beta: float | None = None
+    variance: float | None = None
+    n_assets: int
+
+
+class PortfolioOptCompareResponse(BaseModel):
+    strategies: list[PortfolioOptWeights]
+    n_assets: int
+    n_observations: int
+    timestamp: datetime
