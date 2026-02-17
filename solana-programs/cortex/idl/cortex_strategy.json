@@ -1,0 +1,152 @@
+{
+  "version": "0.1.0",
+  "name": "cortex_strategy",
+  "instructions": [
+    {
+      "name": "initialize",
+      "accounts": [
+        { "name": "strategy", "isMut": true, "isSigner": false },
+        { "name": "vault", "isMut": false, "isSigner": false },
+        { "name": "assetMint", "isMut": false, "isSigner": false },
+        { "name": "strategyVault", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": true, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false },
+        { "name": "rent", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "name", "type": "string" },
+        { "name": "protocol", "type": "string" }
+      ]
+    },
+    {
+      "name": "deposit",
+      "accounts": [
+        { "name": "strategy", "isMut": true, "isSigner": false },
+        { "name": "vault", "isMut": false, "isSigner": false },
+        { "name": "vaultAssetAccount", "isMut": true, "isSigner": false },
+        { "name": "strategyVault", "isMut": true, "isSigner": false },
+        { "name": "agent", "isMut": false, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "accounts": [
+        { "name": "strategy", "isMut": true, "isSigner": false },
+        { "name": "vault", "isMut": false, "isSigner": false },
+        { "name": "vaultAssetAccount", "isMut": true, "isSigner": false },
+        { "name": "strategyVault", "isMut": true, "isSigner": false },
+        { "name": "agent", "isMut": false, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ]
+    },
+    {
+      "name": "harvest",
+      "accounts": [
+        { "name": "strategy", "isMut": true, "isSigner": false },
+        { "name": "strategyVault", "isMut": false, "isSigner": false },
+        { "name": "agent", "isMut": false, "isSigner": true }
+      ],
+      "args": [],
+      "returns": "u64"
+    },
+    {
+      "name": "setActive",
+      "accounts": [
+        { "name": "strategy", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": false, "isSigner": true }
+      ],
+      "args": [
+        { "name": "isActive", "type": "bool" }
+      ]
+    },
+    {
+      "name": "emergencyExit",
+      "accounts": [
+        { "name": "strategy", "isMut": true, "isSigner": false },
+        { "name": "strategyVault", "isMut": true, "isSigner": false },
+        { "name": "vaultAssetAccount", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": false, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Strategy",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "vault", "type": "publicKey" },
+          { "name": "authority", "type": "publicKey" },
+          { "name": "assetMint", "type": "publicKey" },
+          { "name": "strategyVault", "type": "publicKey" },
+          { "name": "name", "type": "string" },
+          { "name": "protocol", "type": "string" },
+          { "name": "nameHash", "type": { "array": ["u8", 16] } },
+          { "name": "deposited", "type": "u64" },
+          { "name": "isActive", "type": "bool" },
+          { "name": "lastHarvest", "type": "i64" },
+          { "name": "totalProfit", "type": "u64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "StrategyDeposited",
+      "fields": [
+        { "name": "strategy", "type": "publicKey", "index": false },
+        { "name": "amount", "type": "u64", "index": false }
+      ]
+    },
+    {
+      "name": "StrategyWithdrawn",
+      "fields": [
+        { "name": "strategy", "type": "publicKey", "index": false },
+        { "name": "amount", "type": "u64", "index": false }
+      ]
+    },
+    {
+      "name": "StrategyHarvested",
+      "fields": [
+        { "name": "strategy", "type": "publicKey", "index": false },
+        { "name": "profit", "type": "u64", "index": false }
+      ]
+    },
+    {
+      "name": "StrategyStatusChanged",
+      "fields": [
+        { "name": "strategy", "type": "publicKey", "index": false },
+        { "name": "isActive", "type": "bool", "index": false }
+      ]
+    },
+    {
+      "name": "StrategyEmergencyExit",
+      "fields": [
+        { "name": "strategy", "type": "publicKey", "index": false },
+        { "name": "amount", "type": "u64", "index": false }
+      ]
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "NameTooLong", "msg": "Name too long (max 64 chars)" },
+    { "code": 6001, "name": "NameEmpty", "msg": "Name cannot be empty" },
+    { "code": 6002, "name": "ZeroAmount", "msg": "Zero amount" },
+    { "code": 6003, "name": "StrategyInactive", "msg": "Strategy inactive" },
+    { "code": 6004, "name": "InsufficientFunds", "msg": "Insufficient funds" },
+    { "code": 6005, "name": "Unauthorized", "msg": "Unauthorized" }
+  ],
+  "metadata": {
+    "address": "FvLigiv3jhcrwZH6hnDiZreawuKsRkJKaqZPdhCb8EsD"
+  }
+}

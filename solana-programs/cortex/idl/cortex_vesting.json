@@ -1,0 +1,98 @@
+{
+  "version": "0.1.0",
+  "name": "cortex_vesting",
+  "instructions": [
+    {
+      "name": "createVesting",
+      "accounts": [
+        { "name": "vestingSchedule", "isMut": true, "isSigner": false },
+        { "name": "beneficiary", "isMut": false, "isSigner": false },
+        { "name": "authority", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "totalAmount", "type": "u64" },
+        {
+          "name": "category",
+          "type": { "defined": "VestingCategory" }
+        },
+        { "name": "startTime", "type": "i64" }
+      ]
+    },
+    {
+      "name": "claimTokens",
+      "accounts": [
+        { "name": "vestingSchedule", "isMut": true, "isSigner": false },
+        { "name": "vestingVault", "isMut": true, "isSigner": false },
+        { "name": "beneficiaryTokenAccount", "isMut": true, "isSigner": false },
+        { "name": "beneficiary", "isMut": false, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "getClaimableAmount",
+      "accounts": [
+        { "name": "vestingSchedule", "isMut": false, "isSigner": false },
+        { "name": "beneficiary", "isMut": false, "isSigner": true }
+      ],
+      "args": [],
+      "returns": "u64"
+    }
+  ],
+  "accounts": [
+    {
+      "name": "VestingSchedule",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "beneficiary", "type": "publicKey" },
+          {
+            "name": "category",
+            "type": { "defined": "VestingCategory" }
+          },
+          { "name": "totalAmount", "type": "u64" },
+          { "name": "claimedAmount", "type": "u64" },
+          { "name": "startTime", "type": "i64" },
+          { "name": "cliffDuration", "type": "i64" },
+          { "name": "vestingDuration", "type": "i64" },
+          { "name": "tgeUnlockPercent", "type": "u8" },
+          { "name": "tgeClaimed", "type": "bool" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "types": [
+    {
+      "name": "VestingCategory",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          { "name": "PrivateSale" },
+          { "name": "PublicSale" },
+          { "name": "Team" },
+          { "name": "Treasury" },
+          { "name": "Marketing" }
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "TokensClaimed",
+      "fields": [
+        { "name": "beneficiary", "type": "publicKey", "index": false },
+        { "name": "amount", "type": "u64", "index": false },
+        { "name": "totalClaimed", "type": "u64", "index": false }
+      ]
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "NoTokensAvailable", "msg": "No tokens available to claim" },
+    { "code": 6001, "name": "MathOverflow", "msg": "Math overflow" }
+  ],
+  "metadata": {
+    "address": "5PDicSrsh9zyVMwDjL61WXHuNkzQTk6rpCs5CnGzpXns"
+  }
+}

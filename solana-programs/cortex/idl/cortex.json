@@ -1,0 +1,125 @@
+{
+  "version": "0.1.0",
+  "name": "cortex",
+  "instructions": [
+    {
+      "name": "initialize",
+      "accounts": [
+        { "name": "registry", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "registerAgent",
+      "accounts": [
+        { "name": "registry", "isMut": true, "isSigner": false },
+        { "name": "agent", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "name", "type": "string" }
+      ]
+    },
+    {
+      "name": "deactivateAgent",
+      "accounts": [
+        { "name": "registry", "isMut": false, "isSigner": false },
+        { "name": "agent", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": false, "isSigner": true }
+      ],
+      "args": []
+    },
+    {
+      "name": "setGuardian",
+      "accounts": [
+        { "name": "registry", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": false, "isSigner": true }
+      ],
+      "args": [
+        { "name": "newGuardian", "type": "publicKey" }
+      ]
+    },
+    {
+      "name": "pause",
+      "accounts": [
+        { "name": "registry", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": false, "isSigner": true }
+      ],
+      "args": []
+    },
+    {
+      "name": "unpause",
+      "accounts": [
+        { "name": "registry", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": false, "isSigner": true }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Registry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "publicKey" },
+          { "name": "guardian", "type": "publicKey" },
+          { "name": "agentCount", "type": "u64" },
+          { "name": "vaultCount", "type": "u64" },
+          { "name": "isPaused", "type": "bool" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "Agent",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "publicKey" },
+          { "name": "name", "type": "string" },
+          { "name": "isActive", "type": "bool" },
+          { "name": "actionsCount", "type": "u64" },
+          { "name": "lastActionSlot", "type": "u64" },
+          { "name": "registeredAt", "type": "i64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "AgentRegistered",
+      "fields": [
+        { "name": "agent", "type": "publicKey", "index": false },
+        { "name": "authority", "type": "publicKey", "index": false },
+        { "name": "name", "type": "string", "index": false }
+      ]
+    },
+    {
+      "name": "AgentDeactivated",
+      "fields": [
+        { "name": "agent", "type": "publicKey", "index": false }
+      ]
+    },
+    {
+      "name": "ProtocolPaused",
+      "fields": []
+    },
+    {
+      "name": "ProtocolUnpaused",
+      "fields": []
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "ProtocolPaused", "msg": "Protocol is paused" },
+    { "code": 6001, "name": "NameTooLong", "msg": "Name too long, max 32 characters" },
+    { "code": 6002, "name": "Unauthorized", "msg": "Unauthorized" }
+  ],
+  "metadata": {
+    "address": "H2LwVDsPxadCWznZjfqFEbWRpdiKNtB37KcHAN7Xg1c8"
+  }
+}

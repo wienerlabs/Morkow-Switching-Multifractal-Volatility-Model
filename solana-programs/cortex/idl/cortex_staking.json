@@ -1,0 +1,199 @@
+{
+  "version": "0.1.0",
+  "name": "cortex_staking",
+  "instructions": [
+    {
+      "name": "initialize",
+      "accounts": [
+        { "name": "stakingPool", "isMut": true, "isSigner": false },
+        { "name": "stakeMint", "isMut": false, "isSigner": false },
+        { "name": "stakeVault", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": true, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false },
+        { "name": "rent", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        {
+          "name": "tierThresholds",
+          "type": { "array": ["u64", 3] }
+        }
+      ]
+    },
+    {
+      "name": "stake",
+      "accounts": [
+        { "name": "stakingPool", "isMut": true, "isSigner": false },
+        { "name": "stakeInfo", "isMut": true, "isSigner": false },
+        { "name": "stakeVault", "isMut": true, "isSigner": false },
+        { "name": "userTokenAccount", "isMut": true, "isSigner": false },
+        { "name": "user", "isMut": true, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" },
+        { "name": "lockType", "type": "u8" }
+      ]
+    },
+    {
+      "name": "initiateCooldown",
+      "accounts": [
+        { "name": "stakingPool", "isMut": true, "isSigner": false },
+        { "name": "stakeInfo", "isMut": true, "isSigner": false },
+        { "name": "user", "isMut": false, "isSigner": true }
+      ],
+      "args": []
+    },
+    {
+      "name": "unstake",
+      "accounts": [
+        { "name": "stakingPool", "isMut": true, "isSigner": false },
+        { "name": "stakeInfo", "isMut": true, "isSigner": false },
+        { "name": "stakeVault", "isMut": true, "isSigner": false },
+        { "name": "userTokenAccount", "isMut": true, "isSigner": false },
+        { "name": "user", "isMut": true, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ]
+    },
+    {
+      "name": "claimRewards",
+      "accounts": [
+        { "name": "stakingPool", "isMut": true, "isSigner": false },
+        { "name": "stakeInfo", "isMut": true, "isSigner": false },
+        { "name": "rewardVault", "isMut": true, "isSigner": false },
+        { "name": "userTokenAccount", "isMut": true, "isSigner": false },
+        { "name": "user", "isMut": true, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "getUserTier",
+      "accounts": [
+        { "name": "stakingPool", "isMut": false, "isSigner": false },
+        { "name": "stakeInfo", "isMut": false, "isSigner": false },
+        { "name": "user", "isMut": false, "isSigner": true }
+      ],
+      "args": [],
+      "returns": "u8"
+    },
+    {
+      "name": "setRewardRate",
+      "accounts": [
+        { "name": "stakingPool", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": false, "isSigner": true }
+      ],
+      "args": [
+        { "name": "rewardRate", "type": "u64" }
+      ]
+    },
+    {
+      "name": "initRewardVault",
+      "accounts": [
+        { "name": "stakingPool", "isMut": false, "isSigner": false },
+        { "name": "stakeMint", "isMut": false, "isSigner": false },
+        { "name": "rewardVault", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": true, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false },
+        { "name": "rent", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "StakingPool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "publicKey" },
+          { "name": "stakeMint", "type": "publicKey" },
+          { "name": "stakeVault", "type": "publicKey" },
+          { "name": "totalStaked", "type": "u64" },
+          { "name": "totalWeight", "type": "u64" },
+          { "name": "tierThresholds", "type": { "array": ["u64", 3] } },
+          { "name": "rewardRate", "type": "u64" },
+          { "name": "lastUpdateTime", "type": "i64" },
+          { "name": "accRewardPerWeight", "type": "u128" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "StakeInfo",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "owner", "type": "publicKey" },
+          { "name": "amount", "type": "u64" },
+          { "name": "lockEnd", "type": "i64" },
+          { "name": "lockType", "type": "u8" },
+          { "name": "weight", "type": "u64" },
+          { "name": "cooldownStart", "type": "i64" },
+          { "name": "rewardDebt", "type": "u64" },
+          { "name": "pendingRewards", "type": "u64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "Staked",
+      "fields": [
+        { "name": "user", "type": "publicKey", "index": false },
+        { "name": "amount", "type": "u64", "index": false },
+        { "name": "lockType", "type": "u8", "index": false },
+        { "name": "weight", "type": "u64", "index": false }
+      ]
+    },
+    {
+      "name": "Unstaked",
+      "fields": [
+        { "name": "user", "type": "publicKey", "index": false },
+        { "name": "amount", "type": "u64", "index": false }
+      ]
+    },
+    {
+      "name": "CooldownInitiated",
+      "fields": [
+        { "name": "user", "type": "publicKey", "index": false },
+        { "name": "cooldownEnd", "type": "i64", "index": false }
+      ]
+    },
+    {
+      "name": "RewardsClaimed",
+      "fields": [
+        { "name": "user", "type": "publicKey", "index": false },
+        { "name": "amount", "type": "u64", "index": false }
+      ]
+    },
+    {
+      "name": "RewardRateUpdated",
+      "fields": [
+        { "name": "newRate", "type": "u64", "index": false }
+      ]
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "ZeroAmount", "msg": "Amount must be greater than zero" },
+    { "code": 6001, "name": "AmountTooSmall", "msg": "Amount below minimum stake" },
+    { "code": 6002, "name": "ExceedsMaxStake", "msg": "Exceeds maximum stake per user" },
+    { "code": 6003, "name": "InvalidDuration", "msg": "Invalid lock duration" },
+    { "code": 6004, "name": "StakeLocked", "msg": "Stake is still locked" },
+    { "code": 6005, "name": "CooldownNotComplete", "msg": "Cooldown not complete" },
+    { "code": 6006, "name": "NoCooldownActive", "msg": "No cooldown active" },
+    { "code": 6007, "name": "NoStake", "msg": "No stake found" },
+    { "code": 6008, "name": "NoRewards", "msg": "No rewards to claim" },
+    { "code": 6009, "name": "Unauthorized", "msg": "Unauthorized" },
+    { "code": 6010, "name": "MathOverflow", "msg": "Math overflow" }
+  ],
+  "metadata": {
+    "address": "rYantWFyB4PsL36r9XB7nUb8TQ1pAhn9A87S6TbpMsr"
+  }
+}
