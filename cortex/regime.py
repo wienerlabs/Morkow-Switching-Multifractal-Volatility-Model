@@ -2,13 +2,17 @@
 Regime analytics for the MSM-VaR model.
 
 Provides temporal analysis, historical regime tracking, transition detection,
-and conditional statistics on top of the Markov Switching Multifractal model.
+conditional statistics, multi-timeframe confirmation (Task 6), and regime-
+conditional threshold scaling (Task 5) on top of the Markov Switching
+Multifractal model.
 """
 
 import math
 
 import numpy as np
 import pandas as pd
+
+from cortex.config import MULTI_TF_MIN_AGREEMENT, MULTI_TF_WINDOWS
 
 
 def compute_expected_durations(
@@ -231,3 +235,77 @@ def compute_regime_statistics(
     df = pd.DataFrame(rows)
     df.index = df["regime"]
     return df
+
+
+# ── Task 6: Multi-Timeframe Regime Confirmation ──────────────────────
+
+
+def multi_timeframe_agreement(
+    returns: pd.Series,
+    filter_probs_func,
+    windows: list[int] | None = None,
+    min_agreement: int | None = None,
+) -> dict:
+    """Check if regime classification agrees across multiple lookback windows.
+
+    Runs the filter_probs_func on different slices of the return series
+    (e.g., 30d, 90d, 180d) and checks if the dominant regime agrees
+    across at least min_agreement of them.
+
+    Args:
+        returns: Full daily returns series.
+        filter_probs_func: Callable(returns_slice) -> (filter_probs_df, calibration_dict)
+                           typically cortex.msm.calibrate or similar.
+        windows: List of lookback window sizes in days. Default from config.
+        min_agreement: Minimum number of windows that must agree. Default from config.
+
+    Returns:
+        Dict with confirmed (bool), dominant_regime, per_window details,
+        agreement_count, and total_windows.
+    """
+    if windows is None:
+        windows = MULTI_TF_WINDOWS
+    if min_agreement is None:
+        min_agreement = MULTI_TF_MIN_AGREEMENT
+
+    per_window: list[dict] = []
+    regimes: list[int] = []
+
+    for w in windows:
+        if len(returns) < w:
+            continue
+        slice_ = returns.iloc[-w:]
+        try:
+            fp, cal = filter_probs_func(slice_)
+            last_probs = np.asarray(fp.iloc[-1], dtype=float)
+            dominant = int(np.argmax(last_probs)) + 1
+            regimes.append(dominant)
+            per_window.append({
+                "window_days": w,
+                "dominant_regime": dominant,
+                "regime_prob": round(float(last_probs[dominant - 1]), 4),
+            })
+        except Exception:
+            per_window.append({"window_days": w, "dominant_regime": None, "error": True})
+
+    if not regimes:
+        return {
+            "confirmed": False,
+            "dominant_regime": None,
+            "agreement_count": 0,
+            "total_windows": len(windows),
+            "per_window": per_window,
+        }
+
+    # Most common regime across windows
+    from collections import Counter
+    counts = Counter(regimes)
+    dominant, agree_count = counts.most_common(1)[0]
+
+    return {
+        "confirmed": agree_count >= min_agreement,
+        "dominant_regime": dominant,
+        "agreement_count": agree_count,
+        "total_windows": len(per_window),
+        "per_window": per_window,
+    }

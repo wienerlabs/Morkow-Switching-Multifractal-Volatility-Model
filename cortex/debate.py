@@ -27,6 +27,9 @@ from typing import Any
 from cortex.config import (
     APPROVAL_THRESHOLD,
     DEBATE_MAX_ROUNDS,
+    DEBATE_EMPIRICAL_PRIOR_ENABLED,
+    DEBATE_PRIOR_MAX,
+    DEBATE_PRIOR_MIN,
     MAX_CORRELATED_EXPOSURE,
     MAX_DAILY_DRAWDOWN,
 )
@@ -77,6 +80,39 @@ STRATEGY_PROFILES: dict[str, dict[str, Any]] = {
         "loss_type": "rate_loss",
     },
 }
+
+# ── Task 7: Empirical Bayes Debate Prior ─────────────────────────────
+
+_debate_outcomes: list[dict] = []
+
+
+def record_debate_outcome(strategy: str, approved: bool, pnl: float) -> None:
+    """Record a debate outcome for empirical prior computation."""
+    _debate_outcomes.append({
+        "strategy": strategy, "approved": approved,
+        "win": pnl > 0, "ts": time.time(),
+    })
+    if len(_debate_outcomes) > 1000:
+        _debate_outcomes[:] = _debate_outcomes[-500:]
+
+
+def _compute_empirical_prior(strategy: str) -> float:
+    """Compute Laplace-smoothed empirical prior from past debate outcomes.
+
+    prior = (wins + 1) / (total + 2)   (Laplace / add-one smoothing)
+    Clamped to [DEBATE_PRIOR_MIN, DEBATE_PRIOR_MAX] for stability.
+    """
+    if not DEBATE_EMPIRICAL_PRIOR_ENABLED:
+        return 0.5
+
+    relevant = [o for o in _debate_outcomes if o["strategy"] == strategy]
+    if len(relevant) < 5:
+        return 0.5
+
+    wins = sum(1 for o in relevant if o["win"])
+    total = len(relevant)
+    prior = (wins + 1) / (total + 2)
+    return max(DEBATE_PRIOR_MIN, min(DEBATE_PRIOR_MAX, prior))
 
 
 @dataclass
@@ -430,8 +466,11 @@ def _trader_argue(ctx: DebateContext, evidence: dict[str, list[DebateEvidence]],
     risk_scale = max(0.0, 1.0 - ctx.risk_score / 100.0)
     suggested_size = min(profile["size_cap_pct"], risk_scale * profile["size_cap_pct"])
 
+    # Task 7: Empirical Bayes prior
+    prior = _compute_empirical_prior(ctx.strategy)
+
     # Bayesian posterior
-    posterior = _bayesian_update(0.5, bullish, "approve")
+    posterior = _bayesian_update(prior, bullish, "approve")
 
     return AgentArgument(
         role="trader",
@@ -441,7 +480,7 @@ def _trader_argue(ctx: DebateContext, evidence: dict[str, list[DebateEvidence]],
         evidence=trader_evidence[:6],
         suggested_action=ctx.direction,
         suggested_size_pct=round(suggested_size, 4),
-        bayesian_prior=0.5,
+        bayesian_prior=round(prior, 4),
         bayesian_posterior=round(posterior, 4),
     )
 
@@ -489,8 +528,11 @@ def _risk_manager_argue(ctx: DebateContext, evidence: dict[str, list[DebateEvide
     critical_count = sum(1 for e in bearish if e.severity == "critical")
     position = "reject" if critical_count >= 2 or ctx.risk_score >= 80 or len(ctx.veto_reasons) > 0 else "reduce"
 
+    # Task 7: Empirical Bayes prior
+    prior = _compute_empirical_prior(ctx.strategy)
+
     # Bayesian posterior (risk perspective)
-    posterior = _bayesian_update(0.5, bearish, "reject")
+    posterior = _bayesian_update(prior, bearish, "reject")
 
     return AgentArgument(
         role="risk_manager",
@@ -500,7 +542,7 @@ def _risk_manager_argue(ctx: DebateContext, evidence: dict[str, list[DebateEvide
         evidence=rm_evidence[:6],
         suggested_action="block" if position == "reject" else "reduce_size",
         suggested_size_pct=round(profile["size_cap_pct"] * 0.3, 4) if position == "reduce" else 0.0,
-        bayesian_prior=0.5,
+        bayesian_prior=round(prior, 4),
         bayesian_posterior=round(posterior, 4),
     )
 
