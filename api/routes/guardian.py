@@ -72,6 +72,20 @@ def guardian_assess(req: GuardianAssessRequest):
         run_debate=req.run_debate,
     )
 
+    # Broadcast to SSE subscribers
+    try:
+        from api.routes.streams import broadcast_guardian_score
+        broadcast_guardian_score({
+            "token": req.token,
+            "direction": req.direction,
+            "risk_score": result["risk_score"],
+            "approved": result["approved"],
+            "regime_state": result["regime_state"],
+            "veto_reasons": result["veto_reasons"],
+        })
+    except Exception:
+        logger.debug("Guardian SSE broadcast failed", exc_info=True)
+
     return GuardianAssessResponse(
         approved=result["approved"],
         risk_score=result["risk_score"],
@@ -112,6 +126,7 @@ def record_trade_outcome(req: TradeOutcomeRequest):
         risk_score=req.risk_score,
     )
 
+    cb_status = None
     if req.strategy:
         try:
             from cortex.debate import record_debate_outcome
@@ -123,6 +138,19 @@ def record_trade_outcome(req: TradeOutcomeRequest):
         except Exception:
             logger.debug("Debate outcome recording failed", exc_info=True)
 
+        # Cross-wire: also feed the outcome circuit breaker
+        try:
+            from cortex.circuit_breaker import record_trade_outcome as _cb_record
+            cb_status = _cb_record(
+                strategy=req.strategy,
+                success=req.pnl > 0,
+                pnl=req.pnl,
+                loss_type="market_loss" if req.pnl <= 0 else "",
+                details=f"via /trade-outcome: token={req.token}",
+            )
+        except Exception:
+            logger.debug("CB outcome recording failed", exc_info=True)
+
     return {
         "status": "recorded",
         "pnl": req.pnl,
@@ -130,6 +158,7 @@ def record_trade_outcome(req: TradeOutcomeRequest):
         "token": req.token,
         "regime": req.regime,
         "strategy": req.strategy,
+        "circuit_breaker": cb_status,
     }
 
 
