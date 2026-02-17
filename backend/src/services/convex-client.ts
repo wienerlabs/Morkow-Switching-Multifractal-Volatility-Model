@@ -1,4 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
+import { createChildLogger } from "../lib/logger.js";
+
+const log = createChildLogger({ module: "convex" });
 
 const CONVEX_URL = process.env.CONVEX_URL ?? "";
 
@@ -26,7 +29,7 @@ class ConvexService {
       const result = await client.mutation("agentActivity:logActivity" as never, params as never);
       return result as string;
     } catch (error) {
-      console.error("Failed to log activity to Convex:", error);
+      log.error({ err: error }, "Failed to log activity to Convex");
       throw error;
     }
   }
@@ -42,7 +45,7 @@ class ConvexService {
       const client = this.getClient();
       await client.mutation("agentActivity:updateActivityStatus" as never, params as never);
     } catch (error) {
-      console.error("Failed to update activity status:", error);
+      log.error({ err: error }, "Failed to update activity status");
       throw error;
     }
   }
@@ -56,7 +59,7 @@ class ConvexService {
       const client = this.getClient();
       return await client.query("agentActivity:getRecentActivity" as never, params as never);
     } catch (error) {
-      console.error("Failed to get activity:", error);
+      log.error({ err: error }, "Failed to get activity");
       return [];
     }
   }
@@ -66,7 +69,7 @@ class ConvexService {
       const client = this.getClient();
       return await client.query("agentConfig:getConfig" as never, { agentPublicKey } as never);
     } catch (error) {
-      console.error("Failed to get agent config:", error);
+      log.error({ err: error }, "Failed to get agent config");
       return null;
     }
   }
@@ -115,7 +118,7 @@ class ConvexService {
       const client = this.getClient();
       return await client.query("approvals:getPendingApprovals" as never, { userPublicKey } as never);
     } catch (error) {
-      console.error("Failed to get pending approvals:", error);
+      log.error({ err: error }, "Failed to get pending approvals");
       return [];
     }
   }
@@ -143,7 +146,7 @@ class ConvexService {
       const client = this.getClient();
       await client.mutation("metrics:recordMetrics" as never, params as never);
     } catch (error) {
-      console.error("Failed to record metrics:", error);
+      log.error({ err: error }, "Failed to record metrics");
     }
   }
 
@@ -152,7 +155,7 @@ class ConvexService {
       const client = this.getClient();
       return await client.query("metrics:getAggregatedMetrics" as never, { agentPublicKey } as never);
     } catch (error) {
-      console.error("Failed to get metrics:", error);
+      log.error({ err: error }, "Failed to get metrics");
       return null;
     }
   }

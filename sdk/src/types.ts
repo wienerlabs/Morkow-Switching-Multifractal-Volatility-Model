@@ -835,6 +835,7 @@ export interface GuardianAssessRequest {
   direction: TradeDirection;
   urgency?: boolean;
   max_slippage_pct?: number;
+  agent_confidence?: number;
 }
 
 export interface GuardianComponentScore {

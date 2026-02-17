@@ -13,7 +13,7 @@ import os
 GUARDIAN_WEIGHTS: dict[str, float] = json.loads(
     os.environ.get(
         "GUARDIAN_WEIGHTS",
-        json.dumps({"evt": 0.20, "svj": 0.15, "hawkes": 0.15, "regime": 0.15, "news": 0.10, "alams": 0.25}),
+        json.dumps({"evt": 0.20, "svj": 0.15, "hawkes": 0.15, "regime": 0.15, "news": 0.10, "alams": 0.25, "agent_confidence": 0.10}),
     )
 )
 CIRCUIT_BREAKER_THRESHOLD = float(os.environ.get("CIRCUIT_BREAKER_THRESHOLD", "90"))
@@ -277,6 +277,10 @@ DEBATE_PRIOR_MAX = float(os.environ.get("DEBATE_PRIOR_MAX", "0.7"))
 # Task 8: Copula Tail-Dependence Risk Gate
 COPULA_RISK_GATE_ENABLED = os.environ.get("COPULA_RISK_GATE_ENABLED", "false").lower() == "true"
 TAIL_DEPENDENCE_THRESHOLD = float(os.environ.get("TAIL_DEPENDENCE_THRESHOLD", "0.5"))
+
+# Task 9: Agent ONNX Confidence → Guardian Composite
+AGENT_CONFIDENCE_ENABLED = os.environ.get("AGENT_CONFIDENCE_ENABLED", "true").lower() == "true"
+AGENT_CONFIDENCE_VETO_THRESHOLD = float(os.environ.get("AGENT_CONFIDENCE_VETO_THRESHOLD", "0.3"))
 
 # ── Recalibration ──
 RECALIBRATION_INTERVAL_HOURS = float(os.environ.get("RECALIBRATION_INTERVAL_HOURS", "24"))

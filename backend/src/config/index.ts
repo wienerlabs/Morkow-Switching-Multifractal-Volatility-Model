@@ -24,12 +24,14 @@ const envSchema = z.object({
 
   // Auth — Solana public key authorized to call mutating endpoints
   AUTHORIZED_PUBLIC_KEY: z.string().optional(),
+
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 });
 
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error("Invalid environment variables:", parsed.error.flatten().fieldErrors);
+  process.stderr.write(`Invalid environment variables: ${JSON.stringify(parsed.error.flatten().fieldErrors)}\n`);
   process.exit(1);
 }
 

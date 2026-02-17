@@ -10,6 +10,7 @@ from cortex import guardian
 from cortex.guardian import (
     _cache,
     _recommend_size,
+    _score_agent_confidence,
     _score_evt,
     _score_hawkes,
     _score_news,
@@ -214,3 +215,71 @@ def test_assess_trade_partial_models():
     result = assess_trade("PARTIAL", 5000, "short", model_data, None, None, None)
     assert "risk_score" in result
     assert result["confidence"] < 1.0
+
+
+# ── _score_agent_confidence ──
+
+def test_score_agent_confidence_high():
+    result = _score_agent_confidence(0.95)
+    assert result["component"] == "agent_confidence"
+    assert result["score"] == pytest.approx(5.0, abs=0.1)
+    assert result["details"]["agent_confidence"] == 0.95
+
+
+def test_score_agent_confidence_medium():
+    result = _score_agent_confidence(0.5)
+    assert result["score"] == pytest.approx(50.0, abs=0.1)
+
+
+def test_score_agent_confidence_low():
+    result = _score_agent_confidence(0.1)
+    assert result["score"] == pytest.approx(90.0, abs=0.1)
+
+
+def test_score_agent_confidence_boundaries():
+    assert _score_agent_confidence(1.0)["score"] == 0.0
+    assert _score_agent_confidence(0.0)["score"] == 100.0
+
+
+# ── assess_trade with agent_confidence ──
+
+@patch("cortex.guardian._score_evt")
+def test_assess_trade_with_agent_confidence(mock_evt):
+    mock_evt.return_value = {"component": "evt", "score": 20.0, "details": {}}
+    probs = np.array([0.7, 0.15, 0.1, 0.03, 0.02])
+    fp = pd.DataFrame([probs])
+    model_data = {"filter_probs": fp, "calibration": {"num_states": 5}}
+    result = assess_trade(
+        "SOL_AC", 5000, "long", model_data,
+        {"xi": 0.1, "beta": 0.5, "threshold": 1.0, "n_total": 300, "n_exceedances": 30},
+        None, None, agent_confidence=0.85,
+    )
+    components = {s["component"] for s in result["component_scores"]}
+    assert "agent_confidence" in components
+    assert result["approved"] is True
+
+
+@patch("cortex.guardian._score_evt")
+def test_assess_trade_agent_confidence_veto(mock_evt):
+    """Low agent confidence triggers veto."""
+    mock_evt.return_value = {"component": "evt", "score": 20.0, "details": {}}
+    probs = np.array([0.7, 0.15, 0.1, 0.03, 0.02])
+    fp = pd.DataFrame([probs])
+    model_data = {"filter_probs": fp, "calibration": {"num_states": 5}}
+    result = assess_trade(
+        "SOL_AC_VETO", 5000, "long", model_data,
+        {"xi": 0.1, "beta": 0.5, "threshold": 1.0, "n_total": 300, "n_exceedances": 30},
+        None, None, agent_confidence=0.2,
+    )
+    assert "agent_low_confidence" in result["veto_reasons"]
+    assert result["approved"] is False
+
+
+def test_assess_trade_no_agent_confidence():
+    """When agent_confidence is None, component is not added."""
+    probs = np.array([0.7, 0.15, 0.1, 0.03, 0.02])
+    fp = pd.DataFrame([probs])
+    model_data = {"filter_probs": fp, "calibration": {"num_states": 5}}
+    result = assess_trade("SOL_NO_AC", 5000, "long", model_data, None, None, None)
+    components = {s["component"] for s in result["component_scores"]}
+    assert "agent_confidence" not in components

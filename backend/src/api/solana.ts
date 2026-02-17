@@ -1,6 +1,9 @@
 import { Router, Request, Response } from "express";
 import { PublicKey } from "@solana/web3.js";
 import { solanaService } from "../services/solana.js";
+import { createChildLogger } from "../lib/logger.js";
+
+const log = createChildLogger({ module: "api:solana" });
 
 const router = Router();
 
@@ -29,7 +32,7 @@ router.get("/vault/:address", async (req: Request, res: Response) => {
       state: vaultData.state,
     });
   } catch (error) {
-    console.error("Error fetching vault:", error);
+    log.error({ err: error }, "Error fetching vault");
     res.status(400).json({ error: "Invalid vault address" });
   }
 });
@@ -54,7 +57,7 @@ router.get("/staking/pool", async (_req: Request, res: Response) => {
       lastUpdateTime: poolData.lastUpdateTime.toString(),
     });
   } catch (error) {
-    console.error("Error fetching staking pool:", error);
+    log.error({ err: error }, "Error fetching staking pool");
     res.status(500).json({ error: "Failed to fetch staking pool" });
   }
 });
@@ -87,7 +90,7 @@ router.get("/staking/user/:address", async (req: Request, res: Response) => {
       pendingRewards: stakeInfo.pendingRewards.toString(),
     });
   } catch (error) {
-    console.error("Error fetching stake info:", error);
+    log.error({ err: error }, "Error fetching stake info");
     res.status(400).json({ error: "Invalid address" });
   }
 });

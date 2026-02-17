@@ -1,5 +1,8 @@
 import { Connection, PublicKey, Keypair, clusterApiUrl } from "@solana/web3.js";
 import { Program, AnchorProvider, Wallet, Idl, BN } from "@coral-xyz/anchor";
+import { createChildLogger } from "../lib/logger.js";
+
+const log = createChildLogger({ module: "solana" });
 
 const PROGRAM_IDS = {
   cortex: new PublicKey("9qeww9s48ByyxzPuoiwhvYfB9dfG4Q3a1VnJrYcahwo6"),
@@ -48,7 +51,7 @@ export class SolanaService {
         state: data[274],
       };
     } catch (error) {
-      console.error("Error fetching vault data:", error);
+      log.error({ err: error, vault: vaultPubkey.toBase58() }, "Failed to fetch vault data");
       return null;
     }
   }

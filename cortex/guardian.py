@@ -50,6 +50,9 @@ from cortex.config import (
     REGIME_THRESHOLD_LAMBDA,
     COPULA_RISK_GATE_ENABLED,
     TAIL_DEPENDENCE_THRESHOLD,
+    # Task 9: Agent ONNX Confidence
+    AGENT_CONFIDENCE_ENABLED,
+    AGENT_CONFIDENCE_VETO_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
@@ -325,6 +328,28 @@ def _score_alams(alams_data: dict) -> dict:
     }
 
 
+def _score_agent_confidence(agent_confidence: float) -> dict:
+    """
+    Score agent ONNX model confidence as risk (0-100).
+
+    Inverse mapping: high confidence = low risk, low confidence = high risk.
+      - confidence 1.0 → score 0  (model is certain, no risk signal)
+      - confidence 0.5 → score 50 (coin-flip, moderate risk signal)
+      - confidence 0.0 → score 100 (model has no confidence, maximum risk signal)
+    """
+    score = (1.0 - agent_confidence) * 100.0
+    score = round(min(100.0, max(0.0, score)), 2)
+
+    return {
+        "component": "agent_confidence",
+        "score": score,
+        "details": {
+            "agent_confidence": round(agent_confidence, 4),
+            "risk_mapping": "inverse_linear",
+        },
+    }
+
+
 def record_trade_outcome(
     pnl: float,
     size: float,
@@ -447,6 +472,7 @@ def assess_trade(
     alams_data: dict | None = None,
     strategy: str | None = None,
     run_debate: bool = False,
+    agent_confidence: float | None = None,
 ) -> dict:
     """Run all risk components and return composite Guardian assessment."""
     cache_key = f"{token}:{direction}"
@@ -521,6 +547,14 @@ def assess_trade(
             veto_reasons.append("alams_extreme_var")
         if alams_data.get("current_regime", 0) >= 4:
             veto_reasons.append("alams_crisis_regime")
+
+    # ── Task 9: Agent ONNX confidence component ──
+    if AGENT_CONFIDENCE_ENABLED and agent_confidence is not None:
+        ac_score = _score_agent_confidence(agent_confidence)
+        scores.append(ac_score)
+        available_weights += WEIGHTS.get("agent_confidence", 0.10)
+        if agent_confidence < AGENT_CONFIDENCE_VETO_THRESHOLD:
+            veto_reasons.append("agent_low_confidence")
 
     # ── Task 3: Use adaptive weights if enabled ──
     active_weights = WEIGHTS

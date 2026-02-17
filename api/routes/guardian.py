@@ -70,6 +70,7 @@ def guardian_assess(req: GuardianAssessRequest):
         news_data=news_data,
         strategy=req.strategy,
         run_debate=req.run_debate,
+        agent_confidence=req.agent_confidence,
     )
 
     # Broadcast to SSE subscribers

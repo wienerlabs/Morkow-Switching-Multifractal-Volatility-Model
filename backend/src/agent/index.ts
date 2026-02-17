@@ -1,7 +1,10 @@
 import { CortexSolanaAgent } from "./solana-agent.js";
 import { config } from "../config/index.js";
+import { createChildLogger } from "../lib/logger.js";
 import type { AgentConfig, AgentLimits } from "./types.js";
 import { DEFAULT_AGENT_LIMITS } from "./types.js";
+
+const log = createChildLogger({ module: "agent" });
 
 let agentInstance: CortexSolanaAgent | null = null;
 
@@ -25,8 +28,7 @@ export function initializeAgent(customLimits?: Partial<AgentLimits>): CortexSola
 
   agentInstance = new CortexSolanaAgent(privateKey, agentConfig, limits);
   
-  console.log(`🤖 Agent initialized: ${agentInstance.getPublicKey()}`);
-  console.log(`📊 Limits: max trade $${limits.maxTradeAmountUsd}, daily $${limits.dailyTradeLimitUsd}`);
+  log.info({ publicKey: agentInstance.getPublicKey(), maxTradeUsd: limits.maxTradeAmountUsd, dailyLimitUsd: limits.dailyTradeLimitUsd }, "Agent initialized");
 
   return agentInstance;
 }

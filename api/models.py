@@ -911,6 +911,7 @@ class GuardianAssessRequest(BaseModel):
     max_slippage_pct: float = Field(default=1.0, ge=0.0, le=10.0, description="Max acceptable slippage %")
     strategy: str | None = Field(default=None, description="Trading strategy: lp, arb, perp")
     run_debate: bool = Field(default=False, description="Run adversarial debate on this trade")
+    agent_confidence: float | None = Field(default=None, ge=0.0, le=1.0, description="Agent ONNX model confidence (0-1)")
 
 
 class GuardianComponentScore(BaseModel):

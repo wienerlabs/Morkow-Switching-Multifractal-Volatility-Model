@@ -10,4 +10,5 @@ name = "cortex_public_sale"
 [dependencies]
 anchor-lang = "0.28.0"
 anchor-spl = "0.28.0"
+pyth-sdk-solana = "0.8.0"
 

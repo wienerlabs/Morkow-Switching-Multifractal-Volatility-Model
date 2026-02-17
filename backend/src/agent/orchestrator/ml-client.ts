@@ -6,6 +6,7 @@ import type {
   ExecutionResponse,
   StrategyType,
 } from "./types.js";
+import { requestContext } from "../../lib/logger.js";
 
 export class MLAgentClient {
   private baseUrl: string;
@@ -96,11 +97,17 @@ export class MLAgentClient {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
+    const store = requestContext.getStore();
+    const correlationHeaders: Record<string, string> = store?.requestId
+      ? { "x-request-id": store.requestId }
+      : {};
+
     try {
       const res = await fetch(`${this.baseUrl}${path}`, {
         ...options,
         headers: {
           "Content-Type": "application/json",
+          ...correlationHeaders,
           ...options.headers,
         },
         signal: controller.signal,

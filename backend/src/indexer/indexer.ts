@@ -2,6 +2,9 @@ import { type Address, type Log, encodeEventTopics } from "viem";
 import { getPublicClient } from "../services/blockchain.js";
 import { VAULT_ABI, decodeVaultEvent, type DecodedEvent } from "./events.js";
 import { prisma } from "../lib/prisma.js";
+import { createChildLogger } from "../lib/logger.js";
+
+const indexerLog = createChildLogger({ module: "indexer" });
 const BATCH_SIZE = 1000;
 const POLL_INTERVAL_MS = 12_000;
 
@@ -23,13 +26,13 @@ export class EventIndexer {
   async start(): Promise<void> {
     if (this.isRunning) return;
     this.isRunning = true;
-    console.log(`[Indexer] Starting with ${this.vaultAddresses.length} vaults`);
+    indexerLog.info({ vaultCount: this.vaultAddresses.length }, "Indexer starting");
     this.poll();
   }
 
   stop(): void {
     this.isRunning = false;
-    console.log("[Indexer] Stopped");
+    indexerLog.info("Indexer stopped");
   }
 
   private async poll(): Promise<void> {
@@ -37,7 +40,7 @@ export class EventIndexer {
       try {
         await this.processBlocks();
       } catch (err) {
-        console.error("[Indexer] Error:", err);
+        indexerLog.error({ err }, "Indexer poll error");
       }
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     }
@@ -60,7 +63,7 @@ export class EventIndexer {
       ? latestBlock
       : fromBlock + BigInt(BATCH_SIZE);
 
-    console.log(`[Indexer] Processing blocks ${fromBlock} to ${toBlock}`);
+    indexerLog.debug({ fromBlock: fromBlock.toString(), toBlock: toBlock.toString() }, "Processing blocks");
 
     const logs = await client.getLogs({
       address: this.vaultAddresses,
@@ -78,7 +81,7 @@ export class EventIndexer {
       data: { lastBlockNumber: Number(toBlock) },
     });
 
-    console.log(`[Indexer] Processed ${logs.length} events`);
+    indexerLog.info({ eventCount: logs.length, toBlock: toBlock.toString() }, "Processed events");
   }
 
   private async processLog(log: Log): Promise<void> {
@@ -91,7 +94,7 @@ export class EventIndexer {
     });
 
     if (!vault) {
-      console.warn(`[Indexer] Unknown vault: ${vaultAddress}`);
+      indexerLog.warn({ vaultAddress }, "Unknown vault");
       return;
     }
 
