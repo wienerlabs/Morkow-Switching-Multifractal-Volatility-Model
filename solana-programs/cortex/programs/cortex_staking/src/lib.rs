@@ -43,11 +43,29 @@ pub mod cortex_staking {
         pool.reward_rate = 0;
         pool.last_update_time = Clock::get()?.unix_timestamp;
         pool.acc_reward_per_weight = 0;
+        pool.paused = false;
         pool.bump = *ctx.bumps.get("staking_pool").unwrap();
         Ok(())
     }
 
+    pub fn pause(ctx: Context<Pause>) -> Result<()> {
+        let pool = &mut ctx.accounts.staking_pool;
+        require!(!pool.paused, StakingError::AlreadyPaused);
+        pool.paused = true;
+        emit!(Paused { authority: ctx.accounts.authority.key() });
+        Ok(())
+    }
+
+    pub fn unpause(ctx: Context<Unpause>) -> Result<()> {
+        let pool = &mut ctx.accounts.staking_pool;
+        require!(pool.paused, StakingError::NotPaused);
+        pool.paused = false;
+        emit!(Unpaused { authority: ctx.accounts.authority.key() });
+        Ok(())
+    }
+
     pub fn stake(ctx: Context<Stake>, amount: u64, lock_type: u8) -> Result<()> {
+        require!(!ctx.accounts.staking_pool.paused, StakingError::PoolPaused);
         require!(amount >= MIN_STAKE, StakingError::AmountTooSmall);
         require!(lock_type <= 5, StakingError::InvalidDuration);
 
@@ -444,6 +462,22 @@ pub struct SetRewardRate<'info> {
 }
 
 #[derive(Accounts)]
+pub struct Pause<'info> {
+    #[account(mut, seeds = [b"staking_pool"], bump = staking_pool.bump,
+        constraint = authority.key() == staking_pool.authority @ StakingError::Unauthorized)]
+    pub staking_pool: Account<'info, StakingPool>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct Unpause<'info> {
+    #[account(mut, seeds = [b"staking_pool"], bump = staking_pool.bump,
+        constraint = authority.key() == staking_pool.authority @ StakingError::Unauthorized)]
+    pub staking_pool: Account<'info, StakingPool>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct InitRewardVault<'info> {
     #[account(seeds = [b"staking_pool"], bump = staking_pool.bump)]
     pub staking_pool: Account<'info, StakingPool>,
@@ -476,6 +510,7 @@ pub struct StakingPool {
     pub reward_rate: u64,
     pub last_update_time: i64,
     pub acc_reward_per_weight: u128,
+    pub paused: bool,
     pub bump: u8,
 }
 
@@ -503,6 +538,10 @@ pub struct CooldownInitiated { pub user: Pubkey, pub cooldown_end: i64 }
 pub struct RewardsClaimed { pub user: Pubkey, pub amount: u64 }
 #[event]
 pub struct RewardRateUpdated { pub new_rate: u64 }
+#[event]
+pub struct Paused { pub authority: Pubkey }
+#[event]
+pub struct Unpaused { pub authority: Pubkey }
 
 #[error_code]
 pub enum StakingError {
@@ -517,4 +556,7 @@ pub enum StakingError {
     #[msg("No rewards to claim")] NoRewards,
     #[msg("Unauthorized")] Unauthorized,
     #[msg("Math overflow")] MathOverflow,
+    #[msg("Pool is paused")] PoolPaused,
+    #[msg("Pool is already paused")] AlreadyPaused,
+    #[msg("Pool is not paused")] NotPaused,
 }
