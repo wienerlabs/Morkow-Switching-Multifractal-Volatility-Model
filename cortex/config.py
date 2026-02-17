@@ -236,6 +236,48 @@ HAWKES_ENGINE = os.environ.get("HAWKES_ENGINE", "numba")  # "native", "numba", "
 LOG_FORMAT = os.environ.get("LOG_FORMAT", "console")  # "json" or "console"
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 
+# ── Win-Rate Enhancement Features (Tasks 1-8) ──
+
+# Task 1: Platt Calibration Bridge
+CALIBRATION_ENABLED = os.environ.get("CALIBRATION_ENABLED", "false").lower() == "true"
+CALIBRATION_PARAMS_PATH = os.environ.get("CALIBRATION_PARAMS_PATH", "")
+
+# Task 2: Regime-Conditional Kelly Criterion
+KELLY_REGIME_AWARE = os.environ.get("KELLY_REGIME_AWARE", "false").lower() == "true"
+KELLY_REGIME_FRACTIONS: dict[str, float] = json.loads(
+    os.environ.get(
+        "KELLY_REGIME_FRACTIONS",
+        json.dumps({"0": 0.30, "1": 0.25, "2": 0.20, "3": 0.10, "4": 0.05}),
+    )
+)
+
+# Task 3: Adaptive Guardian Weights (Exponential Gradient)
+ADAPTIVE_WEIGHTS_ENABLED = os.environ.get("ADAPTIVE_WEIGHTS_ENABLED", "false").lower() == "true"
+ADAPTIVE_WEIGHTS_LR = float(os.environ.get("ADAPTIVE_WEIGHTS_LR", "0.1"))
+ADAPTIVE_WEIGHTS_MIN_SAMPLES = int(os.environ.get("ADAPTIVE_WEIGHTS_MIN_SAMPLES", "30"))
+
+# Task 4: Hawkes Intensity-Gated Trade Timing
+HAWKES_TIMING_GATE_ENABLED = os.environ.get("HAWKES_TIMING_GATE_ENABLED", "false").lower() == "true"
+HAWKES_TIMING_KAPPA = float(os.environ.get("HAWKES_TIMING_KAPPA", "2.0"))
+
+# Task 5: Regime-Conditional Entry Thresholds
+REGIME_THRESHOLD_SCALING_ENABLED = os.environ.get("REGIME_THRESHOLD_SCALING_ENABLED", "false").lower() == "true"
+REGIME_THRESHOLD_LAMBDA = float(os.environ.get("REGIME_THRESHOLD_LAMBDA", "0.5"))
+
+# Task 6: Multi-Timeframe Regime Confirmation
+MULTI_TF_CONFIRMATION_ENABLED = os.environ.get("MULTI_TF_CONFIRMATION_ENABLED", "false").lower() == "true"
+MULTI_TF_MIN_AGREEMENT = int(os.environ.get("MULTI_TF_MIN_AGREEMENT", "2"))
+MULTI_TF_WINDOWS: list[int] = json.loads(os.environ.get("MULTI_TF_WINDOWS", "[30, 90, 180]"))
+
+# Task 7: Empirical Bayes Debate Prior
+DEBATE_EMPIRICAL_PRIOR_ENABLED = os.environ.get("DEBATE_EMPIRICAL_PRIOR_ENABLED", "false").lower() == "true"
+DEBATE_PRIOR_MIN = float(os.environ.get("DEBATE_PRIOR_MIN", "0.3"))
+DEBATE_PRIOR_MAX = float(os.environ.get("DEBATE_PRIOR_MAX", "0.7"))
+
+# Task 8: Copula Tail-Dependence Risk Gate
+COPULA_RISK_GATE_ENABLED = os.environ.get("COPULA_RISK_GATE_ENABLED", "false").lower() == "true"
+TAIL_DEPENDENCE_THRESHOLD = float(os.environ.get("TAIL_DEPENDENCE_THRESHOLD", "0.5"))
+
 # ── API ──
 
 API_VERSION = os.environ.get("API_VERSION", "1.2.0")

@@ -79,6 +79,10 @@ def guardian_assess(req: GuardianAssessRequest):
         recommended_size=result["recommended_size"],
         regime_state=result["regime_state"],
         confidence=result["confidence"],
+        calibrated_confidence=result.get("calibrated_confidence"),
+        effective_threshold=result.get("effective_threshold", 75.0),
+        hawkes_deferred=result.get("hawkes_deferred", False),
+        copula_gate_triggered=result.get("copula_gate_triggered", False),
         expires_at=result["expires_at"],
         component_scores=[
             GuardianComponentScore(**s) for s in result["component_scores"]
@@ -99,8 +103,34 @@ def get_kelly_stats():
 @router.post("/guardian/trade-outcome")
 def record_trade_outcome(req: TradeOutcomeRequest):
     from cortex.guardian import record_trade_outcome as _record
-    _record(pnl=req.pnl, size=req.size, token=req.token)
-    return {"status": "recorded", "pnl": req.pnl, "size": req.size, "token": req.token}
+    _record(
+        pnl=req.pnl,
+        size=req.size,
+        token=req.token,
+        regime=req.regime,
+        component_scores=req.component_scores,
+        risk_score=req.risk_score,
+    )
+
+    if req.strategy:
+        try:
+            from cortex.debate import record_debate_outcome
+            record_debate_outcome(
+                strategy=req.strategy,
+                approved=req.pnl > 0,
+                pnl=req.pnl,
+            )
+        except Exception:
+            logger.debug("Debate outcome recording failed", exc_info=True)
+
+    return {
+        "status": "recorded",
+        "pnl": req.pnl,
+        "size": req.size,
+        "token": req.token,
+        "regime": req.regime,
+        "strategy": req.strategy,
+    }
 
 
 @router.get("/guardian/circuit-breakers")
@@ -127,14 +157,113 @@ def reset_circuit_breakers(name: str | None = None):
 def run_debate_endpoint(req: GuardianAssessRequest):
     """Run adversarial debate for a trade proposal (standalone, without full assess)."""
     from cortex.debate import run_debate
+    from cortex.guardian import (
+        WEIGHTS,
+        _score_evt,
+        _score_hawkes,
+        _score_news,
+        _score_regime,
+        _score_svj,
+    )
+
+    model_data = _model_store.get(req.token)
+    evt_data = _evt_store.get(req.token)
+    svj_data = _svj_store.get(req.token)
+    hawkes_data = _hawkes_store.get(req.token)
+
+    scores: list[dict] = []
+    veto_reasons: list[str] = []
+    available_weights = 0.0
+
+    if evt_data:
+        try:
+            s = _score_evt(evt_data)
+            scores.append(s)
+            available_weights += WEIGHTS["evt"]
+            if s["score"] > 90:
+                veto_reasons.append("evt_extreme_tail")
+        except Exception:
+            logger.debug("EVT scoring failed in debate endpoint", exc_info=True)
+
+    if svj_data:
+        try:
+            s = _score_svj(svj_data)
+            scores.append(s)
+            available_weights += WEIGHTS["svj"]
+            if s["score"] > 90:
+                veto_reasons.append("svj_jump_crisis")
+            if s["details"]["jump_share_pct"] > 60:
+                veto_reasons.append("svj_high_jump_share")
+        except Exception:
+            logger.debug("SVJ scoring failed in debate endpoint", exc_info=True)
+
+    if hawkes_data:
+        try:
+            s = _score_hawkes(hawkes_data)
+            scores.append(s)
+            available_weights += WEIGHTS["hawkes"]
+            if s["score"] > 90:
+                veto_reasons.append("hawkes_critical_contagion")
+            if s["details"]["contagion_risk_score"] > 0.75:
+                veto_reasons.append("hawkes_flash_crash_risk")
+        except Exception:
+            logger.debug("Hawkes scoring failed in debate endpoint", exc_info=True)
+
+    if model_data:
+        try:
+            s = _score_regime(model_data)
+            scores.append(s)
+            available_weights += WEIGHTS["regime"]
+            if s["score"] > 90:
+                veto_reasons.append("regime_extreme_crisis")
+        except Exception:
+            logger.debug("Regime scoring failed in debate endpoint", exc_info=True)
+
+    # Fetch news if available
+    news_data = None
+    try:
+        from cortex.news import fetch_news_intelligence
+        regime_state = _current_regime_state()
+        news_result = fetch_news_intelligence(
+            regime_state=regime_state, max_items=30, timeout=10.0,
+        )
+        news_data = news_result.get("signal")
+    except Exception:
+        logger.debug("News intelligence unavailable for debate endpoint", exc_info=True)
+
+    if news_data:
+        try:
+            s = _score_news(news_data, req.direction)
+            scores.append(s)
+            available_weights += WEIGHTS["news"]
+            if s["score"] > 90:
+                veto_reasons.append("news_extreme_negative")
+        except Exception:
+            logger.debug("News scoring failed in debate endpoint", exc_info=True)
+
+    # Compute weighted risk score
+    if available_weights > 0 and scores:
+        total_w = sum(WEIGHTS.get(s["component"], 0.0) for s in scores)
+        if total_w > 0:
+            risk_score = sum(
+                s["score"] * WEIGHTS.get(s["component"], 0.0) / total_w
+                for s in scores
+            )
+            risk_score = round(min(100.0, max(0.0, risk_score)), 2)
+        else:
+            risk_score = 50.0
+    else:
+        risk_score = 50.0
+
+    approved = len(veto_reasons) == 0 and risk_score < 75.0
 
     result = run_debate(
-        risk_score=50.0,
-        component_scores=[],
-        veto_reasons=[],
+        risk_score=risk_score,
+        component_scores=scores,
+        veto_reasons=veto_reasons,
         direction=req.direction,
         trade_size_usd=req.trade_size_usd,
-        original_approved=True,
+        original_approved=approved,
         strategy=req.strategy or "spot",
     )
     return result

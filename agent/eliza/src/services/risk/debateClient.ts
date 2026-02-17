@@ -189,6 +189,44 @@ export class DebateClient {
     }
   }
 
+  /**
+   * Record a trade outcome for empirical Bayes prior learning.
+   *
+   * POSTs to /guardian/trade-outcome which feeds record_debate_outcome()
+   * when strategy is set — enabling the debate system to learn from outcomes.
+   */
+  async recordOutcome(params: {
+    pnl: number;
+    size: number;
+    token: string;
+    strategy: string;
+  }): Promise<void> {
+    const url = `${this.config.apiUrl}/guardian/trade-outcome`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pnl: params.pnl,
+          size: params.size,
+          token: params.token,
+          strategy: params.strategy,
+        }),
+        signal: AbortSignal.timeout(this.config.timeoutMs),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        logger.warn('[DebateClient] recordOutcome failed', { status: response.status, body: text });
+      }
+    } catch (error) {
+      logger.warn('[DebateClient] recordOutcome error', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   // ============= DEBATE TRANSCRIPT STORE =============
 
   /**

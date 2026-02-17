@@ -581,13 +581,13 @@ def assess_trade(
     if HAWKES_TIMING_GATE_ENABLED and hawkes_data:
         try:
             from cortex.hawkes import hawkes_intensity as _hawkes_intensity
-            h_params = hawkes_data
-            events = hawkes_data.get("event_times", np.array([]))
-            if len(events) > 0 and h_params.get("mu") and h_params.get("alpha") and h_params.get("beta"):
-                h_info = _hawkes_intensity(events, h_params)
-                mu = h_params["mu"]
-                alpha_h = h_params["alpha"]
-                beta_h = h_params["beta"]
+            events = np.asarray(hawkes_data.get("event_times", []), dtype=float)
+            mu = hawkes_data.get("mu", 0)
+            alpha_h = hawkes_data.get("alpha", 0)
+            beta_h = hawkes_data.get("beta", 0)
+            if len(events) > 0 and mu and alpha_h and beta_h:
+                t_now = np.array([float(events[-1]) + 0.01])
+                h_info = _hawkes_intensity(events, hawkes_data, t_eval=t_now)
                 steady_state = mu + alpha_h / beta_h if beta_h > 0 else mu
                 gate_threshold = mu + HAWKES_TIMING_KAPPA * (steady_state - mu)
                 if h_info["current_intensity"] > gate_threshold:

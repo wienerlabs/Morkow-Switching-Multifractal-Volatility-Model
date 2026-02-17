@@ -926,6 +926,10 @@ class GuardianAssessResponse(BaseModel):
     recommended_size: float = Field(..., ge=0, description="Suggested position size in USD")
     regime_state: int
     confidence: float = Field(..., ge=0, le=1, description="Model agreement level")
+    calibrated_confidence: float | None = None
+    effective_threshold: float = Field(75.0, description="Approval threshold (may be regime-scaled)")
+    hawkes_deferred: bool = False
+    copula_gate_triggered: bool = False
     expires_at: str
     component_scores: list[GuardianComponentScore]
     circuit_breaker: dict | None = None
@@ -1181,6 +1185,10 @@ class TradeOutcomeRequest(BaseModel):
     pnl: float = Field(..., description="Profit/loss of the trade in USD")
     size: float = Field(..., description="Trade size in USD")
     token: str = Field("", description="Token symbol")
+    regime: int = Field(-1, description="MSM regime at trade time (-1 = unknown)")
+    component_scores: list[dict] | None = Field(None, description="Guardian component scores at trade time")
+    risk_score: float = Field(0.0, description="Composite risk score at trade time")
+    strategy: str = Field("", description="Trading strategy (spot, arbitrage, lp, perp)")
 
 
 # ── Circuit Breaker models ──

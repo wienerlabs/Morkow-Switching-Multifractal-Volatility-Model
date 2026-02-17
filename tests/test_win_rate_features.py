@@ -212,22 +212,109 @@ class TestHawkesTimingGate:
 
     def test_gate_disabled_no_veto(self, monkeypatch):
         import cortex.guardian as g
+        g._cache.clear()
         monkeypatch.setattr(g, "HAWKES_TIMING_GATE_ENABLED", False)
         result = g.assess_trade(
-            token="SOL", trade_size_usd=100, direction="long",
+            token="HAWKES_OFF", trade_size_usd=100, direction="long",
             model_data=None, evt_data=None, svj_data=None,
             hawkes_data={"event_times": np.array([1.0, 2.0]), "mu": 0.5, "alpha": 0.3, "beta": 1.0},
         )
+        assert result["hawkes_deferred"] is False
         assert "hawkes_intensity_gate_defer" not in result["veto_reasons"]
 
     def test_gate_structure_in_result(self):
         from cortex.guardian import assess_trade
         result = assess_trade(
-            token="SOL", trade_size_usd=100, direction="long",
+            token="HAWKES_STRUCT", trade_size_usd=100, direction="long",
             model_data=None, evt_data=None, svj_data=None, hawkes_data=None,
         )
         assert "hawkes_deferred" in result
         assert isinstance(result["hawkes_deferred"], bool)
+
+    def test_gate_fires_on_high_intensity(self, monkeypatch):
+        """When many events cluster near the evaluation point, intensity >> baseline.
+        Gate should defer the trade."""
+        import cortex.guardian as g
+        g._cache.clear()
+        monkeypatch.setattr(g, "HAWKES_TIMING_GATE_ENABLED", True)
+        monkeypatch.setattr(g, "HAWKES_TIMING_KAPPA", 1.0)
+
+        # Cluster 20 events in the last 0.5 time units → high excitation
+        events = np.concatenate([
+            np.linspace(0, 8, 10),       # sparse early events
+            np.linspace(9.5, 10.0, 20),  # dense cluster at the end
+        ])
+        hawkes_data = {
+            "event_times": events,
+            "mu": 0.5,     # low baseline
+            "alpha": 0.8,  # strong excitation
+            "beta": 1.0,   # moderate decay
+        }
+        result = g.assess_trade(
+            token="HAWKES_HIGH", trade_size_usd=100, direction="long",
+            model_data=None, evt_data=None, svj_data=None,
+            hawkes_data=hawkes_data,
+        )
+        assert result["hawkes_deferred"] is True
+        assert "hawkes_intensity_gate_defer" in result["veto_reasons"]
+
+    def test_gate_allows_on_low_intensity(self, monkeypatch):
+        """When events are sparse and excitation is weak, gate should not fire."""
+        import cortex.guardian as g
+        g._cache.clear()
+        monkeypatch.setattr(g, "HAWKES_TIMING_GATE_ENABLED", True)
+        # High kappa = very lenient gate: only triggers at extreme spikes
+        monkeypatch.setattr(g, "HAWKES_TIMING_KAPPA", 10.0)
+
+        # One event at t=0, evaluated at t=100.01 → excitation fully decayed
+        events = np.array([0.0, 100.0])
+        hawkes_data = {
+            "event_times": events,
+            "mu": 1.0,     # baseline
+            "alpha": 0.1,  # weak excitation (peak spike = 0.1 above mu)
+            "beta": 5.0,   # fast decay → steady_state = 1.02
+            # gate_threshold = 1.0 + 10.0 * 0.02 = 1.2 — spike of 0.095 won't reach it
+        }
+        result = g.assess_trade(
+            token="HAWKES_LOW", trade_size_usd=100, direction="long",
+            model_data=None, evt_data=None, svj_data=None,
+            hawkes_data=hawkes_data,
+        )
+        assert result["hawkes_deferred"] is False
+        assert "hawkes_intensity_gate_defer" not in result["veto_reasons"]
+
+    def test_gate_uses_t_eval_not_linspace(self, monkeypatch):
+        """Verify the fix: intensity is evaluated at events[-1] via t_eval,
+        not via a 500-point linspace (which was the bug)."""
+        import cortex.guardian as g
+        from unittest.mock import patch, MagicMock
+        g._cache.clear()
+        monkeypatch.setattr(g, "HAWKES_TIMING_GATE_ENABLED", True)
+        monkeypatch.setattr(g, "HAWKES_TIMING_KAPPA", 1.0)
+
+        events = np.array([1.0, 2.0, 3.0])
+        hawkes_data = {"event_times": events, "mu": 0.5, "alpha": 0.3, "beta": 1.0}
+
+        with patch("cortex.hawkes.hawkes_intensity") as mock_hi:
+            mock_hi.return_value = {
+                "current_intensity": 0.6,
+                "baseline": 0.5,
+                "t_eval": [3.0],
+                "intensity": [0.6],
+                "intensity_ratio": 1.2,
+                "peak_intensity": 0.6,
+                "mean_intensity": 0.6,
+            }
+            g.assess_trade(
+                token="HAWKES_TEVAL", trade_size_usd=100, direction="long",
+                model_data=None, evt_data=None, svj_data=None,
+                hawkes_data=hawkes_data,
+            )
+            mock_hi.assert_called_once()
+            call_kwargs = mock_hi.call_args
+            # Verify t_eval was explicitly passed (the fix)
+            assert call_kwargs.kwargs.get("t_eval") is not None
+            np.testing.assert_array_almost_equal(call_kwargs.kwargs["t_eval"], [3.01], decimal=2)
 
 
 # ── Task 5: Regime-Conditional Entry Thresholds ────────────────────
@@ -247,6 +334,7 @@ class TestRegimeThresholds:
 
     def test_high_vol_regime_tightens_threshold(self, monkeypatch):
         import cortex.guardian as g
+        g._cache.clear()  # Clear TTL cache from previous test
         monkeypatch.setattr(g, "REGIME_THRESHOLD_SCALING_ENABLED", True)
         monkeypatch.setattr(g, "REGIME_THRESHOLD_LAMBDA", 0.5)
         monkeypatch.setattr(g, "APPROVAL_THRESHOLD", 75.0)
@@ -464,6 +552,7 @@ class TestAssessTradeIntegration:
 
     def test_all_disabled_is_backward_compatible(self, monkeypatch):
         import cortex.guardian as g
+        g._cache.clear()
         monkeypatch.setattr(g, "CALIBRATION_ENABLED", False)
         monkeypatch.setattr(g, "KELLY_REGIME_AWARE", False)
         monkeypatch.setattr(g, "ADAPTIVE_WEIGHTS_ENABLED", False)
@@ -479,3 +568,109 @@ class TestAssessTradeIntegration:
         assert result["effective_threshold"] == 75.0
         assert result["hawkes_deferred"] is False
         assert result["copula_gate_triggered"] is False
+
+
+# ── Trade Outcome Endpoint & Feedback Loop ──────────────────────────
+
+
+class TestTradeOutcomeEndpoint:
+    """Tests for the upgraded POST /guardian/trade-outcome endpoint."""
+
+    def setup_method(self):
+        import cortex.guardian as g
+        import cortex.debate as d
+        g._trade_history.clear()
+        d._debate_outcomes.clear()
+
+    def test_backward_compat_minimal_payload(self):
+        """Old callers sending only pnl+size still work."""
+        from cortex.guardian import record_trade_outcome
+        record_trade_outcome(pnl=10.0, size=100.0)
+        # Should not raise
+
+    def test_new_fields_recorded(self):
+        """New fields (regime, component_scores, risk_score) are accepted."""
+        from cortex.guardian import record_trade_outcome
+        import cortex.guardian as g
+        scores = [{"component": "evt", "score": 60.0}]
+        record_trade_outcome(
+            pnl=-5.0, size=200.0, token="SOL",
+            regime=3, component_scores=scores, risk_score=55.0,
+        )
+        assert len(g._trade_history) == 1
+        assert g._trade_history[-1]["regime"] == 3
+
+    def test_adaptive_weights_called_when_enabled(self, monkeypatch):
+        """When ADAPTIVE_WEIGHTS_ENABLED, record_outcome is called."""
+        import cortex.guardian as g
+        from unittest.mock import MagicMock
+        monkeypatch.setattr(g, "ADAPTIVE_WEIGHTS_ENABLED", True)
+
+        mock_record = MagicMock(return_value={"active": False})
+        monkeypatch.setattr("cortex.adaptive_weights.record_outcome", mock_record)
+
+        scores = [{"component": "evt", "score": 70.0}]
+        g.record_trade_outcome(
+            pnl=10.0, size=100.0, token="SOL",
+            regime=1, component_scores=scores, risk_score=65.0,
+        )
+        mock_record.assert_called_once_with(scores, 65.0, 10.0)
+
+    def test_adaptive_weights_not_called_when_disabled(self, monkeypatch):
+        """When disabled, adaptive weights are not touched."""
+        import cortex.guardian as g
+        from unittest.mock import MagicMock
+        monkeypatch.setattr(g, "ADAPTIVE_WEIGHTS_ENABLED", False)
+
+        mock_record = MagicMock()
+        monkeypatch.setattr("cortex.adaptive_weights.record_outcome", mock_record)
+
+        g.record_trade_outcome(pnl=10.0, size=100.0)
+        mock_record.assert_not_called()
+
+    def test_api_route_calls_debate_outcome(self, monkeypatch):
+        """The API route handler calls debate.record_debate_outcome when strategy is set."""
+        import cortex.debate as d
+        monkeypatch.setattr(d, "DEBATE_EMPIRICAL_PRIOR_ENABLED", True)
+
+        from api.routes.guardian import record_trade_outcome as route_handler
+        from api.models import TradeOutcomeRequest
+
+        req = TradeOutcomeRequest(
+            pnl=15.0, size=200.0, token="ETH",
+            regime=2, strategy="arb", risk_score=40.0,
+        )
+        result = route_handler(req)
+        assert result["status"] == "recorded"
+        assert result["strategy"] == "arb"
+        # Debate outcome should have been recorded
+        assert len(d._debate_outcomes) == 1
+        assert d._debate_outcomes[0]["strategy"] == "arb"
+
+    def test_api_route_no_debate_without_strategy(self):
+        """Without a strategy, debate outcome is not recorded."""
+        import cortex.debate as d
+
+        from api.routes.guardian import record_trade_outcome as route_handler
+        from api.models import TradeOutcomeRequest
+
+        req = TradeOutcomeRequest(pnl=5.0, size=100.0, token="SOL")
+        result = route_handler(req)
+        assert result["status"] == "recorded"
+        assert len(d._debate_outcomes) == 0
+
+    def test_api_route_returns_all_fields(self):
+        """The response includes token, regime, and strategy."""
+        from api.routes.guardian import record_trade_outcome as route_handler
+        from api.models import TradeOutcomeRequest
+
+        req = TradeOutcomeRequest(
+            pnl=-3.0, size=50.0, token="RAY",
+            regime=4, strategy="lp",
+        )
+        result = route_handler(req)
+        assert result["pnl"] == -3.0
+        assert result["size"] == 50.0
+        assert result["token"] == "RAY"
+        assert result["regime"] == 4
+        assert result["strategy"] == "lp"
