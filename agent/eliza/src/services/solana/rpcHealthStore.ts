@@ -16,9 +16,10 @@ import crypto from 'crypto';
 import { config as prodConfig } from '../../config/production.js';
 import { logger } from '../logger.js';
 
-// Lazy-load ioredis to avoid hard failure if not installed
-let Redis: typeof import('ioredis').default | null = null;
-let redisClient: InstanceType<typeof import('ioredis').default> | null = null;
+// Lazy-load ioredis to avoid hard failure if not installed.
+// We use `any` for the client since ioredis is dynamically imported.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let redisClient: any = null;
 let isConnected = false;
 
 const KEY_PREFIX = 'rpc:health:';
@@ -55,13 +56,13 @@ export async function initRpcHealthStore(): Promise<void> {
 
   try {
     const ioredis = await import('ioredis');
-    Redis = ioredis.default;
+    const RedisClass = ioredis.default;
 
-    redisClient = new Redis(prodConfig.redis.url, {
+    redisClient = new RedisClass(prodConfig.redis.url, {
       maxRetriesPerRequest: 1,
       lazyConnect: true,
       connectTimeout: 5000,
-      retryStrategy(times) {
+      retryStrategy(times: number) {
         if (times > 3) return null; // Stop reconnecting after 3 attempts
         return Math.min(times * 500, 3000);
       },
@@ -72,7 +73,7 @@ export async function initRpcHealthStore(): Promise<void> {
       logger.info('[RpcHealthStore] Redis connected for RPC health sync');
     });
 
-    redisClient.on('error', (err) => {
+    redisClient.on('error', (err: Error) => {
       isConnected = false;
       logger.warn('[RpcHealthStore] Redis error', { error: err.message });
     });
@@ -120,7 +121,7 @@ export function writeEndpointHealth(url: string, health: Omit<SharedEndpointHeal
   };
 
   // Fire-and-forget — don't await
-  redisClient.setex(key, TTL_SECONDS, JSON.stringify(value)).catch((err) => {
+  redisClient.setex(key, TTL_SECONDS, JSON.stringify(value)).catch((err: Error) => {
     logger.warn('[RpcHealthStore] Write failed', { error: err.message });
   });
 }
