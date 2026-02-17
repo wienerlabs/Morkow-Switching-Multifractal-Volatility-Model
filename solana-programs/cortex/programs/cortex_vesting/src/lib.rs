@@ -67,6 +67,12 @@ pub mod cortex_vesting {
 
         ctx.accounts.vesting_schedule.claimed_amount += claimable;
 
+        if ctx.accounts.vesting_schedule.tge_unlock_percent > 0
+            && !ctx.accounts.vesting_schedule.tge_claimed
+        {
+            ctx.accounts.vesting_schedule.tge_claimed = true;
+        }
+
         emit!(TokensClaimed {
             beneficiary,
             amount: claimable,

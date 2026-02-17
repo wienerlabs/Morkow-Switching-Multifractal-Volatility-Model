@@ -1,16 +1,14 @@
 [workspace]
 members = [
+    "programs/cortex",
     "programs/cortex_token",
     "programs/cortex_private_sale",
     "programs/cortex_public_sale",
     "programs/cortex_vesting",
-    "programs/cortex_staking"
-]
-exclude = [
-    "programs/cortex",
+    "programs/cortex_staking",
     "programs/cortex_treasury",
     "programs/cortex_vault",
-    "programs/cortex_strategy"
+    "programs/cortex_strategy",
 ]
 resolver = "2"
 

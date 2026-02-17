@@ -8,6 +8,9 @@ edition = "2021"
 crate-type = ["cdylib", "lib"]
 name = "cortex_staking"
 
+[features]
+testing = []
+
 [dependencies]
 anchor-lang = { version = "0.28.0", features = ["init-if-needed"] }
 anchor-spl = "0.28.0"

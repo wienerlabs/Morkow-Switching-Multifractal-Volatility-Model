@@ -3,7 +3,11 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer, Mint};
 
 declare_id!("rYantWFyB4PsL36r9XB7nUb8TQ1pAhn9A87S6TbpMsr");
 
-pub const COOLDOWN_PERIOD: i64 = 60; // 1 minute for testing (TODO: change back to 3 * 24 * 60 * 60)
+#[cfg(not(feature = "testing"))]
+pub const COOLDOWN_PERIOD: i64 = 3 * 24 * 60 * 60; // 3 days (259200 seconds)
+
+#[cfg(feature = "testing")]
+pub const COOLDOWN_PERIOD: i64 = 60; // 1 minute — test-only override
 pub const MAX_STAKE_PER_USER: u64 = 100_000_000_000_000_000; // 100M tokens max (9 decimals)
 pub const MIN_STAKE: u64 = 1_000_000_000; // 1 token minimum (9 decimals)
 pub const PRECISION: u128 = 1_000_000_000_000; // 1e12 for reward calculations
