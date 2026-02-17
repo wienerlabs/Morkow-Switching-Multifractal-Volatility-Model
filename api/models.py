@@ -36,10 +36,6 @@ class CalibrateRequest(BaseModel):
             "'estimate' = estimate via MLE."
         ),
     )
-    leverage_gamma: float | str | None = Field(
-        None,
-        description="Asymmetric leverage parameter. None=no leverage, float=fixed value, 'estimate'=MLE estimation",
-    )
 
 
 class CalibrationMetrics(BaseModel):
