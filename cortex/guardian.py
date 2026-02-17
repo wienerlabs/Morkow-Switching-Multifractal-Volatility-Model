@@ -39,6 +39,17 @@ from cortex.config import (
     ALAMS_CRISIS_REGIME_BONUS,
     ALAMS_HIGH_DELTA_BONUS,
     ALAMS_HIGH_DELTA_THRESHOLD,
+    # Task 1-8 feature flags
+    CALIBRATION_ENABLED,
+    KELLY_REGIME_AWARE,
+    KELLY_REGIME_FRACTIONS,
+    ADAPTIVE_WEIGHTS_ENABLED,
+    HAWKES_TIMING_GATE_ENABLED,
+    HAWKES_TIMING_KAPPA,
+    REGIME_THRESHOLD_SCALING_ENABLED,
+    REGIME_THRESHOLD_LAMBDA,
+    COPULA_RISK_GATE_ENABLED,
+    TAIL_DEPENDENCE_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
@@ -314,13 +325,35 @@ def _score_alams(alams_data: dict) -> dict:
     }
 
 
-def record_trade_outcome(pnl: float, size: float, token: str = "") -> None:
-    """Record a completed trade for Kelly Criterion calculation."""
-    _trade_history.append({"pnl": pnl, "size": size, "token": token, "ts": time.time()})
+def record_trade_outcome(
+    pnl: float,
+    size: float,
+    token: str = "",
+    regime: int = -1,
+    component_scores: list[dict] | None = None,
+    risk_score: float = 0.0,
+) -> None:
+    """Record a completed trade for Kelly Criterion and adaptive weights."""
+    _trade_history.append({
+        "pnl": pnl, "size": size, "token": token,
+        "regime": regime, "ts": time.time(),
+    })
+
+    # Task 3: Update adaptive weights
+    if ADAPTIVE_WEIGHTS_ENABLED and component_scores:
+        try:
+            from cortex.adaptive_weights import record_outcome
+            record_outcome(component_scores, risk_score, pnl)
+        except Exception:
+            logger.debug("Adaptive weight update failed", exc_info=True)
 
 
-def _compute_kelly() -> dict[str, Any]:
-    """Compute Kelly fraction from trade history."""
+def _compute_kelly(current_regime: int = -1) -> dict[str, Any]:
+    """Compute Kelly fraction from trade history.
+
+    Task 2: When KELLY_REGIME_AWARE is enabled, computes separate Kelly
+    fractions per regime and uses the regime-specific fractional multiplier.
+    """
     n = len(_trade_history)
     if n < GUARDIAN_KELLY_MIN_TRADES:
         return {"active": False, "n_trades": n, "reason": f"need {GUARDIAN_KELLY_MIN_TRADES} trades, have {n}"}
@@ -341,17 +374,39 @@ def _compute_kelly() -> dict[str, Any]:
     b = avg_win / avg_loss
     q = 1.0 - p
     kelly_full = (p * b - q) / b if b > 0 else 0.0
-    kelly_fraction = max(0.0, kelly_full * GUARDIAN_KELLY_FRACTION)
 
-    return {
+    # Task 2: Regime-conditional Kelly fraction
+    fraction_used = GUARDIAN_KELLY_FRACTION
+    regime_stats = None
+    if KELLY_REGIME_AWARE and current_regime >= 0:
+        regime_key = str(current_regime)
+        fraction_used = KELLY_REGIME_FRACTIONS.get(regime_key, GUARDIAN_KELLY_FRACTION)
+
+        # Compute regime-specific win rate for diagnostics
+        regime_trades = [t for t in _trade_history if t.get("regime") == current_regime]
+        if len(regime_trades) >= 10:
+            r_wins = [t for t in regime_trades if t["pnl"] > 0]
+            regime_stats = {
+                "regime": current_regime,
+                "n_trades": len(regime_trades),
+                "win_rate": round(len(r_wins) / len(regime_trades), 4),
+                "fraction_override": round(fraction_used, 4),
+            }
+
+    kelly_fraction = max(0.0, kelly_full * fraction_used)
+
+    result: dict[str, Any] = {
         "active": True,
         "n_trades": n,
         "win_rate": round(p, 4),
         "win_loss_ratio": round(b, 4),
         "kelly_full": round(kelly_full, 4),
         "kelly_fraction": round(kelly_fraction, 4),
-        "fraction_used": GUARDIAN_KELLY_FRACTION,
+        "fraction_used": fraction_used,
     }
+    if regime_stats:
+        result["regime_stats"] = regime_stats
+    return result
 
 
 def get_kelly_stats() -> dict[str, Any]:
@@ -363,7 +418,7 @@ def _recommend_size(
     requested_size: float, risk_score: float, current_regime: int, num_states: int
 ) -> float:
     """Scale position size using Kelly fraction (if active) or linear fallback."""
-    kelly = _compute_kelly()
+    kelly = _compute_kelly(current_regime=current_regime)
 
     if kelly["active"]:
         kelly_f = kelly["kelly_fraction"]
@@ -467,9 +522,18 @@ def assess_trade(
         if alams_data.get("current_regime", 0) >= 4:
             veto_reasons.append("alams_crisis_regime")
 
+    # ── Task 3: Use adaptive weights if enabled ──
+    active_weights = WEIGHTS
+    if ADAPTIVE_WEIGHTS_ENABLED:
+        try:
+            from cortex.adaptive_weights import get_weights
+            active_weights = get_weights()
+        except Exception:
+            logger.debug("Adaptive weights unavailable, using static", exc_info=True)
+
     # Composite score (re-normalize weights to available components)
     if available_weights > 0 and scores:
-        weight_map = {s["component"]: WEIGHTS[s["component"]] for s in scores}
+        weight_map = {s["component"]: active_weights.get(s["component"], WEIGHTS.get(s["component"], 0.0)) for s in scores}
         total_w = sum(weight_map.values())
         risk_score = sum(
             s["score"] * weight_map[s["component"]] / total_w for s in scores
@@ -478,6 +542,21 @@ def assess_trade(
         risk_score = 50.0
 
     risk_score = round(min(100.0, max(0.0, risk_score)), 2)
+
+    # ── Task 5: Regime-conditional entry thresholds ──
+    effective_threshold = APPROVAL_THRESHOLD
+    if REGIME_THRESHOLD_SCALING_ENABLED and model_data:
+        try:
+            regime_sigma = model_data.get("calibration", {}).get("sigma_states", [])
+            if regime_sigma and current_regime >= 1:
+                sigma_current = regime_sigma[min(current_regime - 1, len(regime_sigma) - 1)]
+                sigma_median = float(np.median(regime_sigma))
+                if sigma_median > 0:
+                    ratio = sigma_current / sigma_median
+                    effective_threshold = APPROVAL_THRESHOLD * (1.0 + REGIME_THRESHOLD_LAMBDA * (ratio - 1.0))
+                    effective_threshold = max(50.0, min(95.0, effective_threshold))
+        except Exception:
+            logger.debug("Regime threshold scaling failed", exc_info=True)
 
     # ── Circuit breaker check ──
     from cortex.circuit_breaker import is_blocked, record_score
@@ -497,8 +576,55 @@ def assess_trade(
         limits = None
         logger.debug("Portfolio risk check unavailable", exc_info=True)
 
-    approved = len(veto_reasons) == 0 and risk_score < APPROVAL_THRESHOLD
+    # ── Task 4: Hawkes intensity-gated trade timing ──
+    hawkes_deferred = False
+    if HAWKES_TIMING_GATE_ENABLED and hawkes_data:
+        try:
+            from cortex.hawkes import hawkes_intensity as _hawkes_intensity
+            h_params = hawkes_data
+            events = hawkes_data.get("event_times", np.array([]))
+            if len(events) > 0 and h_params.get("mu") and h_params.get("alpha") and h_params.get("beta"):
+                h_info = _hawkes_intensity(events, h_params)
+                mu = h_params["mu"]
+                alpha_h = h_params["alpha"]
+                beta_h = h_params["beta"]
+                steady_state = mu + alpha_h / beta_h if beta_h > 0 else mu
+                gate_threshold = mu + HAWKES_TIMING_KAPPA * (steady_state - mu)
+                if h_info["current_intensity"] > gate_threshold:
+                    hawkes_deferred = True
+                    veto_reasons.append("hawkes_intensity_gate_defer")
+        except Exception:
+            logger.debug("Hawkes timing gate check failed", exc_info=True)
+
+    # ── Task 8: Copula tail-dependence risk gate ──
+    copula_gate_triggered = False
+    if COPULA_RISK_GATE_ENABLED:
+        try:
+            from cortex.copula import _tail_dependence
+            # Check if a recent copula fit is available via model_data
+            copula_info = (model_data or {}).get("copula_fit")
+            if copula_info and copula_info.get("family") in ("clayton", "student_t"):
+                td = _tail_dependence(copula_info["family"], copula_info.get("params", {}))
+                lambda_lower = td.get("lambda_lower", 0.0)
+                if lambda_lower > TAIL_DEPENDENCE_THRESHOLD:
+                    copula_gate_triggered = True
+                    veto_reasons.append(f"copula_tail_dependence_{lambda_lower:.3f}")
+        except Exception:
+            logger.debug("Copula risk gate check failed", exc_info=True)
+
+    approved = len(veto_reasons) == 0 and risk_score < effective_threshold
     confidence = round(available_weights / sum(WEIGHTS.values()), 4)
+
+    # ── Task 1: Calibrate approval confidence ──
+    calibrated_confidence = None
+    if CALIBRATION_ENABLED:
+        try:
+            from cortex.calibration_bridge import calibrate_probability
+            raw_approval_prob = max(0.0, 1.0 - risk_score / 100.0)
+            calibrated_confidence = round(calibrate_probability(raw_approval_prob), 4)
+        except Exception:
+            logger.debug("Calibration bridge unavailable", exc_info=True)
+
     recommended_size = _recommend_size(
         trade_size_usd, risk_score, current_regime, num_states
     )
@@ -533,6 +659,10 @@ def assess_trade(
         "recommended_size": recommended_size,
         "regime_state": current_regime,
         "confidence": confidence,
+        "calibrated_confidence": calibrated_confidence,
+        "effective_threshold": round(effective_threshold, 2),
+        "hawkes_deferred": hawkes_deferred,
+        "copula_gate_triggered": copula_gate_triggered,
         "expires_at": expires_at.isoformat(),
         "component_scores": scores,
         "circuit_breaker": cb_states,
