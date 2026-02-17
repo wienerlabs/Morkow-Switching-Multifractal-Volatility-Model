@@ -12,12 +12,14 @@ import orchestratorRouter from "./routes/orchestrator.js";
 import { initializeAgent } from "./agent/index.js";
 import { getOrchestrator } from "./agent/orchestrator/index.js";
 import { solanaAuth } from "./middleware/solanaAuth.js";
+import { rateLimitMiddleware } from "./middleware/rateLimit.js";
 
 const app = express();
 
 app.use(cors({ origin: config.CORS_ORIGIN }));
 app.use(express.json());
 app.use(requestIdMiddleware);
+app.use(rateLimitMiddleware);
 
 app.use("/api/health", healthRouter);
 app.use("/api/vaults", vaultsRouter);
