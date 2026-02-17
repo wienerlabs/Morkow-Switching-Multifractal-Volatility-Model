@@ -5,12 +5,20 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
 
+from api.models import (
+    DexLiquidityMetricsResponse,
+    DexNewTokensResponse,
+    DexPairLiquidityResponse,
+    DexStatusResponse,
+    DexTokenPriceResponse,
+)
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["dex"])
 
 
-@router.get("/dex/price/{token_address}", summary="Get token price")
+@router.get("/dex/price/{token_address}", summary="Get token price", response_model=DexTokenPriceResponse)
 def get_dex_price(token_address: str):
     """Fetch current token price from DexScreener."""
     from cortex.data.dexscreener import get_token_price
@@ -24,7 +32,7 @@ def get_dex_price(token_address: str):
         raise HTTPException(status_code=502, detail=str(exc))
 
 
-@router.get("/dex/pair/{pair_address}", summary="Get pair liquidity")
+@router.get("/dex/pair/{pair_address}", summary="Get pair liquidity", response_model=DexPairLiquidityResponse)
 def get_dex_pair(pair_address: str):
     """Fetch liquidity data for a trading pair from DexScreener."""
     from cortex.data.dexscreener import get_pair_liquidity
@@ -36,7 +44,7 @@ def get_dex_pair(pair_address: str):
         raise HTTPException(status_code=502, detail=str(exc))
 
 
-@router.get("/dex/liquidity-metrics/{pair_address}", summary="Get liquidity metrics")
+@router.get("/dex/liquidity-metrics/{pair_address}", summary="Get liquidity metrics", response_model=DexLiquidityMetricsResponse)
 def get_dex_liquidity_metrics(pair_address: str):
     """Extract structured liquidity metrics (TVL, depth, concentration) for a pair."""
     from cortex.data.dexscreener import extract_liquidity_metrics
@@ -48,7 +56,7 @@ def get_dex_liquidity_metrics(pair_address: str):
         raise HTTPException(status_code=502, detail=str(exc))
 
 
-@router.get("/dex/new-tokens", summary="List new tokens")
+@router.get("/dex/new-tokens", summary="List new tokens", response_model=DexNewTokensResponse)
 def get_dex_new_tokens(
     limit: int = Query(20, ge=1, le=100),
     min_liquidity: bool = Query(True),
@@ -59,7 +67,7 @@ def get_dex_new_tokens(
     return {"tokens": get_new_tokens(limit=limit, min_liquidity=min_liquidity)}
 
 
-@router.get("/dex/status", summary="DexScreener service status")
+@router.get("/dex/status", summary="DexScreener service status", response_model=DexStatusResponse)
 def get_dex_status():
     """Return DexScreener integration status and availability."""
     from cortex.data.dexscreener import is_available

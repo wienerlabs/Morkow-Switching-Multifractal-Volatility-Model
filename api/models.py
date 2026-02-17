@@ -1714,3 +1714,70 @@ class HistoricalExportResponse(BaseModel):
     calibration: dict
     calibrated_at: str
     timestamp: str
+
+
+# ── DexScreener Response Models ──
+
+
+class DexTokenPriceResponse(BaseModel):
+    source: str = "dexscreener"
+    token_address: str
+    price_usd: Optional[float] = None
+    price_native: Optional[float] = None
+    pair_address: Optional[str] = None
+    dex_id: Optional[str] = None
+    liquidity_usd: float = 0.0
+    volume_24h: float = 0.0
+    error: Optional[str] = None
+    timestamp: float
+    timestamp_iso: Optional[str] = None
+
+
+class DexPairLiquidityResponse(BaseModel):
+    source: str = "dexscreener"
+    pair_address: str
+    price_usd: Optional[float] = None
+    liquidity_usd: float = 0.0
+    liquidity_base: float = 0.0
+    liquidity_quote: float = 0.0
+    volume_24h: float = 0.0
+    volume_6h: float = 0.0
+    volume_1h: float = 0.0
+    txns_24h: Optional[dict] = None
+    price_change_24h: float = 0.0
+    dex_id: Optional[str] = None
+    error: Optional[str] = None
+    timestamp: float
+
+
+class DexLiquidityMetricsResponse(BaseModel):
+    source: str = "dexscreener"
+    pair_address: Optional[str] = None
+    spread_pct: Optional[float] = None
+    spread_vol_pct: Optional[float] = None
+    volume_24h: Optional[float] = None
+    liquidity: Optional[float] = None
+    error: Optional[str] = None
+    timestamp: Optional[float] = None
+
+
+class DexNewToken(BaseModel):
+    token_address: str
+    pair_address: Optional[str] = None
+    dex_id: Optional[str] = None
+    price_usd: Optional[float] = None
+    liquidity_usd: float = 0.0
+    volume_24h: float = 0.0
+    pair_created_at: Optional[int] = None
+    base_token: Optional[dict] = None
+    timestamp: float
+    meets_min_liquidity: bool = False
+
+
+class DexNewTokensResponse(BaseModel):
+    tokens: list[DexNewToken]
+
+
+class DexStatusResponse(BaseModel):
+    available: bool
+    timestamp: str
