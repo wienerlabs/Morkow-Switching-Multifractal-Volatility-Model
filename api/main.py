@@ -86,11 +86,59 @@ async def lifespan(app: FastAPI):
     logger.info("CortexAgent Risk Engine shutting down")
 
 
+OPENAPI_TAGS = [
+    {"name": "guardian", "description": "Unified risk veto — trade assessment, Kelly sizing, circuit breakers, adversarial debate"},
+    {"name": "msm", "description": "Markov-Switching Multifractal — calibration, regime detection, VaR, volatility forecasts"},
+    {"name": "evt", "description": "Extreme Value Theory — GPD tail fitting, tail VaR/CVaR, backtesting"},
+    {"name": "hawkes", "description": "Hawkes process — event clustering, contagion intensity, flash-crash risk"},
+    {"name": "svj", "description": "Stochastic Volatility with Jumps — jump detection, decomposition, SVJ-VaR"},
+    {"name": "rough", "description": "Rough volatility — rBergomi/rHeston calibration, Hurst exponent, forecasting"},
+    {"name": "fractal", "description": "Multifractal analysis — Hurst exponent, DFA, spectrum width"},
+    {"name": "lvar", "description": "Liquidity-adjusted VaR — spread estimation, market impact, regime-conditional liquidity"},
+    {"name": "portfolio", "description": "Portfolio VaR — multi-asset calibration, copula fitting, stress testing"},
+    {"name": "portfolio-risk", "description": "Portfolio risk management — positions, drawdown limits, correlation exposure"},
+    {"name": "portfolio-optimization", "description": "Portfolio optimization — min-CVaR, max-Sharpe, risk parity via skfolio"},
+    {"name": "comparison", "description": "Model comparison — MSM vs GARCH vs EGARCH benchmark metrics"},
+    {"name": "regime", "description": "Regime analytics — durations, history, transition alerts, per-regime statistics"},
+    {"name": "news", "description": "News intelligence — sentiment feed, market signal, background buffer"},
+    {"name": "streams", "description": "Real-time streams — Helius transaction events, Guardian SSE alerts"},
+    {"name": "oracle", "description": "Oracle price feeds — Pyth price data, historical lookups, streaming"},
+    {"name": "axiom", "description": "Axiom DEX aggregator — token prices, pair liquidity, holder analysis"},
+    {"name": "onchain", "description": "On-chain liquidity — CLMM depth, realized spreads, on-chain LVaR"},
+    {"name": "Tick Data & Backtesting", "description": "Tick-level data — custom bar types, intraday VaR backtesting"},
+    {"name": "hawkes-onchain", "description": "On-chain Hawkes — multivariate event clustering, cross-excitation, flash-crash scoring"},
+    {"name": "token", "description": "Token info — metadata, price, market cap via DexScreener/Birdeye"},
+    {"name": "vine-copula", "description": "Vine copula — R-vine/C-vine/D-vine fitting, tail dependence, simulation"},
+    {"name": "ccxt", "description": "CCXT data feeds — OHLCV candles, order books, tickers from CEXs"},
+    {"name": "social", "description": "Social sentiment — aggregated sentiment from Twitter, Reddit, Telegram"},
+    {"name": "macro", "description": "Macro indicators — Fear & Greed index, BTC dominance, market overview"},
+    {"name": "execution", "description": "Trade execution — preflight checks, swap execution, execution log"},
+    {"name": "calibration-tasks", "description": "Async calibration — task status polling for long-running calibrations"},
+    {"name": "models", "description": "Model versioning — list versions, rollback to previous calibrations"},
+]
+
 app = FastAPI(
     title="CortexAgent Risk Engine",
-    description="Multi-model volatility and risk management API — MSM regime detection, EVT, SVJ, Hawkes, copula VaR, rough volatility, and Guardian risk veto for autonomous DeFi agents on Solana.",
+    description=(
+        "Multi-model volatility and risk management API for autonomous DeFi agents on Solana.\n\n"
+        "## Core Models\n"
+        "- **MSM** — Markov-Switching Multifractal regime detection with 5-state Hamilton filter\n"
+        "- **EVT** — Extreme Value Theory tail risk via Generalized Pareto Distribution\n"
+        "- **SVJ** — Stochastic Volatility with Jumps (Bates model + Hawkes clustering)\n"
+        "- **Hawkes** — Self-exciting point process for flash-crash contagion\n"
+        "- **Rough Vol** — Rough Bergomi / Rough Heston with fractional kernels\n"
+        "- **Copula** — Vine copula portfolio dependence modeling\n\n"
+        "## Risk Engine\n"
+        "- **Guardian** — Unified risk veto combining all models into a composite score 0–100\n"
+        "- **Adversarial Debate** — Multi-agent debate system for trade approval\n"
+        "- **Circuit Breakers** — Strategy-specific outcome-based circuit breakers\n"
+        "- **Kelly Criterion** — Adaptive position sizing from trade history\n\n"
+        "## Authentication\n"
+        "All endpoints require `X-API-Key` header. Configure via `CORTEX_API_KEYS` env var."
+    ),
     version=API_VERSION,
     lifespan=lifespan,
+    openapi_tags=OPENAPI_TAGS,
 )
 
 allowed_origins = get_allowed_origins()
