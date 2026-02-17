@@ -1,6 +1,7 @@
 """DexScreener DEX data endpoints."""
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
@@ -17,10 +18,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["dex"])
 
+_SOLANA_ADDR_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+
+
+def _validate_solana_address(address: str, label: str = "address") -> None:
+    """Validate a Solana base58 address format."""
+    if not _SOLANA_ADDR_RE.match(address):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid Solana {label}: {address!r}",
+        )
+
 
 @router.get("/dex/price/{token_address}", summary="Get token price", response_model=DexTokenPriceResponse)
 def get_dex_price(token_address: str):
     """Fetch current token price from DexScreener."""
+    _validate_solana_address(token_address, "token address")
     from cortex.data.dexscreener import get_token_price
 
     try:
@@ -35,6 +48,7 @@ def get_dex_price(token_address: str):
 @router.get("/dex/pair/{pair_address}", summary="Get pair liquidity", response_model=DexPairLiquidityResponse)
 def get_dex_pair(pair_address: str):
     """Fetch liquidity data for a trading pair from DexScreener."""
+    _validate_solana_address(pair_address, "pair address")
     from cortex.data.dexscreener import get_pair_liquidity
 
     try:
@@ -47,6 +61,7 @@ def get_dex_pair(pair_address: str):
 @router.get("/dex/liquidity-metrics/{pair_address}", summary="Get liquidity metrics", response_model=DexLiquidityMetricsResponse)
 def get_dex_liquidity_metrics(pair_address: str):
     """Extract structured liquidity metrics (TVL, depth, concentration) for a pair."""
+    _validate_solana_address(pair_address, "pair address")
     from cortex.data.dexscreener import extract_liquidity_metrics
 
     try:
