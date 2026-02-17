@@ -52,8 +52,18 @@ async def lifespan(app: FastAPI):
     from api.tasks import start_recalibration_scheduler, stop_recalibration_scheduler
     start_recalibration_scheduler()
 
+    # Start background news collector
+    from api.tasks import start_news_collector, stop_news_collector
+    start_news_collector()
+
+    # Start liquidity snapshot collector
+    from api.tasks import start_liquidity_snapshot_collector, stop_liquidity_snapshot_collector
+    start_liquidity_snapshot_collector()
+
     yield
 
+    stop_liquidity_snapshot_collector()
+    stop_news_collector()
     stop_recalibration_scheduler()
 
     # Persist singleton state before shutdown

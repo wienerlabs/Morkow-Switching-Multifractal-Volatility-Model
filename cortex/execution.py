@@ -16,6 +16,8 @@ import logging
 import time
 from typing import Any
 
+import structlog.contextvars
+
 from cortex.config import (
     EXECUTION_ENABLED,
     EXECUTION_MAX_SLIPPAGE_BPS,
@@ -29,7 +31,14 @@ logger = logging.getLogger(__name__)
 _execution_log: list[dict[str, Any]] = []
 
 
+def _get_request_id() -> str | None:
+    return structlog.contextvars.get_contextvars().get("request_id")
+
+
 def _log_execution(entry: dict[str, Any]) -> None:
+    request_id = _get_request_id()
+    if request_id:
+        entry["request_id"] = request_id
     _execution_log.append(entry)
     if len(_execution_log) > 500:
         _execution_log.pop(0)
@@ -248,10 +257,13 @@ def record_execution_result(
         loss_type=loss_type, details=details,
     )
     guardian_record(pnl=pnl, size=trade_size_usd, token=token_mint)
+    request_id = _get_request_id()
     logger.info(
         "Execution result recorded: %s strategy=%s success=%s pnl=%.2f",
         token_mint[:8], strategy, success, pnl,
     )
+    if request_id:
+        cb_status["request_id"] = request_id
     return cb_status
 
 

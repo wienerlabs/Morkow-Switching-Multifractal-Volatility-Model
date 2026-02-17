@@ -153,7 +153,7 @@ pub mod cortex_public_sale {
         Ok(())
     }
 
-    pub fn sell(ctx: Context<Sell>, token_amount: u64) -> Result<()> {
+    pub fn sell(ctx: Context<Sell>, token_amount: u64, min_received_lamports: u64) -> Result<()> {
         let clock = Clock::get()?;
         let sale = &mut ctx.accounts.sale;
         let user_account = &mut ctx.accounts.user_account;
@@ -180,6 +180,7 @@ pub mod cortex_public_sale {
         let fee = sol_return * SELL_FEE_BPS / 10_000;
         let net_return = sol_return - fee;
 
+        require!(net_return >= min_received_lamports, PublicSaleError::SlippageExceeded);
         require!(net_return <= sale.sol_raised, PublicSaleError::InsufficientTreasuryBalance);
 
         token::transfer(
@@ -611,4 +612,6 @@ pub enum PublicSaleError {
     InvalidDeviationBps,
     #[msg("Invalid oracle max age (must be > 0)")]
     InvalidOracleMaxAge,
+    #[msg("Sell return below minimum (slippage protection)")]
+    SlippageExceeded,
 }

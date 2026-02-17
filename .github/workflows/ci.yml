@@ -118,6 +118,29 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+  # ─── Anchor IDL Validation ────────────────────────────────────
+  idl-validate:
+    name: Validate Anchor IDLs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Validate IDL JSON files
+        run: |
+          EXPECTED_PROGRAMS="cortex cortex_private_sale cortex_public_sale cortex_staking cortex_strategy cortex_token cortex_treasury cortex_vault cortex_vesting"
+          IDL_DIR="solana-programs/cortex/idl"
+
+          for prog in $EXPECTED_PROGRAMS; do
+            FILE="$IDL_DIR/${prog}.json"
+            if [ ! -f "$FILE" ]; then
+              echo "MISSING: $FILE"
+              exit 1
+            fi
+            python3 -c "import json,sys; d=json.load(open('$FILE')); assert d['name']=='$prog', f\"name mismatch: {d['name']} != $prog\"; print(f'OK: {d[\"name\"]} ({len(d.get(\"instructions\",[]))} instructions, {len(d.get(\"accounts\",[]))} accounts)')"
+          done
+
   # ─── Docker Build ─────────────────────────────────────────────
   docker-build:
     name: Docker Build

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
+import structlog.contextvars
 
 from cortex.config import (
     GUARDIAN_WEIGHTS,
@@ -53,6 +54,8 @@ from cortex.config import (
     # Task 9: Agent ONNX Confidence
     AGENT_CONFIDENCE_ENABLED,
     AGENT_CONFIDENCE_VETO_THRESHOLD,
+    # P2-E: Debate Auto-Escalation
+    GUARDIAN_AUTO_DEBATE_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
@@ -666,9 +669,20 @@ def assess_trade(
         now + DECISION_VALIDITY_SECONDS, tz=timezone.utc
     )
 
-    # ── Adversarial debate (optional) ──
+    # ── Adversarial debate (manual or auto-escalated) ──
     debate_result = None
-    if run_debate:
+    auto_escalated = False
+
+    should_debate = run_debate
+    if not run_debate and risk_score > GUARDIAN_AUTO_DEBATE_THRESHOLD:
+        should_debate = True
+        auto_escalated = True
+        logger.info(
+            "Auto-escalating to debate: risk_score=%.2f > threshold=%.2f token=%s",
+            risk_score, GUARDIAN_AUTO_DEBATE_THRESHOLD, token,
+        )
+
+    if should_debate:
         try:
             from cortex.debate import run_debate as _run_debate
             debate_result = _run_debate(
@@ -681,11 +695,14 @@ def assess_trade(
                 strategy=strategy or "spot",
                 alams_data=alams_data,
             )
+            if auto_escalated:
+                debate_result["auto_escalated"] = True
             if debate_result["decision_changed"]:
                 approved = debate_result["final_decision"] == "approve"
         except Exception:
             logger.debug("Debate system unavailable", exc_info=True)
 
+    request_id = structlog.contextvars.get_contextvars().get("request_id")
     result = {
         "approved": approved,
         "risk_score": risk_score,
@@ -703,6 +720,7 @@ def assess_trade(
         "portfolio_limits": limits,
         "debate": debate_result,
         "from_cache": False,
+        "request_id": request_id,
     }
 
     logger.info(

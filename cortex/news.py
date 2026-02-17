@@ -11,6 +11,7 @@ import math
 import os
 import logging
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -753,3 +754,76 @@ def _signal_to_dict(sig: MarketSignal) -> dict:
         "bear_pct": sig.bear_pct,
         "neutral_pct": sig.neutral_pct,
     }
+
+
+# ── Thread-safe News Buffer (ring buffer) ──
+
+class NewsBuffer:
+    """Thread-safe ring buffer for background-collected news data.
+
+    Holds the latest fetch result so Guardian/debate endpoints can read
+    instantly instead of making synchronous HTTP calls.
+    """
+
+    def __init__(self, max_items: int = 100):
+        self._lock = threading.Lock()
+        self._max_items = max_items
+        self._data: dict | None = None
+        self._last_fetch_ts: float = 0.0
+        self._fetch_count: int = 0
+        self._error_count: int = 0
+        self._last_error: str | None = None
+
+    def update(self, result: dict) -> None:
+        """Store a fresh fetch_news_intelligence() result."""
+        items = result.get("items", [])[:self._max_items]
+        with self._lock:
+            self._data = {**result, "items": items}
+            self._last_fetch_ts = time.time()
+            self._fetch_count += 1
+
+    def record_error(self, error: str) -> None:
+        with self._lock:
+            self._error_count += 1
+            self._last_error = error
+
+    def get_signal(self) -> dict | None:
+        """Return the cached market signal dict, or None if no data yet."""
+        with self._lock:
+            if self._data is None:
+                return None
+            return self._data.get("signal")
+
+    def get_full(self, max_items: int | None = None) -> dict | None:
+        """Return the full cached result (items + signal + meta)."""
+        with self._lock:
+            if self._data is None:
+                return None
+            if max_items is not None:
+                return {**self._data, "items": self._data["items"][:max_items]}
+            return self._data
+
+    @property
+    def age_seconds(self) -> float:
+        """Seconds since last successful fetch. Inf if never fetched."""
+        with self._lock:
+            if self._last_fetch_ts == 0.0:
+                return float("inf")
+            return time.time() - self._last_fetch_ts
+
+    @property
+    def stats(self) -> dict:
+        with self._lock:
+            return {
+                "has_data": self._data is not None,
+                "item_count": len(self._data["items"]) if self._data else 0,
+                "last_fetch_ts": self._last_fetch_ts,
+                "age_seconds": round(time.time() - self._last_fetch_ts, 1) if self._last_fetch_ts else None,
+                "fetch_count": self._fetch_count,
+                "error_count": self._error_count,
+                "last_error": self._last_error,
+            }
+
+
+# Global singleton buffer
+news_buffer = NewsBuffer()

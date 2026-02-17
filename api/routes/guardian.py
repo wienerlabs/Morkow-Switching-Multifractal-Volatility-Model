@@ -15,7 +15,6 @@ from api.models import (
     TradeOutcomeRequest,
 )
 from api.stores import (
-    _current_regime_state,
     _evt_store,
     _hawkes_store,
     _model_store,
@@ -50,14 +49,10 @@ def guardian_assess(req: GuardianAssessRequest):
 
     news_data = None
     try:
-        from cortex.news import fetch_news_intelligence
-        regime_state = _current_regime_state()
-        news_result = fetch_news_intelligence(
-            regime_state=regime_state, max_items=30, timeout=10.0,
-        )
-        news_data = news_result.get("signal")
+        from cortex.news import news_buffer
+        news_data = news_buffer.get_signal()
     except Exception:
-        logger.debug("News intelligence unavailable for guardian assessment", exc_info=True)
+        logger.debug("News buffer unavailable for guardian assessment", exc_info=True)
 
     result = assess_trade(
         token=req.token,
@@ -249,17 +244,13 @@ def run_debate_endpoint(req: GuardianAssessRequest):
         except Exception:
             logger.debug("Regime scoring failed in debate endpoint", exc_info=True)
 
-    # Fetch news if available
+    # Read news from background buffer (no latency)
     news_data = None
     try:
-        from cortex.news import fetch_news_intelligence
-        regime_state = _current_regime_state()
-        news_result = fetch_news_intelligence(
-            regime_state=regime_state, max_items=30, timeout=10.0,
-        )
-        news_data = news_result.get("signal")
+        from cortex.news import news_buffer
+        news_data = news_buffer.get_signal()
     except Exception:
-        logger.debug("News intelligence unavailable for debate endpoint", exc_info=True)
+        logger.debug("News buffer unavailable for debate endpoint", exc_info=True)
 
     if news_data:
         try:

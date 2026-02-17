@@ -283,3 +283,69 @@ def test_assess_trade_no_agent_confidence():
     result = assess_trade("SOL_NO_AC", 5000, "long", model_data, None, None, None)
     components = {s["component"] for s in result["component_scores"]}
     assert "agent_confidence" not in components
+
+
+# ── P2-E: Debate Auto-Escalation ──
+
+@patch("cortex.guardian._score_evt")
+@patch("cortex.guardian._score_svj")
+@patch("cortex.guardian._score_hawkes")
+def test_auto_escalation_triggers_above_threshold(mock_hawkes, mock_svj, mock_evt):
+    """When risk_score > GUARDIAN_AUTO_DEBATE_THRESHOLD and run_debate=False, debate auto-fires."""
+    mock_evt.return_value = {"component": "evt", "score": 85.0, "details": {}}
+    mock_svj.return_value = {"component": "svj", "score": 80.0, "details": {"jump_share_pct": 40}}
+    mock_hawkes.return_value = {"component": "hawkes", "score": 70.0,
+                                "details": {"contagion_risk_score": 0.70}}
+    probs = np.array([0.05, 0.05, 0.1, 0.3, 0.5])
+    fp = pd.DataFrame([probs])
+    model_data = {"filter_probs": fp, "calibration": {"num_states": 5}}
+
+    with patch("cortex.guardian.GUARDIAN_AUTO_DEBATE_THRESHOLD", 65.0):
+        result = assess_trade(
+            "AUTO_ESC", 5000, "long", model_data,
+            {"xi": 0.3, "beta": 1.0, "threshold": 2.0, "n_total": 300, "n_exceedances": 30},
+            {"returns": pd.Series([1.0] * 100), "calibration": {"lambda_": 50}},
+            {"event_times": np.array([1.0, 2.0]), "mu": 0.05, "alpha": 0.5, "beta": 1.0},
+            run_debate=False,
+        )
+
+    assert result["debate"] is not None
+    assert result["debate"]["auto_escalated"] is True
+
+
+@patch("cortex.guardian._score_evt")
+def test_no_auto_escalation_below_threshold(mock_evt):
+    """When risk_score < threshold, debate is not auto-triggered."""
+    mock_evt.return_value = {"component": "evt", "score": 15.0, "details": {}}
+    probs = np.array([0.8, 0.1, 0.05, 0.03, 0.02])
+    fp = pd.DataFrame([probs])
+    model_data = {"filter_probs": fp, "calibration": {"num_states": 5}}
+
+    with patch("cortex.guardian.GUARDIAN_AUTO_DEBATE_THRESHOLD", 65.0):
+        result = assess_trade(
+            "NO_ESC", 5000, "long", model_data,
+            {"xi": 0.1, "beta": 0.5, "threshold": 1.0, "n_total": 300, "n_exceedances": 30},
+            None, None,
+            run_debate=False,
+        )
+
+    assert result["debate"] is None
+
+
+@patch("cortex.guardian._score_evt")
+def test_manual_debate_no_auto_escalated_flag(mock_evt):
+    """When run_debate=True (manual), auto_escalated flag is not set."""
+    mock_evt.return_value = {"component": "evt", "score": 15.0, "details": {}}
+    probs = np.array([0.8, 0.1, 0.05, 0.03, 0.02])
+    fp = pd.DataFrame([probs])
+    model_data = {"filter_probs": fp, "calibration": {"num_states": 5}}
+
+    result = assess_trade(
+        "MANUAL_DEB", 5000, "long", model_data,
+        {"xi": 0.1, "beta": 0.5, "threshold": 1.0, "n_total": 300, "n_exceedances": 30},
+        None, None,
+        run_debate=True,
+    )
+
+    assert result["debate"] is not None
+    assert result["debate"].get("auto_escalated") is not True

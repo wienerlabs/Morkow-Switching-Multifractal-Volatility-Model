@@ -1,0 +1,52 @@
+{
+  "version": "0.1.0",
+  "name": "cortex_token",
+  "instructions": [
+    {
+      "name": "initialize",
+      "accounts": [
+        { "name": "tokenData", "isMut": true, "isSigner": false },
+        { "name": "mint", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": true, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "systemProgram", "isMut": false, "isSigner": false },
+        { "name": "rent", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "mintToTreasury",
+      "accounts": [
+        { "name": "tokenData", "isMut": true, "isSigner": false },
+        { "name": "mint", "isMut": true, "isSigner": false },
+        { "name": "treasuryTokenAccount", "isMut": true, "isSigner": false },
+        { "name": "authority", "isMut": false, "isSigner": true },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "TokenData",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "publicKey" },
+          { "name": "mint", "type": "publicKey" },
+          { "name": "totalMinted", "type": "u64" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ],
+  "events": [],
+  "errors": [
+    { "code": 6000, "name": "ExceedsTotalSupply", "msg": "Exceeds total supply of 100M tokens" }
+  ],
+  "metadata": {
+    "address": "HAUqFj3uYsFt6PhMgztaVkRi5RC3mFWxyLceJzCRDevg"
+  }
+}

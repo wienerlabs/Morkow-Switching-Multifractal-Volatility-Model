@@ -9,11 +9,14 @@ application keeps working exactly as before.
 
 from __future__ import annotations
 
+import json
 import logging
 import pickle
+import time
 from typing import Any, Iterator
 
 from cortex.config import (
+    MODEL_VERSION_HISTORY_SIZE,
     PERSISTENCE_ENABLED,
     PERSISTENCE_KEY_PREFIX,
     PERSISTENCE_REDIS_URL,
@@ -191,4 +194,134 @@ class PersistentStore:
                 count += 1
             except Exception:
                 logger.warning("Failed to persist %s:%s", self._name, token, exc_info=True)
+        return count
+
+
+class VersionedPersistentStore(PersistentStore):
+    """PersistentStore that keeps versioned snapshots in Redis for rollback.
+
+    On every write, a versioned copy is saved alongside the current value.
+    Up to ``max_versions`` snapshots are retained per token; older ones are pruned.
+    The current/active model remains at the standard key so all existing
+    read paths (``_get_model``, Guardian, etc.) are unaffected.
+    """
+
+    def __init__(self, name: str, max_versions: int = MODEL_VERSION_HISTORY_SIZE) -> None:
+        super().__init__(name)
+        self._max_versions = max_versions
+        self._version_meta: dict[str, list[dict[str, Any]]] = {}
+
+    def _version_meta_key(self, token: str) -> str:
+        return f"{PERSISTENCE_KEY_PREFIX}versions:{self._name}:{token}:meta"
+
+    def _version_data_key(self, token: str, version: int) -> str:
+        return f"{PERSISTENCE_KEY_PREFIX}versions:{self._name}:{token}:v{version}"
+
+    def __setitem__(self, token: str, value: dict) -> None:
+        super().__setitem__(token, value)
+        self._snapshot_version(token, value)
+
+    def _snapshot_version(self, token: str, value: dict) -> None:
+        """Create a versioned snapshot in Redis."""
+        if not _redis_available or _redis_client is None:
+            return
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._async_snapshot(token, value))
+        except RuntimeError:
+            pass
+
+    async def _async_snapshot(self, token: str, value: dict) -> None:
+        try:
+            meta = await self._load_meta(token)
+
+            next_version = (meta[-1]["version"] + 1) if meta else 1
+            ts = time.time()
+            calibrated_at = ""
+            if hasattr(value.get("calibrated_at", ""), "isoformat"):
+                calibrated_at = value["calibrated_at"].isoformat()
+
+            entry = {
+                "version": next_version,
+                "timestamp": ts,
+                "calibrated_at": calibrated_at,
+            }
+
+            data = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)  # noqa: S301
+            await _redis_client.set(self._version_data_key(token, next_version), data)
+
+            meta.append(entry)
+
+            # Prune old versions
+            while len(meta) > self._max_versions:
+                old = meta.pop(0)
+                try:
+                    await _redis_client.delete(self._version_data_key(token, old["version"]))
+                except Exception:
+                    pass
+
+            await _redis_client.set(
+                self._version_meta_key(token),
+                json.dumps(meta).encode(),
+            )
+            self._version_meta[token] = meta
+
+        except Exception:
+            logger.warning("Failed to snapshot version for %s:%s", self._name, token, exc_info=True)
+
+    async def _load_meta(self, token: str) -> list[dict[str, Any]]:
+        """Load version metadata from Redis (or in-memory cache)."""
+        if token in self._version_meta:
+            return list(self._version_meta[token])
+        if not _redis_available or _redis_client is None:
+            return []
+        try:
+            raw = await _redis_client.get(self._version_meta_key(token))
+            if raw is None:
+                return []
+            meta = json.loads(raw)
+            self._version_meta[token] = meta
+            return list(meta)
+        except Exception:
+            return []
+
+    async def get_versions(self, token: str) -> list[dict[str, Any]]:
+        """Return version metadata for a token."""
+        return await self._load_meta(token)
+
+    async def get_all_versions(self) -> dict[str, list[dict[str, Any]]]:
+        """Return version metadata for all tokens currently in the store."""
+        result: dict[str, list[dict[str, Any]]] = {}
+        for token in self._data:
+            result[token] = await self.get_versions(token)
+        return result
+
+    async def get_version_data(self, token: str, version: int) -> dict | None:
+        """Load a specific versioned snapshot from Redis."""
+        if not _redis_available or _redis_client is None:
+            return None
+        try:
+            raw = await _redis_client.get(self._version_data_key(token, version))
+            if raw is None:
+                return None
+            return pickle.loads(raw)  # noqa: S301 — trusted internal data only
+        except Exception:
+            logger.warning("Failed to load version %d for %s:%s", version, self._name, token, exc_info=True)
+            return None
+
+    async def restore_version(self, token: str, version: int) -> bool:
+        """Rollback to a specific version. Returns True on success."""
+        data = await self.get_version_data(token, version)
+        if data is None:
+            return False
+        self[token] = data
+        return True
+
+    async def restore(self) -> int:
+        """Restore current models + version metadata from Redis."""
+        count = await super().restore()
+        # Also restore version metadata for each token
+        for token in list(self._data.keys()):
+            await self._load_meta(token)
         return count

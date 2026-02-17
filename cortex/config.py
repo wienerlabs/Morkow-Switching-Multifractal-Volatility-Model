@@ -135,6 +135,7 @@ CB_STRATEGIES = json.loads(os.environ.get("CB_STRATEGIES", '["lp", "arb", "perp"
 
 DEBATE_MAX_ROUNDS = int(os.environ.get("DEBATE_MAX_ROUNDS", "3"))
 DEBATE_TIMEOUT_MS = int(os.environ.get("DEBATE_TIMEOUT_MS", "5000"))
+GUARDIAN_AUTO_DEBATE_THRESHOLD = float(os.environ.get("GUARDIAN_AUTO_DEBATE_THRESHOLD", "65.0"))
 
 # ── Axiom Trade DEX Aggregator ──
 # Auth: email/password + OTP → access_token/refresh_token (no API key)
@@ -282,9 +283,25 @@ TAIL_DEPENDENCE_THRESHOLD = float(os.environ.get("TAIL_DEPENDENCE_THRESHOLD", "0
 AGENT_CONFIDENCE_ENABLED = os.environ.get("AGENT_CONFIDENCE_ENABLED", "true").lower() == "true"
 AGENT_CONFIDENCE_VETO_THRESHOLD = float(os.environ.get("AGENT_CONFIDENCE_VETO_THRESHOLD", "0.3"))
 
+# ── Background News Collector ──
+NEWS_COLLECTOR_INTERVAL_SECONDS = int(os.environ.get("NEWS_COLLECTOR_INTERVAL_SECONDS", "30"))
+NEWS_BUFFER_MAX_ITEMS = int(os.environ.get("NEWS_BUFFER_MAX_ITEMS", "100"))
+NEWS_COLLECTOR_ENABLED = os.environ.get("NEWS_COLLECTOR_ENABLED", "true").lower() == "true"
+
 # ── Recalibration ──
 RECALIBRATION_INTERVAL_HOURS = float(os.environ.get("RECALIBRATION_INTERVAL_HOURS", "24"))
 RECALIBRATION_ENABLED = os.environ.get("RECALIBRATION_ENABLED", "true").lower() == "true"
+
+# ── Liquidity Snapshot Collector ──
+LIQUIDITY_SNAPSHOT_INTERVAL_SECONDS = int(os.environ.get("LIQUIDITY_SNAPSHOT_INTERVAL_SECONDS", "300"))
+LIQUIDITY_SNAPSHOT_ENABLED = os.environ.get("LIQUIDITY_SNAPSHOT_ENABLED", "true").lower() == "true"
+LIQUIDITY_SNAPSHOT_RETENTION_HOURS = int(os.environ.get("LIQUIDITY_SNAPSHOT_RETENTION_HOURS", "168"))
+LIQUIDITY_WATCHLIST: list[str] = json.loads(
+    os.environ.get("LIQUIDITY_WATCHLIST", "[]")
+)
+
+# ── Model Versioning ──
+MODEL_VERSION_HISTORY_SIZE = int(os.environ.get("MODEL_VERSION_HISTORY_SIZE", "3"))
 
 # ── API ──
 

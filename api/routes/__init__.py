@@ -28,6 +28,7 @@ from api.routes.token import router as token_router
 from api.routes.vine_copula import router as vine_copula_router
 from api.routes.ccxt import router as ccxt_router
 from api.routes.portfolio_opt import router as portfolio_opt_router
+from api.routes.models import router as models_router
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -56,4 +57,5 @@ router.include_router(token_router)
 router.include_router(vine_copula_router)
 router.include_router(ccxt_router)
 router.include_router(portfolio_opt_router)
+router.include_router(models_router)
 

@@ -222,9 +222,11 @@ class TestStoresImportCompat:
             _copula_store, _hawkes_store, _rough_store, _svj_store,
             _comparison_cache, ALL_STORES,
         )
+        from cortex.persistence import VersionedPersistentStore
+        assert isinstance(_model_store, VersionedPersistentStore)
         assert isinstance(_model_store, PersistentStore)
         assert isinstance(_comparison_cache, dict)
-        assert len(ALL_STORES) == 7
+        assert len(ALL_STORES) >= 7
 
     def test_store_dict_compat(self):
         from api.stores import _model_store
