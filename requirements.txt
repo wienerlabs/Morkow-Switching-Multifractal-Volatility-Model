@@ -21,8 +21,7 @@ arch>=5.3.0
 # Solana DeFi Data
 httpx>=0.24.0
 
-# Axiom Trade DEX Aggregator (read-only data)
-axiomtradeapi>=1.1.0
+# DexScreener (free, keyless REST API — uses httpx already listed above)
 
 # Jupiter Swap API (trade execution) — local signing deps
 solders>=0.20.0

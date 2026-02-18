@@ -14,6 +14,18 @@ References:
 """
 from __future__ import annotations
 
+__all__ = [
+    "estimate_spread",
+    "market_impact_cost",
+    "liquidity_adjusted_var",
+    "regime_liquidity_profile",
+    "compute_lvar_with_regime",
+    "fetch_dexscreener_spread",
+    "liquidity_adjusted_var_with_dexscreener",
+    "fetch_onchain_spread",
+    "liquidity_adjusted_var_with_onchain",
+]
+
 import logging
 from typing import Optional
 
@@ -460,21 +472,17 @@ def compute_lvar_with_regime(
 
 
 
-# ── Axiom-enhanced LVaR ──
+# ── DexScreener-enhanced LVaR ──
 
 
-def fetch_axiom_spread(pair_address: str) -> dict | None:
-    """Fetch spread estimate from Axiom Trade liquidity data.
+def fetch_dexscreener_spread(pair_address: str) -> dict | None:
+    """Fetch spread estimate from DexScreener liquidity data.
 
     Returns dict with spread_pct and spread_vol_pct compatible with
-    liquidity_adjusted_var(), or None if Axiom is unavailable.
+    liquidity_adjusted_var(), or None if DexScreener is unavailable.
     """
     try:
-        from cortex.data.axiom import extract_liquidity_metrics, is_available
-
-        if not is_available():
-            logger.debug("Axiom not available, skipping spread fetch")
-            return None
+        from cortex.data.dexscreener import extract_liquidity_metrics
 
         metrics = extract_liquidity_metrics(pair_address)
         if metrics.get("error") or metrics.get("spread_pct") is None:
@@ -483,45 +491,43 @@ def fetch_axiom_spread(pair_address: str) -> dict | None:
         return {
             "spread_pct": metrics["spread_pct"],
             "spread_vol_pct": metrics["spread_vol_pct"],
-            "source": "axiom",
+            "source": "dexscreener",
             "volume_24h": metrics.get("volume_24h"),
             "liquidity": metrics.get("liquidity"),
         }
     except Exception as e:
-        logger.warning("Axiom spread fetch failed: %s", e)
+        logger.warning("DexScreener spread fetch failed: %s", e)
         return None
 
 
-def liquidity_adjusted_var_with_axiom(
+def liquidity_adjusted_var_with_dexscreener(
     var_value: float,
     pair_address: str | None = None,
     prices: np.ndarray | pd.Series | None = None,
     position_value: float = 1.0,
     alpha: float = 0.05,
     holding_period: int = 1,
-    prefer_axiom: bool = True,
 ) -> dict:
-    """Compute LVaR using Axiom liquidity data with Roll estimator fallback.
+    """Compute LVaR using DexScreener liquidity data with Roll estimator fallback.
 
-    Tries Axiom first for real-time DEX spread data. Falls back to Roll
-    estimator from price series if Axiom is unavailable.
+    Tries DexScreener first for real-time DEX spread data. Falls back to Roll
+    estimator from price series if DexScreener is unavailable.
 
     Args:
         var_value: Base VaR (negative, e.g. -3.2%).
-        pair_address: Axiom pair address for live spread data.
+        pair_address: DEX pair address for live spread data.
         prices: Price series for Roll estimator fallback.
         position_value: Position notional in USD.
         alpha: VaR confidence level.
         holding_period: Holding period in days.
-        prefer_axiom: Try Axiom first (default True).
     """
     spread_data = None
     source_used = "none"
 
-    if prefer_axiom and pair_address:
-        spread_data = fetch_axiom_spread(pair_address)
+    if pair_address:
+        spread_data = fetch_dexscreener_spread(pair_address)
         if spread_data:
-            source_used = "axiom"
+            source_used = "dexscreener"
 
     if spread_data is None and prices is not None:
         p = np.asarray(prices, dtype=float)
@@ -593,14 +599,14 @@ def liquidity_adjusted_var_with_onchain(
     alpha: float = 0.05,
     holding_period: int = 1,
 ) -> dict:
-    """Compute LVaR using on-chain data with Axiom and Roll fallbacks.
+    """Compute LVaR using on-chain data with DexScreener and Roll fallbacks.
 
-    Priority: on-chain realized spread > Axiom > Roll estimator > defaults.
+    Priority: on-chain realized spread > DexScreener > Roll estimator > defaults.
 
     Args:
         var_value: Base VaR (negative, e.g. -3.2%).
         token_address: Solana token mint for on-chain swap data.
-        pair_address: Axiom pair address for live spread data.
+        pair_address: DEX pair address for live spread data.
         prices: Price series for Roll estimator fallback.
         position_value: Position notional in USD.
         alpha: VaR confidence level.
@@ -615,9 +621,9 @@ def liquidity_adjusted_var_with_onchain(
             source_used = "onchain"
 
     if spread_data is None and pair_address:
-        spread_data = fetch_axiom_spread(pair_address)
+        spread_data = fetch_dexscreener_spread(pair_address)
         if spread_data:
-            source_used = "axiom"
+            source_used = "dexscreener"
 
     if spread_data is None and prices is not None:
         p = np.asarray(prices, dtype=float)

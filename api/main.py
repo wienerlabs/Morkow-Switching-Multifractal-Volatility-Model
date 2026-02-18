@@ -103,7 +103,7 @@ OPENAPI_TAGS = [
     {"name": "news", "description": "News intelligence — sentiment feed, market signal, background buffer"},
     {"name": "streams", "description": "Real-time streams — Helius transaction events, Guardian SSE alerts"},
     {"name": "oracle", "description": "Oracle price feeds — Pyth price data, historical lookups, streaming"},
-    {"name": "axiom", "description": "Axiom DEX aggregator — token prices, pair liquidity, holder analysis"},
+    {"name": "dex", "description": "DexScreener — token prices, pair liquidity, new token discovery"},
     {"name": "onchain", "description": "On-chain liquidity — CLMM depth, realized spreads, on-chain LVaR"},
     {"name": "Tick Data & Backtesting", "description": "Tick-level data — custom bar types, intraday VaR backtesting"},
     {"name": "hawkes-onchain", "description": "On-chain Hawkes — multivariate event clustering, cross-excitation, flash-crash scoring"},

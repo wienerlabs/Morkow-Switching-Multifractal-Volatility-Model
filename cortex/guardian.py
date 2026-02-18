@@ -7,6 +7,14 @@ breaker logic, Kelly-criterion sizing, and adversarial debate validation.
 """
 from __future__ import annotations
 
+__all__ = [
+    "assess_trade",
+    "record_trade_outcome",
+    "get_kelly_stats",
+    "persist_kelly_state",
+    "restore_kelly_state",
+]
+
 import logging
 import time
 from collections import deque

@@ -5,6 +5,15 @@ provides historical spread statistics for the LVaR module.
 """
 from __future__ import annotations
 
+__all__ = [
+    "take_snapshot",
+    "store_snapshot",
+    "get_snapshots",
+    "get_historical_spread_stats",
+    "get_tvl_series",
+    "get_tracked_pools",
+]
+
 import logging
 import time
 

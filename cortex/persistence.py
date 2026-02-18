@@ -9,6 +9,8 @@ application keeps working exactly as before.
 
 from __future__ import annotations
 
+__all__ = ["PersistentStore", "VersionedPersistentStore"]
+
 import json
 import logging
 import pickle

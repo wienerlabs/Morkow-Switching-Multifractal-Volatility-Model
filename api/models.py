@@ -36,10 +36,6 @@ class CalibrateRequest(BaseModel):
             "'estimate' = estimate via MLE."
         ),
     )
-    leverage_gamma: float | str | None = Field(
-        None,
-        description="Asymmetric leverage parameter. None=no leverage, float=fixed value, 'estimate'=MLE estimation",
-    )
 
 
 class CalibrationMetrics(BaseModel):
@@ -1357,7 +1353,7 @@ class RealizedSpreadResponse(BaseModel):
 class OnchainLVaRRequest(BaseModel):
     token: str = Field(..., description="Token key from _model_store (must be calibrated)")
     token_address: str | None = Field(None, description="Solana token mint for on-chain spread")
-    pair_address: str | None = Field(None, description="Axiom pair address for live spread")
+    pair_address: str | None = Field(None, description="DEX pair address for live spread")
     confidence: float = Field(95.0, gt=50.0, le=99.99)
     position_value: float = Field(100_000.0, gt=0)
     holding_period: int = Field(1, ge=1, le=30)
@@ -1369,7 +1365,7 @@ class OnchainLVaRResponse(BaseModel):
     base_var: float
     liquidity_cost_pct: float
     spread_pct: float
-    spread_source: str = Field(..., description="onchain|axiom|roll|default")
+    spread_source: str = Field(..., description="onchain|dexscreener|roll|default")
     by_dex: list[DexSpreadItem] | None = None
     confidence: float
     holding_period: int
@@ -1713,4 +1709,71 @@ class HistoricalExportResponse(BaseModel):
     regime_statistics: list[dict]
     calibration: dict
     calibrated_at: str
+    timestamp: str
+
+
+# ── DexScreener Response Models ──
+
+
+class DexTokenPriceResponse(BaseModel):
+    source: str = "dexscreener"
+    token_address: str
+    price_usd: Optional[float] = None
+    price_native: Optional[float] = None
+    pair_address: Optional[str] = None
+    dex_id: Optional[str] = None
+    liquidity_usd: float = 0.0
+    volume_24h: float = 0.0
+    error: Optional[str] = None
+    timestamp: float
+    timestamp_iso: Optional[str] = None
+
+
+class DexPairLiquidityResponse(BaseModel):
+    source: str = "dexscreener"
+    pair_address: str
+    price_usd: Optional[float] = None
+    liquidity_usd: float = 0.0
+    liquidity_base: float = 0.0
+    liquidity_quote: float = 0.0
+    volume_24h: float = 0.0
+    volume_6h: float = 0.0
+    volume_1h: float = 0.0
+    txns_24h: Optional[dict] = None
+    price_change_24h: float = 0.0
+    dex_id: Optional[str] = None
+    error: Optional[str] = None
+    timestamp: float
+
+
+class DexLiquidityMetricsResponse(BaseModel):
+    source: str = "dexscreener"
+    pair_address: Optional[str] = None
+    spread_pct: Optional[float] = None
+    spread_vol_pct: Optional[float] = None
+    volume_24h: Optional[float] = None
+    liquidity: Optional[float] = None
+    error: Optional[str] = None
+    timestamp: Optional[float] = None
+
+
+class DexNewToken(BaseModel):
+    token_address: str
+    pair_address: Optional[str] = None
+    dex_id: Optional[str] = None
+    price_usd: Optional[float] = None
+    liquidity_usd: float = 0.0
+    volume_24h: float = 0.0
+    pair_created_at: Optional[int] = None
+    base_token: Optional[dict] = None
+    timestamp: float
+    meets_min_liquidity: bool = False
+
+
+class DexNewTokensResponse(BaseModel):
+    tokens: list[DexNewToken]
+
+
+class DexStatusResponse(BaseModel):
+    available: bool
     timestamp: str

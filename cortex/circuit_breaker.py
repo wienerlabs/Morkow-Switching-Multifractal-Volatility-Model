@@ -13,6 +13,21 @@ Strategy-specific failure rules:
 Outcome tracking records trade results per strategy and triggers circuit
 breakers based on consecutive failures (separate from risk-score-based trips).
 """
+
+__all__ = [
+    "CBState",
+    "CircuitBreaker",
+    "OutcomeCircuitBreaker",
+    "record_score",
+    "record_trade_outcome",
+    "is_blocked",
+    "get_all_states",
+    "get_outcome_states",
+    "reset_breaker",
+    "reset_all",
+    "persist_cb_state",
+    "restore_cb_state",
+]
 from __future__ import annotations
 
 import logging

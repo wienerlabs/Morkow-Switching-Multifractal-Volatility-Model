@@ -71,7 +71,7 @@ if (assessment.approved) {
 | **Macro** | `macroIndicators` | Fear & Greed, BTC dominance |
 | **Portfolio Risk** | `portfolioPositions`, `updatePosition`, `closePosition`, `setPortfolioValue`, `portfolioDrawdown`, `portfolioLimits` | Position & drawdown management |
 | **Execution** | `executionPreflight`, `executeTrade`, `executionLog`, `executionStats` | Trade execution pipeline |
-| **Axiom DEX** | `axiomPrice`, `axiomPair`, `axiomLiquidityMetrics`, `axiomHolders`, `axiomTokenAnalysis`, `axiomNewTokens`, `axiomWsStatus`, `axiomWalletBalance`, `axiomStatus` | Axiom DEX data |
+| **DexScreener** | `dexPrice`, `dexPair`, `dexLiquidityMetrics`, `dexNewTokens`, `dexStatus` | DexScreener DEX data |
 | **Token Info** | `tokenInfo` | Token metadata (Birdeye) |
 | **Health** | `health` | Service health check |
 

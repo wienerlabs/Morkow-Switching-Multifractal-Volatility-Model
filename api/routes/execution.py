@@ -27,7 +27,52 @@ class ExecuteTradeRequest(BaseModel):
     force: bool = False
 
 
-@router.post("/execution/preflight", summary="Preflight trade check")
+class PreflightResponse(BaseModel):
+    approved: bool
+    token: str
+    trade_size_usd: float
+    direction: str
+    guardian_score: float | None = None
+    circuit_breaker_ok: bool = True
+    veto_reasons: list[str] = []
+    timestamp_iso: str | None = None
+
+
+class ExecuteTradeResponse(BaseModel):
+    success: bool
+    tx_hash: str | None = None
+    token_mint: str
+    direction: str
+    amount: float
+    slippage_bps: int | None = None
+    price_usd: float | None = None
+    error: str | None = None
+    timestamp_iso: str | None = None
+
+
+class ExecutionLogEntry(BaseModel):
+    tx_hash: str | None = None
+    token: str | None = None
+    direction: str | None = None
+    amount: float | None = None
+    price_usd: float | None = None
+    timestamp: str | None = None
+
+
+class ExecutionLogResponse(BaseModel):
+    entries: list[dict]
+
+
+class ExecutionStatsResponse(BaseModel):
+    total_trades: int = 0
+    successful: int = 0
+    failed: int = 0
+    avg_slippage_bps: float | None = None
+    total_volume_usd: float = 0.0
+    timestamp: str | None = None
+
+
+@router.post("/execution/preflight", summary="Preflight trade check", response_model=PreflightResponse)
 def preflight(req: PreflightRequest):
     """Run preflight checks (Guardian veto, circuit breakers, portfolio limits) before execution."""
     from cortex.execution import preflight_check
@@ -45,7 +90,7 @@ def preflight(req: PreflightRequest):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.post("/execution/trade", summary="Execute trade")
+@router.post("/execution/trade", summary="Execute trade", response_model=ExecuteTradeResponse)
 def execute_trade(req: ExecuteTradeRequest):
     """Execute a swap on Solana via Jupiter aggregator after preflight validation."""
     from cortex.execution import execute_trade as _execute
@@ -67,7 +112,7 @@ def execute_trade(req: ExecuteTradeRequest):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.get("/execution/log", summary="Get execution log")
+@router.get("/execution/log", summary="Get execution log", response_model=ExecutionLogResponse)
 def get_execution_log(limit: int = Query(50, ge=1, le=500)):
     """Return recent trade execution log entries."""
     from cortex.execution import get_execution_log as _log
@@ -75,7 +120,7 @@ def get_execution_log(limit: int = Query(50, ge=1, le=500)):
     return {"entries": _log(limit=limit)}
 
 
-@router.get("/execution/stats", summary="Get execution statistics")
+@router.get("/execution/stats", summary="Get execution statistics", response_model=ExecutionStatsResponse)
 def get_execution_stats():
     """Return aggregate execution statistics (fill rates, slippage, PnL)."""
     from cortex.execution import get_execution_stats as _stats

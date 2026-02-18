@@ -1,6 +1,6 @@
 """DexScreener DEX data adapter for the Cortex Risk Engine.
 
-Drop-in replacement for cortex/data/axiom.py. Uses the official, free,
+Uses the official, free,
 keyless DexScreener REST API (https://docs.dexscreener.com/api/reference).
 
 Provides:
@@ -9,6 +9,15 @@ Provides:
   3. New token pair discovery
   4. In-memory price cache with TTL
 """
+
+__all__ = [
+    "is_available",
+    "get_token_price",
+    "get_pair_liquidity",
+    "extract_liquidity_metrics",
+    "get_new_tokens",
+    "get_cached_prices",
+]
 
 import logging
 import time

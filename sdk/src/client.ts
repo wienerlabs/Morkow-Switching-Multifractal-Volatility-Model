@@ -508,42 +508,26 @@ export class RiskEngineClient {
     return this.get("/api/v1/execution/stats");
   }
 
-  // ── Axiom DEX ──
+  // ── DexScreener DEX ──
 
-  async axiomPrice(tokenAddress: string): Promise<Record<string, unknown>> {
-    return this.get(`/api/v1/axiom/price/${encodeURIComponent(tokenAddress)}`);
+  async dexPrice(tokenAddress: string): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/dex/price/${encodeURIComponent(tokenAddress)}`);
   }
 
-  async axiomPair(pairAddress: string): Promise<Record<string, unknown>> {
-    return this.get(`/api/v1/axiom/pair/${encodeURIComponent(pairAddress)}`);
+  async dexPair(pairAddress: string): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/dex/pair/${encodeURIComponent(pairAddress)}`);
   }
 
-  async axiomLiquidityMetrics(pairAddress: string): Promise<Record<string, unknown>> {
-    return this.get(`/api/v1/axiom/liquidity-metrics/${encodeURIComponent(pairAddress)}`);
+  async dexLiquidityMetrics(pairAddress: string): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/dex/liquidity-metrics/${encodeURIComponent(pairAddress)}`);
   }
 
-  async axiomHolders(pairAddress: string): Promise<Record<string, unknown>> {
-    return this.get(`/api/v1/axiom/holders/${encodeURIComponent(pairAddress)}`);
+  async dexNewTokens(opts?: { limit?: number; min_liquidity?: boolean }): Promise<Record<string, unknown>> {
+    return this.get(`/api/v1/dex/new-tokens${this.qs(opts ?? {})}`);
   }
 
-  async axiomTokenAnalysis(devAddress: string, tokenTicker: string): Promise<Record<string, unknown>> {
-    return this.get(`/api/v1/axiom/token-analysis${this.qs({ dev_address: devAddress, token_ticker: tokenTicker })}`);
-  }
-
-  async axiomNewTokens(opts?: { limit?: number; min_liquidity?: boolean }): Promise<Record<string, unknown>> {
-    return this.get(`/api/v1/axiom/new-tokens${this.qs(opts ?? {})}`);
-  }
-
-  async axiomWsStatus(): Promise<Record<string, unknown>> {
-    return this.get("/api/v1/axiom/ws-status");
-  }
-
-  async axiomWalletBalance(walletAddress: string): Promise<Record<string, unknown>> {
-    return this.get(`/api/v1/axiom/wallet/${encodeURIComponent(walletAddress)}`);
-  }
-
-  async axiomStatus(): Promise<Record<string, unknown>> {
-    return this.get("/api/v1/axiom/status");
+  async dexStatus(): Promise<Record<string, unknown>> {
+    return this.get("/api/v1/dex/status");
   }
 
   // ── On-Chain Liquidity ──

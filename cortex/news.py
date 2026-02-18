@@ -7,6 +7,19 @@ Math: TF-IDF-weighted sentiment, exponential time decay, Jaccard dedup,
       information entropy, MSM regime amplification.
 """
 
+__all__ = [
+    "SentimentResult",
+    "NewsItem",
+    "MarketSignal",
+    "NewsBuffer",
+    "compute_sentiment",
+    "compute_impact",
+    "compute_novelty",
+    "fuse_duplicate_sentiments",
+    "compute_market_signal",
+    "fetch_news_intelligence",
+]
+
 import math
 import os
 import logging

@@ -4,6 +4,14 @@ Fetches OHLCV, funding rates, and liquidity metrics from on-chain sources.
 Outputs DataFrames compatible with the existing yfinance-based pipeline.
 """
 
+__all__ = [
+    "is_available",
+    "TOKEN_REGISTRY",
+    "fetch_ohlcv",
+    "fetch_funding_rates",
+    "fetch_liquidity",
+]
+
 import os
 import logging
 from datetime import datetime, timezone
@@ -22,6 +30,11 @@ from cortex.data.rpc_failover import get_resilient_pool
 logger = logging.getLogger(__name__)
 
 _pool = get_resilient_pool()
+
+
+def is_available() -> bool:
+    """Check if Birdeye API key is configured."""
+    return bool(os.environ.get("BIRDEYE_API_KEY", ""))
 
 # Well-known SPL token mint addresses
 TOKEN_REGISTRY: dict[str, str] = {
@@ -417,44 +430,43 @@ def get_token_metadata(token: str) -> dict:
     }
 
 
-# ── Axiom-enhanced price feeds ──
+# ── DexScreener-enhanced price feeds ──
 
 
-def get_axiom_price(token: str) -> dict | None:
-    """Fetch token price from Axiom Trade as alternative source.
+def get_dexscreener_price(token: str) -> dict | None:
+    """Fetch token price from DexScreener as alternative source.
 
     Returns dict with price, source, timestamp or None if unavailable.
     """
     try:
-        from cortex.data.axiom import get_token_price, is_available
+        from cortex.data.dexscreener import get_token_price, is_available
 
         if not is_available():
             return None
 
         address = _resolve_token_address(token)
         data = get_token_price(address)
-        raw = data.get("raw") or {}
-        price = float(raw.get("price", 0) or raw.get("priceUsd", 0) or 0)
+        price = float(data.get("price_usd") or 0)
         if price <= 0:
             return None
 
         return {
             "price": price,
-            "source": "axiom",
+            "source": "dexscreener",
             "token": token,
             "address": address,
             "timestamp": data.get("timestamp"),
         }
     except Exception as e:
-        logger.warning("Axiom price fetch failed for %s: %s", token, e)
+        logger.warning("DexScreener price fetch failed for %s: %s", token, e)
         return None
 
 
 def get_multi_source_price(token: str) -> dict:
-    """Fetch price from multiple sources (Birdeye + Axiom) and return best.
+    """Fetch price from multiple sources (Birdeye + DexScreener) and return best.
 
     Returns dict with price, source, all_sources for cross-validation.
-    Prefers Birdeye as primary, uses Axiom for validation/fallback.
+    Prefers Birdeye as primary, uses DexScreener for validation/fallback.
     """
     address = _resolve_token_address(token)
     sources: list[dict] = []
@@ -473,10 +485,10 @@ def get_multi_source_price(token: str) -> dict:
     except Exception as e:
         logger.warning("Birdeye price failed for %s: %s", token, e)
 
-    # Secondary: Axiom
-    axiom_data = get_axiom_price(token)
-    if axiom_data:
-        sources.append({"source": "axiom", "price": axiom_data["price"]})
+    # Secondary: DexScreener
+    dex_data = get_dexscreener_price(token)
+    if dex_data:
+        sources.append({"source": "dexscreener", "price": dex_data["price"]})
 
     if not sources:
         raise ValueError(f"No price data available for {token} from any source")

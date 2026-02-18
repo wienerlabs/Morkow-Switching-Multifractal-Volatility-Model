@@ -18,6 +18,17 @@ Evidence is sourced from:
 """
 from __future__ import annotations
 
+__all__ = [
+    "DebateEvidence",
+    "AgentArgument",
+    "DebateContext",
+    "enrich_context",
+    "run_debate",
+    "record_debate_outcome",
+    "persist_debate_state",
+    "restore_debate_state",
+]
+
 import logging
 import math
 import time

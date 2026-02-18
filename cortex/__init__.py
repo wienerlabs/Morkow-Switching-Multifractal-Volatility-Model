@@ -20,7 +20,7 @@ Submodules:
     data.streams— Helius WebSocket transaction monitor
     data.social — Social sentiment aggregation
     data.macro  — Macro market indicators
-    data.axiom  — Axiom Trade DEX aggregator (price, liquidity, execution)
+    data.dexscreener — DexScreener DEX data (price, liquidity, new tokens)
     execution   — Wave 9 trade execution layer
 """
 

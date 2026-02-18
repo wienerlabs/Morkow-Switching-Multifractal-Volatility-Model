@@ -11,6 +11,15 @@ Supports:
 No hardcoded feed IDs. The entire Pyth crypto market is accessible.
 """
 
+__all__ = [
+    "is_available",
+    "list_feeds",
+    "search_feeds",
+    "get_prices",
+    "get_historical_price",
+    "get_price_buffer",
+]
+
 import logging
 import time
 from collections import deque
@@ -29,6 +38,11 @@ from cortex.data.rpc_failover import get_resilient_pool
 logger = logging.getLogger(__name__)
 
 _pool = get_resilient_pool()
+
+
+def is_available() -> bool:
+    """Check if Pyth Hermes is reachable."""
+    return bool(PYTH_HERMES_URL)
 
 # ── Feed registry cache ──
 _feed_cache: list[dict[str, Any]] = []
