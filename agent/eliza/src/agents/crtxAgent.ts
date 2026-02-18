@@ -43,6 +43,7 @@ import { ExitManager } from '../services/trading/exitManager.js';
 import type { SpotPosition, ApprovedToken, ExitLevels } from '../services/trading/types.js';
 import { LendingPositionMonitor, type TrackedLendingPosition } from '../services/lending/lendingPositionMonitor.js';
 import { getDebateClient } from '../services/risk/debateClient.js';
+import { getSolanaAgentKitService, type SolanaAgentKitService, type KitActionName, type KitExecuteResult } from '../services/solanaAgentKit/index.js';
 
 // Consensus system imports
 import {
@@ -196,6 +197,10 @@ export class CRTXAgent {
   private bearishResearcher = getBearishResearcher();
   private consensusEnabled = true;
 
+  // Solana Agent Kit (opt-in via USE_AGENT_KIT env var)
+  private agentKitService: SolanaAgentKitService | null = null;
+  private agentKitEnabled: boolean;
+
   constructor(config: Partial<AgentConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.riskManager = new RiskManager();
@@ -257,13 +262,14 @@ export class CRTXAgent {
     });
 
     // Initialize SpotAnalyst (independent, runs in parallel)
+    // Pass Kit service reference — lazy check via isInitialized() at evaluation time
     this.spotAnalyst = new SpotAnalyst({
       minConfidence: this.config.minConfidence,
       portfolioValueUsd: this.config.portfolioValueUsd,
       volatility24h: this.config.volatility24h ?? 0.05,
       verbose: true,
       minLiquidity: this.modeConfig.minLiquidity, // Mode-aware liquidity threshold
-    });
+    }, process.env.USE_AGENT_KIT === 'true' ? getSolanaAgentKitService() : null);
 
     // Initialize PumpFunAnalyst ONLY in AGGRESSIVE mode
     if (this.modeConfig.enablePumpFun) {
@@ -319,6 +325,14 @@ export class CRTXAgent {
     });
     this.initializeSpotExecutor();
 
+    // Initialize Solana Agent Kit (opt-in)
+    this.agentKitEnabled = process.env.USE_AGENT_KIT === 'true';
+    if (this.agentKitEnabled) {
+      this.initializeAgentKit().catch(error => {
+        logger.error('[CRTX] Failed to initialize Solana Agent Kit', { error });
+      });
+    }
+
     // Get trading mode and log startup info
     const tradingMode = getTradingMode();
 
@@ -328,6 +342,7 @@ export class CRTXAgent {
       dryRun: this.config.dryRun,
       hasWallet: !!this.wallet,
       hasLPExecutor: !!this.lpExecutor,
+      agentKitEnabled: this.agentKitEnabled,
       tradingMode: {
         mode: tradingMode.mode,
         minHealthScore: tradingMode.minHealthScore,
@@ -493,6 +508,45 @@ export class CRTXAgent {
     } catch (error) {
       logger.error('[CRTX] Failed to initialize spot executor', { error });
     }
+  }
+
+  private async initializeAgentKit(): Promise<void> {
+    try {
+      this.agentKitService = getSolanaAgentKitService({
+        rpcUrl: this.config.solanaRpcUrl || 'https://api.mainnet-beta.solana.com',
+        privateKey: this.config.solanaPrivateKey,
+      });
+
+      const success = await this.agentKitService.initialize();
+      if (success) {
+        logger.info('[CRTX] Solana Agent Kit initialized', {
+          actions: this.agentKitService.getActionNames().length,
+        });
+      } else {
+        logger.warn('[CRTX] Solana Agent Kit initialization returned false');
+        this.agentKitService = null;
+      }
+    } catch (error) {
+      logger.error('[CRTX] Solana Agent Kit init error', { error });
+      this.agentKitService = null;
+    }
+  }
+
+  async executeViaKit(action: KitActionName, params: Record<string, unknown> = {}): Promise<KitExecuteResult> {
+    if (!this.agentKitEnabled || !this.agentKitService) {
+      return {
+        success: false,
+        error: 'Agent Kit not enabled or not initialized',
+        action,
+        timestamp: Date.now(),
+      };
+    }
+
+    return this.agentKitService.execute(action, params);
+  }
+
+  isAgentKitAvailable(): boolean {
+    return this.agentKitEnabled && this.agentKitService?.isInitialized() === true;
   }
 
   /**
