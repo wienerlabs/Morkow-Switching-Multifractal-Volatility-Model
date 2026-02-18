@@ -220,6 +220,157 @@ def _collect_regime_context() -> str:
     return "\n".join(lines) if lines else "No regime data available."
 
 
+# ── DX-Research Context Collectors ────────────────────────────────────────
+
+def _collect_stigmergy_context(token: str = "") -> str:
+    """Collect pheromone board consensus for a token (or full snapshot)."""
+    try:
+        from cortex.stigmergy import get_consensus, get_board_snapshot
+        from cortex.config import STIGMERGY_ENABLED
+        if not STIGMERGY_ENABLED:
+            return "Stigmergy: disabled."
+
+        if token:
+            c = get_consensus(token)
+            return (
+                f"Stigmergy ({token}): direction={c.direction}, "
+                f"conviction={c.conviction:.2f}, sources={c.num_sources}, "
+                f"swarm={'ACTIVE' if c.swarm_active else 'inactive'}, "
+                f"bullish={c.bullish_weight:.2f}, bearish={c.bearish_weight:.2f}"
+            )
+
+        snap = get_board_snapshot()
+        if snap["total_tokens"] == 0:
+            return "Stigmergy: no signals deposited."
+        lines = [f"Stigmergy Board: {snap['total_tokens']} token(s)"]
+        for tk, data in list(snap["tokens"].items())[:5]:
+            lines.append(
+                f"  {tk}: {data['direction']} conviction={data['conviction']:.2f} "
+                f"sources={data['num_sources']} swarm={'Y' if data['swarm_active'] else 'N'}"
+            )
+        return "\n".join(lines)
+    except Exception:
+        return "Stigmergy data unavailable."
+
+
+def _collect_cascade_context(token: str = "") -> str:
+    """Collect Ising cascade risk assessment."""
+    try:
+        from cortex.ising_cascade import get_cascade_score
+        from cortex.config import ISING_CASCADE_ENABLED
+        if not ISING_CASCADE_ENABLED:
+            return "Ising Cascade: disabled."
+
+        if not token:
+            return "Ising Cascade: no token specified."
+
+        result = get_cascade_score(token)
+        return (
+            f"Ising Cascade ({token}): risk={result.cascade_risk}, "
+            f"score={result.cascade_score}/100, "
+            f"magnetization={result.magnetization:.3f}, "
+            f"temperature={result.effective_temperature:.3f}, "
+            f"susceptibility={result.susceptibility:.3f}, "
+            f"herding={result.herding_direction}"
+        )
+    except Exception:
+        return "Ising Cascade data unavailable."
+
+
+def _collect_memory_context(agent_id: str = "cortex") -> str:
+    """Collect agent memory summary."""
+    try:
+        from cortex.agent_memory import get_context_snapshot
+        snap = get_context_snapshot(agent_id)
+        lt = snap.get("long_term", {})
+        st = snap.get("short_term", [])
+
+        if lt.get("total_decisions", 0) == 0:
+            return f"Agent Memory ({agent_id}): no decisions recorded."
+
+        lines = [
+            f"Agent Memory ({agent_id}): {lt['total_decisions']} decisions",
+            f"  Win rate: {lt.get('win_rate', 0):.1%}, "
+            f"Avg risk: {lt.get('avg_risk_score', 0):.1f}, "
+            f"PnL: {lt.get('cumulative_pnl', 0):+.2f}",
+            f"  Dominant regime: {lt.get('dominant_regime', 'N/A')}",
+        ]
+        if st:
+            last = st[-1]
+            lines.append(
+                f"  Last decision: {last.get('token', '?')} {last.get('direction', '?')} "
+                f"score={last.get('score', 0):.1f} approved={last.get('approved', '?')}"
+            )
+        return "\n".join(lines)
+    except Exception:
+        return "Agent Memory data unavailable."
+
+
+def _collect_vault_context(vault_id: str = "") -> str:
+    """Collect vault delta features and risk score."""
+    try:
+        from cortex.vault_delta import get_vault_features, get_tracker
+        from cortex.config import VAULT_DELTA_ENABLED
+        if not VAULT_DELTA_ENABLED:
+            return "Vault Delta: disabled."
+
+        if vault_id:
+            feat = get_vault_features(vault_id)
+            d = feat.get("details", {})
+            return (
+                f"Vault Delta ({vault_id}): score={feat['score']}/100, "
+                f"TVL vol={d.get('tvl_volatility_score', 0):.1f}, "
+                f"SP vol={d.get('share_price_volatility_score', 0):.1f}, "
+                f"flow={d.get('flow_score', 0):.1f}, "
+                f"events={d.get('events', [])}"
+            )
+
+        tracker = get_tracker()
+        all_deltas = tracker.get_all_deltas()
+        if not all_deltas:
+            return "Vault Delta: no vaults tracked."
+        lines = [f"Vault Delta: {len(all_deltas)} vault(s)"]
+        for vid, delta in list(all_deltas.items())[:5]:
+            lines.append(
+                f"  {vid}: TVL 24h={delta.tvl_24h_pct:+.1f}%, "
+                f"SP 24h={delta.share_price_24h_pct:+.1f}%, "
+                f"events={delta.events or 'none'}"
+            )
+        return "\n".join(lines)
+    except Exception:
+        return "Vault Delta data unavailable."
+
+
+def _collect_override_context() -> str:
+    """Collect active human overrides."""
+    try:
+        from cortex.human_override import list_active_overrides, get_registry
+        from cortex.config import HUMAN_OVERRIDE_ENABLED
+        if not HUMAN_OVERRIDE_ENABLED:
+            return "Human Override: disabled."
+
+        active = list_active_overrides()
+        if not active:
+            return "Human Override: no active overrides."
+
+        lines = [f"Human Overrides: {len(active)} active"]
+        for ovr in active[:5]:
+            lines.append(
+                f"  [{ovr['action']}] {ovr['token']} — {ovr['reason']} "
+                f"(by {ovr['created_by']}, TTL {ovr.get('ttl_remaining', 0):.0f}s)"
+            )
+
+        audit = get_registry().get_audit_log(n=3)
+        if audit:
+            lines.append("  Recent audit:")
+            for a in audit:
+                lines.append(f"    {a['event']} {a.get('action', '')} {a.get('token', '')} @ {a.get('ts', 0):.0f}")
+
+        return "\n".join(lines)
+    except Exception:
+        return "Human Override data unavailable."
+
+
 # ── System Prompts ───────────────────────────────────────────────────────
 
 EXPLAIN_SYSTEM = """You are the Cortex Risk Engine narrator. Your job is to translate
@@ -229,6 +380,7 @@ You have access to:
 - Guardian composite risk assessment (EVT, SVJ, Hawkes, MSM regime, news, A-LAMS VaR)
 - Adversarial debate transcripts (Trader vs Risk Manager vs Devil's Advocate → Portfolio Manager)
 - News sentiment signals
+- DX Research intelligence: stigmergy consensus (agent coordination), Ising cascade risk (herd detection), human overrides
 
 Your output should:
 1. Start with a clear APPROVE/REJECT recommendation with confidence level
@@ -265,7 +417,8 @@ Your briefing should cover:
 2. News sentiment summary and key headlines
 3. Model agreement/disagreement across components
 4. Any active circuit breakers or veto triggers
-5. Recommended operator actions
+5. DX intelligence: agent coordination signals, cascade/herd risks, vault state, human overrides
+6. Recommended operator actions
 
 Write in a professional but direct style. Numbers matter — include specific scores,
 probabilities, and thresholds. Target length: 200-400 words."""
@@ -279,6 +432,7 @@ You have access to live system context including:
 - News sentiment signals
 - Debate transcripts and decision history
 - Circuit breaker states
+- DX intelligence: stigmergy consensus, Ising cascade risk, vault deltas, human overrides
 
 Answer precisely based on the provided context. If you don't have enough data
 to answer, say so clearly. Never fabricate numbers. Reference specific model
@@ -324,6 +478,11 @@ async def explain_decision(
     except Exception:
         pass
 
+    # DX-Research context
+    stigmergy_ctx = _collect_stigmergy_context(token)
+    cascade_ctx = _collect_cascade_context(token)
+    override_ctx = _collect_override_context()
+
     user_prompt = f"""Explain this trade decision:
 
 TOKEN: {token}
@@ -340,7 +499,12 @@ SIZE: ${trade_size_usd:,.2f}
 {news_ctx}
 
 === REGIME STATE ===
-{regime_ctx}"""
+{regime_ctx}
+
+=== DX INTELLIGENCE ===
+{stigmergy_ctx}
+{cascade_ctx}
+{override_ctx}"""
 
     try:
         narrative = await _llm_call(EXPLAIN_SYSTEM, user_prompt)
@@ -518,6 +682,13 @@ async def market_briefing() -> dict[str, Any]:
     except Exception:
         pass
 
+    # DX-Research context (all 5 modules)
+    stigmergy_ctx = _collect_stigmergy_context()
+    cascade_ctx = _collect_cascade_context()
+    memory_ctx = _collect_memory_context()
+    vault_ctx = _collect_vault_context()
+    override_ctx = _collect_override_context()
+
     user_prompt = f"""Generate a market briefing from the following risk engine state:
 
 === REGIME STATE ===
@@ -533,7 +704,14 @@ async def market_briefing() -> dict[str, Any]:
 {cb_ctx}
 
 === KELLY CRITERION ===
-{kelly_ctx}"""
+{kelly_ctx}
+
+=== DX INTELLIGENCE ===
+{stigmergy_ctx}
+{cascade_ctx}
+{memory_ctx}
+{vault_ctx}
+{override_ctx}"""
 
     try:
         briefing = await _llm_call(BRIEFING_SYSTEM, user_prompt)
@@ -593,6 +771,10 @@ async def answer_question(
     except Exception:
         pass
 
+    # DX-Research context
+    stigmergy_ctx = _collect_stigmergy_context()
+    override_ctx = _collect_override_context()
+
     extra = ""
     if context_overrides:
         extra = f"\n=== ADDITIONAL CONTEXT ===\n{context_overrides}"
@@ -609,6 +791,10 @@ NEWS:
 
 KELLY:
 {kelly_ctx}
+
+DX INTELLIGENCE:
+{stigmergy_ctx}
+{override_ctx}
 {extra}"""
 
     try:

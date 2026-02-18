@@ -113,7 +113,7 @@ import os
 GUARDIAN_WEIGHTS: dict[str, float] = json.loads(
     os.environ.get(
         "GUARDIAN_WEIGHTS",
-        json.dumps({"evt": 0.20, "svj": 0.15, "hawkes": 0.15, "regime": 0.15, "news": 0.10, "alams": 0.25, "agent_confidence": 0.10}),
+        json.dumps({"evt": 0.20, "svj": 0.15, "hawkes": 0.15, "regime": 0.15, "news": 0.10, "alams": 0.15, "agent_confidence": 0.10}),
     )
 )
 CIRCUIT_BREAKER_THRESHOLD = float(os.environ.get("CIRCUIT_BREAKER_THRESHOLD", "90"))
