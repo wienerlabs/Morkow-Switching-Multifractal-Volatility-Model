@@ -2404,17 +2404,11 @@
                 <!-- Strategy Control Panel -->
                 <div class="panel-header" style="margin-top:0;">
                     <span>Trading Strategies</span>
-                    <span class="text-dim">3 ACTIVE</span>
+                    <span class="text-dim" id="stratActiveCount">— ACTIVE</span>
                 </div>
                 <div class="strat-panel">
-                    <div class="strat-tabs">
-                        <div class="strat-tab active" onclick="switchStrategy(0, this)">LP Rebalancing<span class="strat-tab-pct">40%</span></div>
-                        <div class="strat-tab" onclick="switchStrategy(1, this)">Arbitrage<span class="strat-tab-pct">30%</span></div>
-                        <div class="strat-tab" onclick="switchStrategy(2, this)">Perpetuals<span class="strat-tab-pct">30%</span></div>
-                    </div>
-                    <div id="stratBody0" class="strat-body active"></div>
-                    <div id="stratBody1" class="strat-body"></div>
-                    <div id="stratBody2" class="strat-body"></div>
+                    <div class="strat-tabs" id="stratTabs"></div>
+                    <div id="stratBodies"></div>
                 </div>
 
                 <!-- Agent Cards -->
@@ -2882,6 +2876,7 @@
     <script src="js/guardian-service.js"></script>
     <script src="js/news-service.js"></script>
     <script src="js/regime-service.js"></script>
+    <script src="js/agent-service.js"></script>
 
     <script>
     // === DATA SOURCES STATUS PANEL ===
@@ -2898,36 +2893,93 @@
             { name: 'News APIs', type: 'Intel', interval: '30s', dataTypes: 'CC, NewsData, Panic' },
         ];
 
+        var _macroData = null;
+        var _macroLastFetch = 0;
+        var _macroApiOnline = null; // null = unknown
+
         function randomLatency(base) {
             return Math.max(1, base + Math.round((Math.random() - 0.5) * base * 0.6));
         }
 
+        async function fetchMacroIndicators() {
+            var t0 = performance.now();
+            try {
+                var data = await CortexAPI.get('/macro/indicators');
+                var elapsed = Math.round(performance.now() - t0);
+                if (data && data.fear_greed) {
+                    _macroData = data;
+                    _macroData._latencyMs = elapsed;
+                    _macroLastFetch = Date.now();
+                    _macroApiOnline = true;
+                    return;
+                }
+            } catch (e) { /* fall through */ }
+            _macroApiOnline = false;
+        }
+
         function getSourceStatus() {
-            return DATA_SOURCES.map(src => {
-                const roll = Math.random();
-                let status = 'online', latency;
+            return DATA_SOURCES.map(function(src) {
+                // For Macro Data row, use real API health
+                if (src.name === 'Macro Data' && _macroApiOnline !== null) {
+                    var status = _macroApiOnline ? 'online' : 'offline';
+                    var latency = _macroData ? (_macroData._latencyMs || 0) : 0;
+                    var age = _macroLastFetch ? (Date.now() - _macroLastFetch) / 1000 : 999;
+                    var freshness = status === 'offline' ? 'dead' : age > 120 ? 'stale' : 'fresh';
+                    return Object.assign({}, src, { status: status, latency: latency, freshness: freshness });
+                }
+
+                var roll = Math.random();
+                var status = 'online', latency;
                 if (roll > 0.95) { status = 'offline'; latency = 0; }
                 else if (roll > 0.85) { status = 'degraded'; }
 
-                const baseLatencies = { '400ms': 8, '1s': 45, 'Per block': 420, '5s': 120, '10s': 350, '60s': 800, '30s': 500 };
+                var baseLatencies = { '400ms': 8, '1s': 45, 'Per block': 420, '5s': 120, '10s': 350, '60s': 800, '30s': 500 };
                 latency = latency === 0 ? 0 : randomLatency(baseLatencies[src.interval] || 100);
                 if (status === 'degraded') latency = Math.round(latency * 2.5);
 
-                const freshRoll = Math.random();
-                let freshness = 'fresh';
+                var freshRoll = Math.random();
+                var freshness = 'fresh';
                 if (status === 'offline') freshness = 'dead';
                 else if (status === 'degraded' || freshRoll > 0.8) freshness = 'stale';
 
-                return { ...src, status, latency, freshness };
+                return Object.assign({}, src, { status: status, latency: latency, freshness: freshness });
             });
         }
 
-        function renderDataSources() {
-            const sources = getSourceStatus();
-            const onlineCount = sources.filter(s => s.status === 'online').length;
-            const degradedCount = sources.filter(s => s.status === 'degraded').length;
+        function renderMacroIndicators() {
+            var el = document.getElementById('dsMacro');
+            if (!el) return;
 
-            const summaryEl = document.getElementById('dsStatusSummary');
+            var btcDom = '—', solDom = '—', gasAvg = '—';
+            var fearGreed = 0, fgLabel = '—', fgColor = 'var(--dim)';
+
+            if (_macroData) {
+                var bd = _macroData.btc_dominance || {};
+                btcDom = (bd.btc_dominance || 0).toFixed(1) + '%';
+                solDom = (bd.sol_dominance || 0).toFixed(1) + '%';
+
+                var fg = _macroData.fear_greed || {};
+                fearGreed = fg.value || 0;
+                fgLabel = fg.classification || 'Neutral';
+                fgColor = fearGreed >= 60 ? 'var(--green)' : fearGreed >= 40 ? 'var(--dim)' : 'var(--red)';
+
+                var gas = _macroData.avg_gas_sol;
+                gasAvg = gas != null ? gas.toFixed(6) : '—';
+            }
+
+            el.innerHTML =
+                '<div class="ds-macro-item"><div class="ds-macro-label">BTC Dominance</div><div class="ds-macro-value">' + btcDom + '</div></div>' +
+                '<div class="ds-macro-item"><div class="ds-macro-label">Fear & Greed</div><div class="ds-macro-value" style="color:' + fgColor + '">' + fearGreed + ' · ' + fgLabel + '</div></div>' +
+                '<div class="ds-macro-item"><div class="ds-macro-label">SOL Dominance</div><div class="ds-macro-value">' + solDom + '</div></div>' +
+                '<div class="ds-macro-item"><div class="ds-macro-label">Avg Gas (SOL)</div><div class="ds-macro-value">' + gasAvg + '</div></div>';
+        }
+
+        function renderDataSources() {
+            var sources = getSourceStatus();
+            var onlineCount = sources.filter(function(s) { return s.status === 'online'; }).length;
+            var degradedCount = sources.filter(function(s) { return s.status === 'degraded'; }).length;
+
+            var summaryEl = document.getElementById('dsStatusSummary');
             if (degradedCount === 0 && onlineCount === sources.length) {
                 summaryEl.innerHTML = sources.length + ' Sources · <span style="color:var(--green)">ALL ONLINE</span>';
             } else {
@@ -2936,9 +2988,9 @@
                     ((sources.length - onlineCount - degradedCount) > 0 ? ' · <span style="color:var(--red)">' + (sources.length - onlineCount - degradedCount) + ' OFFLINE</span>' : '');
             }
 
-            document.getElementById('dsGrid').innerHTML = sources.map(s => {
-                const latStr = s.latency === 0 ? '—' : s.latency + 'ms';
-                const latColor = s.status === 'offline' ? 'var(--red)' : s.latency > 500 ? 'var(--red)' : s.latency > 200 ? '#cc8800' : 'var(--fg)';
+            document.getElementById('dsGrid').innerHTML = sources.map(function(s) {
+                var latStr = s.latency === 0 ? '—' : s.latency + 'ms';
+                var latColor = s.status === 'offline' ? 'var(--red)' : s.latency > 500 ? 'var(--red)' : s.latency > 200 ? '#cc8800' : 'var(--fg)';
                 return '<div class="ds-item">' +
                     '<div class="ds-name"><span class="ds-dot ' + s.status + '"></span>' + s.name + '</div>' +
                     '<div class="ds-meta">' + s.type + ' · ' + s.interval + '</div>' +
@@ -2947,154 +2999,136 @@
                     '</div>';
             }).join('');
 
-            // Macro indicators
-            const btcDom = (54 + Math.random() * 8).toFixed(1);
-            const fearGreed = Math.round(30 + Math.random() * 50);
-            const fgLabel = fearGreed >= 60 ? 'GREED' : fearGreed >= 40 ? 'NEUTRAL' : 'FEAR';
-            const fgColor = fearGreed >= 60 ? 'var(--green)' : fearGreed >= 40 ? 'var(--dim)' : 'var(--red)';
-            const solDom = (2.5 + Math.random() * 1.5).toFixed(1);
-            const gasAvg = (0.000005 + Math.random() * 0.00002).toFixed(6);
-
-            document.getElementById('dsMacro').innerHTML =
-                '<div class="ds-macro-item"><div class="ds-macro-label">BTC Dominance</div><div class="ds-macro-value">' + btcDom + '%</div></div>' +
-                '<div class="ds-macro-item"><div class="ds-macro-label">Fear & Greed</div><div class="ds-macro-value" style="color:' + fgColor + '">' + fearGreed + ' · ' + fgLabel + '</div></div>' +
-                '<div class="ds-macro-item"><div class="ds-macro-label">SOL Dominance</div><div class="ds-macro-value">' + solDom + '%</div></div>' +
-                '<div class="ds-macro-item"><div class="ds-macro-label">Avg Gas (SOL)</div><div class="ds-macro-value">' + gasAvg + '</div></div>';
+            renderMacroIndicators();
         }
 
-        renderDataSources();
+        // Initial fetch + render, then poll macro every 60s and grid every 8s
+        fetchMacroIndicators().then(function() { renderDataSources(); });
+        setInterval(fetchMacroIndicators, 60000);
         setInterval(renderDataSources, 8000);
     })();
     </script>
 
     <script>
-    // === EXECUTION MONITORING SIMULATION ===
+    // === EXECUTION MONITORING — LIVE API ===
     (function() {
-        const STEPS = ['emStep1','emStep2','emStep3','emStep4'];
-        const STEP_NAMES = ['TX Simulation','Guardian Validation','Broadcast','Confirmation'];
-        const CHECKS = ['emChk1','emChk2','emChk3','emChk4'];
-        const CHECK_NAMES = ['Transaction Simulation','Slippage Verification','Balance Confirmation','Rate Limit Check'];
-        const CONF_STAGES = ['Submitted','Processed','Confirmed','Finalized'];
-        const MEV_MODES = ['JITO','JITO','JITO','STANDARD'];
-        const TX_SIGS = ['5Kx...r2M','8Fp...q4N','3Aw...j7T','9Bm...v1K','2Dz...h6R','7Gn...w3P'];
+        var STEP_IDS = ['emStep1','emStep2','emStep3','emStep4'];
+        var CHECK_IDS = ['emChk1','emChk2','emChk3','emChk4'];
+        var CONF_STAGES = ['Submitted','Processed','Confirmed','Finalized'];
+        var _lastStatus = null;
+        var _sseConnected = false;
 
-        function randFloat(min, max) { return (Math.random() * (max - min) + min); }
-        function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
-
-        function runExecCycle() {
-            const statusEl = document.getElementById('emStatus');
-            const totalDuration = randInt(3000, 6000);
-            const stepDuration = totalDuration / 4;
-            let failed = Math.random() < 0.08;
-            let failStep = failed ? randInt(0, 3) : -1;
-
-            statusEl.textContent = 'EXECUTING';
-            statusEl.className = '';
-
-            // Reset all
-            STEPS.forEach((id, i) => {
-                const el = document.getElementById(id);
-                el.className = 'em-step pending';
-                el.querySelector('.em-step-status').textContent = 'Waiting';
-                el.querySelector('.em-step-status').className = 'em-step-status text-dim';
-                el.querySelector('.em-step-bar-fill').style.width = '0%';
-            });
-            CHECKS.forEach(id => {
-                const el = document.getElementById(id);
-                el.textContent = '○'; el.className = 'em-check-icon wait';
-            });
-
-            // Animate steps sequentially
-            STEPS.forEach((id, i) => {
-                setTimeout(() => {
-                    const el = document.getElementById(id);
-                    const statusSpan = el.querySelector('.em-step-status');
-                    const barFill = el.querySelector('.em-step-bar-fill');
-
-                    if (failed && i === failStep) {
-                        el.className = 'em-step failed';
-                        statusSpan.textContent = '✗ Failed';
-                        statusSpan.className = 'em-step-status text-red';
-                        barFill.style.width = '100%';
-                        statusEl.textContent = 'FAILED';
-                        statusEl.className = 'text-red';
-                        return;
-                    }
-                    if (failed && i > failStep) return;
-
-                    el.className = 'em-step active';
-                    statusSpan.textContent = 'Processing...';
-                    statusSpan.className = 'em-step-status';
-                    barFill.style.width = '60%';
-
-                    // Guardian checks animate during step 2
-                    if (i === 1) {
-                        CHECKS.forEach((chkId, ci) => {
-                            setTimeout(() => {
-                                const chk = document.getElementById(chkId);
-                                chk.textContent = '✓'; chk.className = 'em-check-icon pass';
-                            }, (ci + 1) * (stepDuration / 5));
-                        });
-                    }
-
-                    // Confirmation stepper during step 4
-                    if (i === 3) {
-                        const stepper = document.getElementById('emConfStepper');
-                        CONF_STAGES.forEach((stage, si) => {
-                            setTimeout(() => {
-                                stepper.innerHTML = CONF_STAGES.map((s, j) =>
-                                    '<div class="em-conf-step ' + (j <= si ? 'done' : j === si + 1 ? 'active' : '') + '">' + s + '</div>'
-                                ).join('');
-                            }, (si) * (stepDuration / 5));
-                        });
-                    }
-
-                    setTimeout(() => {
-                        if (failed && i >= failStep) return;
-                        el.className = 'em-step done';
-                        statusSpan.textContent = '✓ ' + (i === 1 ? '4/4 Checks' : 'Passed');
-                        statusSpan.className = 'em-step-status text-green';
-                        barFill.style.width = '100%';
-
-                        if (i === STEPS.length - 1) {
-                            statusEl.textContent = 'SUCCESS';
-                            statusEl.className = 'text-green';
-                        }
-                    }, stepDuration * 0.85);
-                }, i * stepDuration);
-            });
-
-            // Update metrics
-            const expSlip = randFloat(0.1, 0.5);
-            const actSlip = expSlip + randFloat(-0.05, 0.15);
-            const expPct = Math.min(100, (expSlip / 1.0) * 100);
-            const actPct = Math.min(100, (Math.max(0, actSlip) / 1.0) * 100);
-            document.getElementById('emSlipExp').style.width = expPct + '%';
-            document.getElementById('emSlipAct').style.width = actPct + '%';
-            document.getElementById('emSlipValues').textContent = expSlip.toFixed(2) + '% / ' + Math.max(0, actSlip).toFixed(2) + '%';
-
-            const retries = failed ? randInt(1, 3) : (Math.random() < 0.7 ? 1 : randInt(1, 2));
-            const retryHtml = Array.from({length: 3}, (_, i) =>
-                '<div class="em-retry-dot ' + (i < retries ? (i === retries - 1 && failed ? 'failed' : 'success') : 'pending') + '"></div>'
-            ).join('') + '<span style="font-size:0.55rem;color:var(--dim);margin-left:4px">' + retries + '/3 attempts</span>';
-            document.getElementById('emRetryTimeline').innerHTML = retryHtml;
-
-            const mev = MEV_MODES[randInt(0, MEV_MODES.length - 1)];
-            document.getElementById('emMev').textContent = mev;
-            document.getElementById('emMev').className = 'em-tx-value ' + (mev === 'JITO' ? 'text-green' : '');
-
-            document.getElementById('emPriFee').textContent = randFloat(0.00015, 0.0008).toFixed(5);
-            document.getElementById('emLatency').textContent = randInt(280, 850) + 'ms';
-            document.getElementById('emTxSig').textContent = TX_SIGS[randInt(0, TX_SIGS.length - 1)];
-
-            setTimeout(() => {
-                document.getElementById('emTxStatus').textContent = failed ? 'FAILED' : 'SUCCESS';
-                document.getElementById('emTxStatus').className = 'em-tx-value ' + (failed ? 'text-red' : 'text-green');
-            }, totalDuration);
+        function statusColor(s) {
+            if (s === 'SUCCESS' || s === 'SIMULATED') return 'text-green';
+            if (s === 'FAILED' || s === 'REJECTED' || s === 'BLOCKED') return 'text-red';
+            if (s === 'EXECUTING') return '';
+            return 'text-dim';
         }
 
-        runExecCycle();
-        setInterval(runExecCycle, 8000);
+        function applyPipeline(data) {
+            if (!data) return;
+            _lastStatus = data;
+            var statusEl = document.getElementById('emStatus');
+            statusEl.textContent = data.status || 'IDLE';
+            statusEl.className = statusColor(data.status);
+
+            // Steps
+            var steps = data.steps || [];
+            STEP_IDS.forEach(function(id, i) {
+                var step = steps[i] || {};
+                var el = document.getElementById(id);
+                if (!el) return;
+                var state = step.state || 'pending';
+                el.className = 'em-step ' + state;
+                var statusSpan = el.querySelector('.em-step-status');
+                statusSpan.textContent = step.detail || 'Waiting';
+                statusSpan.className = 'em-step-status ' + (state === 'done' ? 'text-green' : state === 'failed' ? 'text-red' : 'text-dim');
+                el.querySelector('.em-step-bar-fill').style.width = (state === 'done' || state === 'failed' ? '100' : state === 'active' ? '60' : '0') + '%';
+            });
+
+            // Guardian checks
+            var checks = data.guardian_checks || [];
+            CHECK_IDS.forEach(function(id, i) {
+                var chk = checks[i] || {};
+                var el = document.getElementById(id);
+                if (!el) return;
+                if (chk.passed === true) { el.textContent = '✓'; el.className = 'em-check-icon pass'; }
+                else if (chk.passed === false) { el.textContent = '✗'; el.className = 'em-check-icon fail'; }
+                else { el.textContent = '○'; el.className = 'em-check-icon wait'; }
+            });
+
+            // Slippage
+            var slip = data.slippage || {};
+            var expPct = Math.min(100, (slip.expected_pct || 0) * 100);
+            var actPct = Math.min(100, (slip.actual_pct || 0) * 100);
+            document.getElementById('emSlipExp').style.width = expPct + '%';
+            document.getElementById('emSlipAct').style.width = actPct + '%';
+            document.getElementById('emSlipValues').textContent =
+                (slip.expected_pct || 0).toFixed(2) + '% / ' + (slip.actual_pct || 0).toFixed(2) + '%';
+
+            // Retries
+            var retries = data.retries || {};
+            var count = retries.count || 0;
+            var maxR = retries.max || 3;
+            var retryHtml = '';
+            for (var ri = 0; ri < maxR; ri++) {
+                retryHtml += '<div class="em-retry-dot ' + (ri < count ? 'success' : 'pending') + '"></div>';
+            }
+            retryHtml += '<span style="font-size:0.55rem;color:var(--dim);margin-left:4px">' + count + '/' + maxR + ' attempts</span>';
+            document.getElementById('emRetryTimeline').innerHTML = retryHtml;
+
+            // Confirmation stepper
+            var conf = data.confirmation || {};
+            var confIdx = typeof conf.current_index === 'number' ? conf.current_index : -1;
+            var stepper = document.getElementById('emConfStepper');
+            stepper.innerHTML = CONF_STAGES.map(function(s, j) {
+                return '<div class="em-conf-step ' + (j <= confIdx ? 'done' : j === confIdx + 1 ? 'active' : '') + '">' + s + '</div>';
+            }).join('');
+
+            // TX metrics
+            var tx = data.tx_metrics || {};
+            var mev = tx.mev_protection || 'JITO';
+            document.getElementById('emMev').textContent = mev;
+            document.getElementById('emMev').className = 'em-tx-value ' + (mev === 'JITO' ? 'text-green' : '');
+            document.getElementById('emPriFee').textContent = (tx.priority_fee_sol || 0).toFixed(5);
+            document.getElementById('emLatency').textContent = (tx.latency_ms || 0) + 'ms';
+            var sig = tx.tx_signature;
+            document.getElementById('emTxSig').textContent = sig ? (sig.slice(0, 3) + '...' + sig.slice(-3)) : '—';
+            document.getElementById('emTxStatus').textContent = tx.tx_status || data.status || 'IDLE';
+            document.getElementById('emTxStatus').className = 'em-tx-value ' + statusColor(tx.tx_status || data.status);
+        }
+
+        // Poll /execution/pipeline-status
+        async function pollPipeline() {
+            try {
+                var data = await CortexAPI.get('/execution/pipeline-status');
+                if (data) applyPipeline(data);
+            } catch (e) {
+                console.warn('[ExecMonitor] Poll failed:', e.message);
+            }
+        }
+
+        // SSE for real-time execution events
+        function connectSSE() {
+            if (_sseConnected) return;
+            try {
+                var es = CortexAPI.sseConnect('/execution/stream', function(event) {
+                    // SSE event is a raw execution log entry — re-poll for formatted pipeline
+                    pollPipeline();
+                }, function() {
+                    _sseConnected = false;
+                    setTimeout(connectSSE, 10000);
+                });
+                _sseConnected = true;
+            } catch (e) {
+                console.warn('[ExecMonitor] SSE connect failed:', e.message);
+            }
+        }
+
+        // Initial load + polling
+        pollPipeline();
+        connectSSE();
+        setInterval(pollPipeline, 5000);
     })();
     </script>
 
@@ -3671,67 +3705,8 @@
             });
         });
 
-        // === STRATEGY CONTROL PANEL ===
-        const STRATEGIES = [
-            {
-                name: 'LP Rebalancing', allocation: 40, status: 'running', enabled: true,
-                params: [
-                    { key: 'Capital Allocation', val: '40%' },
-                    { key: 'Max Positions', val: '3' },
-                    { key: 'IL Threshold', val: '2-3%' },
-                    { key: 'Slippage Tolerance', val: '0.5%' },
-                    { key: 'ML Confidence', val: '≥ 84%' },
-                ],
-                metrics: [
-                    { label: 'Active Positions', value: '2 / 3' },
-                    { label: 'Current IL', value: '1.4%' },
-                    { label: 'Fee APY', value: '38.2%' },
-                    { label: 'Pool TVL', value: '$12.4M' },
-                ],
-                entry: ['ML confidence ≥ 84%', 'Pool TVL above minimum', 'Expected fee APY > gas costs', 'IL risk assessment acceptable'],
-                exit: ['IL exceeds threshold', 'Pool TVL drops below minimum', 'Better opportunity identified', 'Strategy circuit breaker'],
-            },
-            {
-                name: 'Arbitrage', allocation: 30, status: 'running', enabled: true,
-                params: [
-                    { key: 'Capital Allocation', val: '30%' },
-                    { key: 'Max Concurrent', val: '5' },
-                    { key: 'Min Spread', val: '≥ 0.5%' },
-                    { key: 'ML Confidence', val: '≥ 80%' },
-                    { key: 'Execution', val: 'Atomic + Jito' },
-                ],
-                metrics: [
-                    { label: 'Active Trades', value: '3 / 5' },
-                    { label: 'Avg Spread', value: '0.62%' },
-                    { label: 'Success Rate', value: '81.3%' },
-                    { label: 'Avg Latency', value: '340ms' },
-                ],
-                entry: ['Spread ≥ 0.5% detected', 'Sufficient liquidity both sides', 'MEV protection via Jito bundle', 'Atomic execution possible'],
-                exit: ['Spread closed', 'Execution failed', 'Slippage > 2%', 'Latency > 500ms'],
-            },
-            {
-                name: 'Perpetuals', allocation: 30, status: 'running', enabled: true,
-                params: [
-                    { key: 'Capital Allocation', val: '30%' },
-                    { key: 'Max Leverage', val: '≤ 5x' },
-                    { key: 'Max Hold Time', val: '8h' },
-                    { key: 'Max Positions', val: '2' },
-                    { key: 'Stop Loss', val: '5% (fixed)' },
-                    { key: 'Take Profit', val: '10% (fixed)' },
-                    { key: 'Liquidation Distance', val: '≥ 15%' },
-                    { key: 'Min Margin Ratio', val: '20%' },
-                    { key: 'Auto-deleverage', val: 'At 10% margin' },
-                ],
-                metrics: [
-                    { label: 'Open Positions', value: '1 / 2' },
-                    { label: 'Unrealized P&L', value: '+$142.30' },
-                    { label: 'Margin Used', value: '34%' },
-                    { label: 'Avg Hold', value: '4.2h' },
-                ],
-                entry: ['ML confidence threshold met', 'Funding rate favorable', 'Margin ratio sufficient', 'Risk manager approval'],
-                exit: ['Stop loss hit (5%)', 'Take profit hit (10%)', 'Max hold time exceeded (8h)', 'Liquidation proximity warning'],
-            },
-        ];
+        // === STRATEGY CONTROL PANEL (live from /strategies/config) ===
+        let STRATEGIES = [];
 
         function switchStrategy(idx, tabEl) {
             document.querySelectorAll('.strat-tab').forEach(t => t.classList.remove('active'));
@@ -3743,6 +3718,7 @@
         function renderStrategyPanel(idx) {
             const s = STRATEGIES[idx];
             const el = document.getElementById('stratBody' + idx);
+            if (!el) return;
 
             let html = '<div class="strat-alloc">' +
                 '<div class="strat-alloc-label"><span>Capital Allocation</span><span>' + s.allocation + '%</span></div>' +
@@ -3753,24 +3729,24 @@
                 '<div class="strat-toggle ' + (s.enabled ? 'on' : '') + '" onclick="toggleStrategy(' + idx + ', this)"></div></div>';
 
             html += '<div class="strat-metrics">';
-            s.metrics.forEach(m => {
+            (s.metrics || []).forEach(m => {
                 const colorClass = m.value.startsWith('+') ? ' text-green' : m.value.startsWith('-') ? ' text-red' : '';
                 html += '<div class="strat-metric"><div class="strat-metric-label">' + m.label + '</div><div class="strat-metric-value' + colorClass + '">' + m.value + '</div></div>';
             });
             html += '</div>';
 
             html += '<div class="strat-params">';
-            s.params.forEach(p => {
+            (s.params || []).forEach(p => {
                 html += '<div class="strat-param-row"><span class="strat-param-key">' + p.key + '</span><span class="strat-param-val">' + p.val + '</span></div>';
             });
             html += '</div>';
 
             html += '<div class="strat-criteria"><div class="strat-criteria-title">Entry Criteria</div>';
-            s.entry.forEach(c => { html += '<div class="strat-criteria-item">' + c + '</div>'; });
+            (s.entry || []).forEach(c => { html += '<div class="strat-criteria-item">' + c + '</div>'; });
             html += '</div>';
 
             html += '<div class="strat-criteria"><div class="strat-criteria-title">Exit Triggers</div>';
-            s.exit.forEach(c => { html += '<div class="strat-criteria-item">' + c + '</div>'; });
+            (s.exit || []).forEach(c => { html += '<div class="strat-criteria-item">' + c + '</div>'; });
             html += '</div>';
 
             el.innerHTML = html;
@@ -3781,9 +3757,44 @@
             STRATEGIES[idx].status = STRATEGIES[idx].enabled ? 'running' : 'paused';
             toggleEl.classList.toggle('on');
             renderStrategyPanel(idx);
+            var active = STRATEGIES.filter(s => s.enabled).length;
+            document.getElementById('stratActiveCount').textContent = active + ' ACTIVE';
         }
 
-        STRATEGIES.forEach((_, i) => renderStrategyPanel(i));
+        function buildStrategyTabs(strategies) {
+            var tabsEl = document.getElementById('stratTabs');
+            var bodiesEl = document.getElementById('stratBodies');
+            tabsEl.innerHTML = '';
+            bodiesEl.innerHTML = '';
+            strategies.forEach(function(s, i) {
+                var tab = document.createElement('div');
+                tab.className = 'strat-tab' + (i === 0 ? ' active' : '');
+                tab.setAttribute('onclick', 'switchStrategy(' + i + ', this)');
+                tab.innerHTML = s.name + '<span class="strat-tab-pct">' + s.allocation + '%</span>';
+                tabsEl.appendChild(tab);
+
+                var body = document.createElement('div');
+                body.id = 'stratBody' + i;
+                body.className = 'strat-body' + (i === 0 ? ' active' : '');
+                bodiesEl.appendChild(body);
+            });
+        }
+
+        (async function loadStrategies() {
+            var data = await CortexAPI.get('/strategies/config');
+            if (data && Array.isArray(data.strategies) && data.strategies.length > 0) {
+                STRATEGIES = data.strategies;
+                document.getElementById('stratActiveCount').textContent = (data.active_count || STRATEGIES.length) + ' ACTIVE';
+            } else {
+                // Fallback: keep panel empty with a message if API is down
+                STRATEGIES = [];
+                document.getElementById('stratActiveCount').textContent = '— OFFLINE';
+            }
+            if (STRATEGIES.length > 0) {
+                buildStrategyTabs(STRATEGIES);
+                STRATEGIES.forEach(function(_, i) { renderStrategyPanel(i); });
+            }
+        })();
 
         // Time filter selection
         document.querySelectorAll('.time-filter').forEach(filter => {
@@ -4235,18 +4246,7 @@
             }
         })();
 
-        // Simulate live price updates
-        function updateTicker() {
-            const changes = document.querySelectorAll('.ticker-item .change');
-            changes.forEach(change => {
-                const isUp = Math.random() > 0.4;
-                const value = (Math.random() * 5).toFixed(2);
-                change.textContent = isUp ? `+${value}%` : `-${value}%`;
-                change.className = `change ${isUp ? 'up' : 'down'}`;
-            });
-        }
-
-        setInterval(updateTicker, 5000);
+        // Ticker updates handled by fetchTickerPrices() with real CoinGecko data (30s interval)
 
         // --- Active Positions Grid (animated removal) ---
         const POSITION_POOL = [
@@ -4512,24 +4512,110 @@
             });
         }
 
-        // --- D3.js P&L Performance Chart ---
-        function generatePnlData(range) {
+        // --- D3.js P&L Performance Chart (real CoinGecko data) ---
+        const _pnlCache = {};
+
+        async function fetchPnlData(range) {
             const days = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365 }[range] || 30;
-            const data = [];
-            const now = new Date();
-            let cumPnl = 0;
-            for (let i = days; i >= 0; i--) {
-                const d = new Date(now);
+            const cacheKey = range;
+            if (_pnlCache[cacheKey] && (Date.now() - _pnlCache[cacheKey].ts < 300000)) {
+                return _pnlCache[cacheKey].data;
+            }
+
+            // Build portfolio weights from connected wallet or use SOL as default
+            const PORTFOLIO_COINS = { solana: 1.0 };
+            if (typeof walletState !== 'undefined' && walletState && walletState.address) {
+                try {
+                    const rows = await fetchWalletData(walletState.address);
+                    const total = rows.reduce(function(s, r) { return s + r.usdValue; }, 0);
+                    if (total > 0) {
+                        for (var k in PORTFOLIO_COINS) delete PORTFOLIO_COINS[k];
+                        var MINT_TO_CG = {};
+                        MINT_TO_CG[SOL_MINT] = 'solana';
+                        for (var sym in KNOWN_MINTS) {
+                            var km = KNOWN_MINTS[sym];
+                            if (km && km.cg) MINT_TO_CG[sym] = km.cg;
+                        }
+                        rows.forEach(function(r) {
+                            var cgId = MINT_TO_CG[r.mint];
+                            if (cgId && r.usdValue > 0) PORTFOLIO_COINS[cgId] = r.usdValue / total;
+                        });
+                    }
+                } catch (_) { /* use default SOL */ }
+            }
+
+            try {
+                var ids = Object.keys(PORTFOLIO_COINS);
+                var cgKey = (typeof CORTEX_CONFIG !== 'undefined' && CORTEX_CONFIG.COINGECKO_API_KEY) || '';
+                var fetches = ids.map(function(id) {
+                    var url = 'https://api.coingecko.com/api/v3/coins/' + id +
+                        '/market_chart?vs_currency=usd&days=' + days +
+                        (cgKey ? '&x_cg_demo_api_key=' + cgKey : '');
+                    return fetch(url).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; });
+                });
+                var results = await Promise.all(fetches);
+
+                // Merge price histories into portfolio value timeline
+                var priceMap = {};
+                ids.forEach(function(id, idx) {
+                    if (results[idx] && results[idx].prices) priceMap[id] = results[idx].prices;
+                });
+
+                if (Object.keys(priceMap).length === 0) return _generateFallbackPnl(days);
+
+                // Use the first coin's timestamps as reference
+                var refId = ids[0];
+                var refPrices = priceMap[refId];
+                var startValue = 0;
+                ids.forEach(function(id) {
+                    if (priceMap[id] && priceMap[id].length > 0) {
+                        startValue += priceMap[id][0][1] * (PORTFOLIO_COINS[id] || 0);
+                    }
+                });
+                if (startValue === 0) startValue = 1;
+
+                var data = refPrices.map(function(pt, i) {
+                    var ts = pt[0];
+                    var portfolioValue = 0;
+                    ids.forEach(function(id) {
+                        var prices = priceMap[id];
+                        if (!prices) return;
+                        var p = (i < prices.length) ? prices[i][1] : prices[prices.length - 1][1];
+                        portfolioValue += p * (PORTFOLIO_COINS[id] || 0);
+                    });
+                    var pnlPct = ((portfolioValue - startValue) / startValue) * 100;
+                    return { date: new Date(ts), pnl: Math.round(pnlPct * 100) / 100 };
+                });
+
+                // Downsample to daily for cleaner chart
+                var dailyData = [];
+                var lastDay = null;
+                data.forEach(function(d) {
+                    var dayKey = d.date.toISOString().slice(0, 10);
+                    if (dayKey !== lastDay) { dailyData.push(d); lastDay = dayKey; }
+                });
+
+                _pnlCache[cacheKey] = { data: dailyData, ts: Date.now() };
+                return dailyData;
+            } catch (e) {
+                console.warn('[PnL] CoinGecko fetch failed:', e.message);
+                return _generateFallbackPnl(days);
+            }
+        }
+
+        function _generateFallbackPnl(days) {
+            var data = [];
+            var now = new Date();
+            for (var i = days; i >= 0; i--) {
+                var d = new Date(now);
                 d.setDate(d.getDate() - i);
                 d.setHours(0, 0, 0, 0);
-                const daily = (Math.random() - 0.42) * 800;
-                cumPnl += daily;
-                data.push({ date: d, pnl: Math.round(cumPnl * 100) / 100 });
+                data.push({ date: d, pnl: 0 });
             }
             return data;
         }
 
-        function renderPnlChart(range, btnEl) {
+        async function renderPnlChart(range, btnEl) {
             if (btnEl) {
                 document.querySelectorAll('.pnl-chart-filters .btn').forEach(b => b.classList.remove('active'));
                 btnEl.classList.add('active');
@@ -4537,9 +4623,10 @@
 
             const container = document.getElementById('pnlChart');
             if (!container || typeof d3 === 'undefined') return;
-            container.innerHTML = '';
+            container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--dim);font-size:0.7rem;">Loading P&L data…</div>';
 
-            const data = generatePnlData(range);
+            const data = await fetchPnlData(range);
+            container.innerHTML = '';
             const cw = container.clientWidth || 600;
             const marginTop = 20, marginRight = 20, marginBottom = 30, marginLeft = 55;
             const width = cw - 8;
@@ -4955,6 +5042,7 @@
         startNewsRefresh();
         startRegimeDetection();
         startGuardianService();
+        startAgentService();
 
         console.log('CORTEX Dashboard initialized');
         console.log('TX Feed: Active');

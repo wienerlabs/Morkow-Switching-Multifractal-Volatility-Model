@@ -33,6 +33,9 @@ from api.routes.walk_forward import router as walk_forward_router
 from api.routes.dexscreener import router as dexscreener_router
 from api.routes.narrator import router as narrator_router
 from api.routes.dx import router as dx_router
+from api.routes.strategies import router as strategies_router
+from api.routes.execution import router as execution_router
+from api.routes.agents import router as agents_router
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -66,4 +69,7 @@ router.include_router(walk_forward_router)
 router.include_router(dexscreener_router)
 router.include_router(narrator_router)
 router.include_router(dx_router)
+router.include_router(execution_router)
+router.include_router(strategies_router)
+router.include_router(agents_router)
 
