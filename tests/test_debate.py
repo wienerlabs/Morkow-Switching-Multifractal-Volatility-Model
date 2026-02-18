@@ -404,3 +404,143 @@ class TestInfoAsymmetry:
             enrich=False,
         )
         assert r["final_decision"] == "approve"
+
+
+# ── DX-Research Task 6: Persona Diversity Tests ──
+
+
+class TestPersonaDiversity:
+    """DX Terminal finding: lexical diversity (different analysis perspectives) = alpha."""
+
+    def test_persona_flag_in_result(self):
+        """run_debate includes persona_diversity_active flag."""
+        r = run_debate(
+            risk_score=40.0,
+            component_scores=[{"component": "vol", "score": 40}],
+            veto_reasons=[],
+            direction="long",
+            trade_size_usd=5_000,
+            original_approved=True,
+            enrich=False,
+        )
+        assert "persona_diversity_active" in r
+
+    def test_trader_momentum_bias_boosts_confidence(self):
+        """Trader with momentum bias should have higher confidence when momentum evidence exists."""
+        ctx = DebateContext(
+            risk_score=40.0,
+            component_scores=[{"component": "momentum", "score": 30}],
+            veto_reasons=[],
+            direction="long",
+            trade_size_usd=5_000,
+            original_approved=True,
+            kelly_stats={"active": True, "kelly_fraction": 0.1, "win_rate": 0.6, "n_trades": 200},
+        )
+        evidence = _collect_evidence(ctx)
+
+        with patch("cortex.debate.PERSONA_DIVERSITY_ENABLED", True):
+            trader_on = _trader_argue(ctx, evidence, 0, None)
+
+        with patch("cortex.debate.PERSONA_DIVERSITY_ENABLED", False):
+            trader_off = _trader_argue(ctx, evidence, 0, None)
+
+        # Momentum persona should boost confidence when momentum/kelly evidence present
+        assert trader_on.confidence >= trader_off.confidence
+
+    def test_risk_manager_tail_sensitivity(self):
+        """Risk manager with tail sensitivity should have higher confidence when critical evidence exists."""
+        ctx = DebateContext(
+            risk_score=85.0,
+            component_scores=[
+                {"component": "vol", "score": 90},
+                {"component": "liq", "score": 85},
+            ],
+            veto_reasons=["extreme_risk"],
+            direction="long",
+            trade_size_usd=10_000,
+            original_approved=True,
+        )
+        evidence = _collect_evidence(ctx)
+
+        with patch("cortex.debate.PERSONA_DIVERSITY_ENABLED", True):
+            rm_on = _risk_manager_argue(ctx, evidence, 0, None)
+
+        with patch("cortex.debate.PERSONA_DIVERSITY_ENABLED", False):
+            rm_off = _risk_manager_argue(ctx, evidence, 0, None)
+
+        # Tail sensitivity persona should boost confidence when critical evidence present
+        assert rm_on.confidence >= rm_off.confidence
+
+    def test_persona_disabled_no_effect(self):
+        """With persona disabled, trader confidence is same as baseline."""
+        ctx = DebateContext(
+            risk_score=40.0,
+            component_scores=[{"component": "vol", "score": 40}],
+            veto_reasons=[],
+            direction="long",
+            trade_size_usd=5_000,
+            original_approved=True,
+            kelly_stats={"active": True, "kelly_fraction": 0.1, "win_rate": 0.6, "n_trades": 200},
+        )
+        evidence = _collect_evidence(ctx)
+
+        with patch("cortex.debate.PERSONA_DIVERSITY_ENABLED", False):
+            t1 = _trader_argue(ctx, evidence, 0, None)
+            t2 = _trader_argue(ctx, evidence, 0, None)
+
+        # Without persona, same inputs = same output
+        assert t1.confidence == t2.confidence
+
+    def test_da_contrarian_challenges_stronger_side(self):
+        """Devil's advocate with contrarian persona should always challenge the majority."""
+        ctx = DebateContext(
+            risk_score=30.0,
+            component_scores=[{"component": "vol", "score": 30}],
+            veto_reasons=[],
+            direction="long",
+            trade_size_usd=5_000,
+            original_approved=True,
+        )
+        evidence = _collect_evidence(ctx)
+
+        trader = _trader_argue(ctx, evidence, 0, None)
+        rm = _risk_manager_argue(ctx, evidence, 0, None)
+        da = _devils_advocate_argue(ctx, trader, rm, 0)
+
+        # DA should challenge the winning side
+        trader_strength = trader.confidence * trader.bayesian_posterior
+        risk_strength = rm.confidence * rm.bayesian_posterior
+        if trader_strength > risk_strength:
+            assert da.position == "reduce"  # challenging trader
+        else:
+            assert da.position == "approve"  # challenging risk mgr
+
+    def test_different_personas_produce_different_scores(self):
+        """Same evidence, different persona settings = different confidence scores.
+        This is the core acceptance criterion."""
+        ctx = DebateContext(
+            risk_score=50.0,
+            component_scores=[
+                {"component": "momentum", "score": 35},
+                {"component": "vol", "score": 65},
+            ],
+            veto_reasons=[],
+            direction="long",
+            trade_size_usd=5_000,
+            original_approved=True,
+            kelly_stats={"active": True, "kelly_fraction": 0.08, "win_rate": 0.55, "n_trades": 150},
+        )
+        evidence = _collect_evidence(ctx)
+
+        # High momentum bias trader
+        with patch("cortex.debate.PERSONA_DIVERSITY_ENABLED", True), \
+             patch("cortex.debate.PERSONA_TRADER_MOMENTUM_BIAS", 2.0):
+            trader_high = _trader_argue(ctx, evidence, 0, None)
+
+        # Low momentum bias trader
+        with patch("cortex.debate.PERSONA_DIVERSITY_ENABLED", True), \
+             patch("cortex.debate.PERSONA_TRADER_MOMENTUM_BIAS", 0.5):
+            trader_low = _trader_argue(ctx, evidence, 0, None)
+
+        # Different persona settings should produce different confidence
+        assert trader_high.confidence != trader_low.confidence

@@ -94,6 +94,14 @@ __all__ = [
     "PERSONA_TRADER_MOMENTUM_BIAS",
     "PERSONA_RISK_MGR_TAIL_SENSITIVITY",
     "PERSONA_DA_CONTRARIAN_STRENGTH",
+    # DX-Research: Vault State Delta
+    "VAULT_DELTA_ENABLED",
+    "VAULT_DELTA_LARGE_WITHDRAWAL_PCT",
+    "VAULT_DELTA_LARGE_DEPOSIT_PCT",
+    # DX-Research: Human Override
+    "HUMAN_OVERRIDE_ENABLED",
+    "HUMAN_OVERRIDE_DEFAULT_TTL",
+    "HUMAN_OVERRIDE_MAX_TTL",
 ]
 
 import json
@@ -397,6 +405,19 @@ PERSONA_TRADER_MOMENTUM_BIAS = float(os.environ.get("PERSONA_TRADER_MOMENTUM_BIA
 PERSONA_RISK_MGR_TAIL_SENSITIVITY = float(os.environ.get("PERSONA_RISK_MGR_TAIL_SENSITIVITY", "1.5"))
 # Devil's Advocate: contrarian strength — how hard it pushes against the majority
 PERSONA_DA_CONTRARIAN_STRENGTH = float(os.environ.get("PERSONA_DA_CONTRARIAN_STRENGTH", "1.4"))
+
+# DX-Research Task 7: Vault State Delta — On-Chain Memory as ML Feature
+# DX01 finding: market state IS collective memory. Vault TVL/share price deltas
+# encode crowd behavior that individual agents can't observe directly.
+VAULT_DELTA_ENABLED = os.environ.get("VAULT_DELTA_ENABLED", "true").lower() == "true"
+VAULT_DELTA_LARGE_WITHDRAWAL_PCT = float(os.environ.get("VAULT_DELTA_LARGE_WITHDRAWAL_PCT", "10.0"))
+VAULT_DELTA_LARGE_DEPOSIT_PCT = float(os.environ.get("VAULT_DELTA_LARGE_DEPOSIT_PCT", "15.0"))
+
+# DX-Research Task 8: Human-in-the-Loop Override
+# DX Terminal finding: 87% of top-performing agents were human-assisted.
+HUMAN_OVERRIDE_ENABLED = os.environ.get("HUMAN_OVERRIDE_ENABLED", "true").lower() == "true"
+HUMAN_OVERRIDE_DEFAULT_TTL = float(os.environ.get("HUMAN_OVERRIDE_DEFAULT_TTL", "3600"))  # 1 hour
+HUMAN_OVERRIDE_MAX_TTL = float(os.environ.get("HUMAN_OVERRIDE_MAX_TTL", "86400"))  # 24 hours max
 
 # ── Background News Collector ──
 NEWS_COLLECTOR_INTERVAL_SECONDS = int(os.environ.get("NEWS_COLLECTOR_INTERVAL_SECONDS", "30"))
