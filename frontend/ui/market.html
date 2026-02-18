@@ -156,6 +156,8 @@
         }
         @keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100vh); } }
 
+        footer { border-top: 1px solid var(--border); padding: 1rem; display: flex; justify-content: space-between; font-size: 0.6rem; text-transform: uppercase; color: var(--dim); }
+
         @media (max-width: 960px) {
             .market-grid { grid-template-columns: 1fr; }
             header { grid-template-columns: 1fr auto; }
@@ -194,7 +196,7 @@
                 <img src="assets/logos/cortex-logo-dark.png" alt="CORTEX" class="logo-img">
                 <span>v.0.1.0</span>
             </div>
-            <a class="nav-item" href="index.html">← Dashboard</a>
+            <a class="nav-item" href="index.html">&#8592; Dashboard</a>
             <div class="nav-item active">Market Data</div>
             <a class="nav-item" href="history.html">History</a>
             <a class="nav-item" href="cerebral.html">Cerebral</a>
@@ -349,6 +351,11 @@
             </div>
         </div>
 
+        <footer>
+            <div>CORTEX MARKET DATA</div>
+            <div>SOLANA MAINNET</div>
+            <div>&copy;2026 WIENER LABS</div>
+        </footer>
     </div>
 
     <script>
