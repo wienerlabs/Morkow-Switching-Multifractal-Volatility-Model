@@ -250,181 +250,160 @@
     <div class="cal-tooltip" id="calTooltip"></div>
     <script>
     (function() {
-        const cellSize = 16;
-        const width = 928;
-        const height = cellSize * 9;
-        const tooltip = document.getElementById('calTooltip');
-        const formatValue = d3.format('+.2%');
-        const formatDate = d3.utcFormat('%B %d, %Y');
-        const formatDay = i => 'SMTWTFS'[i];
-        const formatMonth = d3.utcFormat('%b');
-        const timeWeek = d3.utcMonday;
-        const countDay = i => (i + 6) % 7;
+        var cellSize = 16;
+        var width = 928;
+        var height = cellSize * 9;
+        var tooltip = document.getElementById('calTooltip');
+        var formatValue = d3.format('+.2%');
+        var formatDate = d3.utcFormat('%B %d, %Y');
+        var formatDay = function(i) { return 'SMTWTFS'[i]; };
+        var formatMonth = d3.utcFormat('%b');
+        var timeWeek = d3.utcMonday;
+        var countDay = function(i) { return (i + 6) % 7; };
 
-        function generatePnlData() {
-            const data = [];
-            const now = new Date();
-            const startYear = now.getFullYear() - 1;
-            let cumPnl = 10000;
-            for (let y = startYear; y <= now.getFullYear(); y++) {
-                const start = new Date(y, 0, 1);
-                const end = y === now.getFullYear() ? now : new Date(y, 11, 31);
-                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        // Fallback: generate synthetic PnL when API has no data
+        function generatePnlDataFallback() {
+            var data = [];
+            var now = new Date();
+            var startYear = now.getFullYear() - 1;
+            var cumPnl = 10000;
+            for (var y = startYear; y <= now.getFullYear(); y++) {
+                var start = new Date(y, 0, 1);
+                var end = y === now.getFullYear() ? now : new Date(y, 11, 31);
+                for (var d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                     if (d.getDay() === 0 || d.getDay() === 6) continue;
-                    const volatility = 0.02 + Math.random() * 0.03;
-                    const drift = 0.001;
-                    const change = drift + volatility * (Math.random() * 2 - 1);
+                    var volatility = 0.02 + Math.random() * 0.03;
+                    var drift = 0.001;
+                    var change = drift + volatility * (Math.random() * 2 - 1);
                     cumPnl *= (1 + change);
-                    data.push({
-                        Date: d3.utcFormat('%Y-%m-%d')(d),
-                        Close: cumPnl,
-                        Change: change
-                    });
+                    data.push({ Date: d3.utcFormat('%Y-%m-%d')(d), Close: cumPnl, Change: change });
                 }
             }
             return data;
         }
 
-        const rawData = generatePnlData();
-        const data = rawData.map(d => ({
-            date: d3.utcParse('%Y-%m-%d')(d.Date),
-            value: d.Change,
-            close: d.Close
-        }));
-
-        const maxAbs = d3.max(data, d => Math.abs(d.value)) || 0.05;
-        const color = d3.scaleSequential()
-            .domain([-maxAbs, maxAbs])
-            .interpolator(t => {
-                if (t < 0.5) {
-                    const s = t / 0.5;
-                    const r = Math.round(204 + (240 - 204) * s);
-                    const g = Math.round(0 + (240 - 0) * s);
-                    const b = Math.round(0 + (240 - 0) * s);
-                    return `rgb(${r},${g},${b})`;
-                } else {
-                    const s = (t - 0.5) / 0.5;
-                    const r = Math.round(240 + (0 - 240) * s);
-                    const g = Math.round(240 + (170 - 240) * s);
-                    const b = Math.round(240 + (0 - 240) * s);
-                    return `rgb(${r},${g},${b})`;
-                }
+        function initCalendar(rawData) {
+            var data = rawData.map(function(d) {
+                return { date: d3.utcParse('%Y-%m-%d')(d.Date), value: d.Change, close: d.Close };
             });
 
-        const years = d3.groups(data, d => d.date.getUTCFullYear()).reverse();
-        const availableYears = years.map(([y]) => y);
-        let activeYear = availableYears[0];
+            var maxAbs = d3.max(data, function(d) { return Math.abs(d.value); }) || 0.05;
+            var color = d3.scaleSequential()
+                .domain([-maxAbs, maxAbs])
+                .interpolator(function(t) {
+                    if (t < 0.5) {
+                        var s = t / 0.5;
+                        return 'rgb(' + Math.round(204 + 36 * s) + ',' + Math.round(240 * s) + ',' + Math.round(240 * s) + ')';
+                    } else {
+                        var s2 = (t - 0.5) / 0.5;
+                        return 'rgb(' + Math.round(240 - 240 * s2) + ',' + Math.round(240 - 70 * s2) + ',' + Math.round(240 - 240 * s2) + ')';
+                    }
+                });
 
-        function updateStats(yearData) {
-            const wins = yearData.filter(d => d.value > 0).length;
-            const total = yearData.length;
-            const best = d3.max(yearData, d => d.value) || 0;
-            const worst = d3.min(yearData, d => d.value) || 0;
-            const totalPnl = yearData.reduce((s, d) => s * (1 + d.value), 1) - 1;
-            document.getElementById('statTotalPnl').textContent = formatValue(totalPnl);
-            document.getElementById('statTotalPnl').className = 'stat-value ' + (totalPnl >= 0 ? 'text-green' : 'text-red');
-            document.getElementById('statWinRate').textContent = total > 0 ? (wins / total * 100).toFixed(1) + '%' : '—';
-            document.getElementById('statBestDay').textContent = formatValue(best);
-            document.getElementById('statWorstDay').textContent = formatValue(worst);
-        }
+            var years = d3.groups(data, function(d) { return d.date.getUTCFullYear(); }).reverse();
+            var availableYears = years.map(function(y) { return y[0]; });
+            var activeYear = availableYears[0];
 
-        function renderCalendar(year) {
-            activeYear = year;
-            const container = document.getElementById('calendarChart');
-            container.innerHTML = '';
-            const yearData = years.find(([y]) => y === year);
-            if (!yearData) return;
-            const [, values] = yearData;
-            updateStats(values);
+            function updateStats(yearData) {
+                var wins = yearData.filter(function(d) { return d.value > 0; }).length;
+                var total = yearData.length;
+                var best = d3.max(yearData, function(d) { return d.value; }) || 0;
+                var worst = d3.min(yearData, function(d) { return d.value; }) || 0;
+                var totalPnl = yearData.reduce(function(s, d) { return s * (1 + d.value); }, 1) - 1;
+                document.getElementById('statTotalPnl').textContent = formatValue(totalPnl);
+                document.getElementById('statTotalPnl').className = 'stat-value ' + (totalPnl >= 0 ? 'text-green' : 'text-red');
+                document.getElementById('statWinRate').textContent = total > 0 ? (wins / total * 100).toFixed(1) + '%' : '—';
+                document.getElementById('statBestDay').textContent = formatValue(best);
+                document.getElementById('statWorstDay').textContent = formatValue(worst);
+            }
 
-            const svg = d3.select(container).append('svg')
-                .attr('width', width)
-                .attr('height', height)
-                .attr('viewBox', [0, 0, width, height])
-                .attr('style', 'max-width: 100%; height: auto;');
+            function renderCalendar(year) {
+                activeYear = year;
+                var container = document.getElementById('calendarChart');
+                container.innerHTML = '';
+                var yearData = years.find(function(y) { return y[0] === year; });
+                if (!yearData) return;
+                var values = yearData[1];
+                updateStats(values);
 
-            const yearGroup = svg.append('g')
-                .attr('transform', 'translate(40.5, 0)');
+                var svg = d3.select(container).append('svg')
+                    .attr('width', width).attr('height', height)
+                    .attr('viewBox', [0, 0, width, height])
+                    .attr('style', 'max-width: 100%; height: auto;');
 
-            yearGroup.append('text')
-                .attr('x', -5).attr('y', -5)
-                .attr('font-weight', 'bold').attr('text-anchor', 'end')
-                .text(year);
+                var yearGroup = svg.append('g').attr('transform', 'translate(40.5, 0)');
+                yearGroup.append('text').attr('x', -5).attr('y', -5).attr('font-weight', 'bold').attr('text-anchor', 'end').text(year);
 
-            yearGroup.append('g').attr('text-anchor', 'end')
-                .selectAll().data(d3.range(7).filter(i => i !== 0 && i !== 6))
-                .join('text')
-                .attr('x', -5).attr('y', (i) => (countDay(i) + 0.5) * cellSize)
-                .attr('dy', '0.31em')
-                .text(formatDay);
+                yearGroup.append('g').attr('text-anchor', 'end')
+                    .selectAll().data(d3.range(7).filter(function(i) { return i !== 0 && i !== 6; }))
+                    .join('text').attr('x', -5).attr('y', function(i) { return (countDay(i) + 0.5) * cellSize; })
+                    .attr('dy', '0.31em').text(formatDay);
 
-            const cell = yearGroup.append('g')
-                .selectAll('rect').data(values).join('rect')
-                .attr('width', cellSize - 1.5).attr('height', cellSize - 1.5)
-                .attr('x', d => timeWeek.count(d3.utcYear(d.date), d.date) * cellSize + 0.5)
-                .attr('y', d => countDay(d.date.getUTCDay()) * cellSize + 0.5)
-                .attr('fill', d => color(d.value))
-                .attr('rx', 1)
-                .on('mouseenter', function(event, d) {
-                    tooltip.style.opacity = '1';
-                    tooltip.innerHTML = '<strong>' + formatDate(d.date) + '</strong><br>P&L: ' + formatValue(d.value) + '<br>Close: $' + d.close.toFixed(2);
-                })
-                .on('mousemove', function(event) {
-                    tooltip.style.left = (event.clientX + 12) + 'px';
-                    tooltip.style.top = (event.clientY - 10) + 'px';
-                })
-                .on('mouseleave', function() { tooltip.style.opacity = '0'; });
+                yearGroup.append('g').selectAll('rect').data(values).join('rect')
+                    .attr('width', cellSize - 1.5).attr('height', cellSize - 1.5)
+                    .attr('x', function(d) { return timeWeek.count(d3.utcYear(d.date), d.date) * cellSize + 0.5; })
+                    .attr('y', function(d) { return countDay(d.date.getUTCDay()) * cellSize + 0.5; })
+                    .attr('fill', function(d) { return color(d.value); }).attr('rx', 1)
+                    .on('mouseenter', function(event, d) {
+                        tooltip.style.opacity = '1';
+                        tooltip.innerHTML = '<strong>' + formatDate(d.date) + '</strong><br>P&L: ' + formatValue(d.value) + '<br>Close: $' + d.close.toFixed(2);
+                    })
+                    .on('mousemove', function(event) { tooltip.style.left = (event.clientX + 12) + 'px'; tooltip.style.top = (event.clientY - 10) + 'px'; })
+                    .on('mouseleave', function() { tooltip.style.opacity = '0'; });
 
-            const month = yearGroup.append('g')
-                .selectAll().data(d3.utcMonths(d3.utcMonth(values[0].date), values[values.length - 1].date))
-                .join('g');
+                var month = yearGroup.append('g')
+                    .selectAll().data(d3.utcMonths(d3.utcMonth(values[0].date), values[values.length - 1].date)).join('g');
+                month.filter(function(d, i) { return i; }).append('path')
+                    .attr('fill', 'none').attr('stroke', '#cccccc').attr('stroke-width', 2).attr('d', pathMonth);
+                month.append('text')
+                    .attr('x', function(d) { return timeWeek.count(d3.utcYear(d), timeWeek.ceil(d)) * cellSize + 2; })
+                    .attr('y', -5).text(formatMonth);
 
-            month.filter((d, i) => i).append('path')
-                .attr('fill', 'none').attr('stroke', '#cccccc').attr('stroke-width', 2)
-                .attr('d', pathMonth);
+                document.querySelectorAll('.year-selector .btn').forEach(function(b) {
+                    b.classList.toggle('active', parseInt(b.textContent) === year);
+                });
+            }
 
-            month.append('text')
-                .attr('x', d => timeWeek.count(d3.utcYear(d), timeWeek.ceil(d)) * cellSize + 2)
-                .attr('y', -5)
-                .text(formatMonth);
+            function pathMonth(t) {
+                var d = Math.max(0, Math.min(5, countDay(t.getUTCDay())));
+                var w = timeWeek.count(d3.utcYear(t), t);
+                return 'M' + (w + 1) * cellSize + ',' + d * cellSize + 'H' + w * cellSize + 'V' + 5 * cellSize + 'H' + (w + 1) * cellSize + 'V' + d * cellSize;
+            }
 
-            document.querySelectorAll('.year-selector .btn').forEach(b => {
-                b.classList.toggle('active', parseInt(b.textContent) === year);
+            var selector = document.getElementById('yearSelector');
+            selector.innerHTML = '';
+            availableYears.forEach(function(y) {
+                var btn = document.createElement('button');
+                btn.className = 'btn' + (y === activeYear ? ' active' : '');
+                btn.textContent = y;
+                btn.onclick = function() { renderCalendar(y); };
+                selector.appendChild(btn);
             });
+
+            var legendBar = document.getElementById('calLegend');
+            legendBar.innerHTML = '';
+            var steps = [-maxAbs, -maxAbs * 0.66, -maxAbs * 0.33, 0, maxAbs * 0.33, maxAbs * 0.66, maxAbs];
+            steps.forEach(function(v) { var s = document.createElement('span'); s.style.background = color(v); legendBar.appendChild(s); });
+
+            renderCalendar(activeYear);
         }
 
-        function pathMonth(t) {
-            const d = Math.max(0, Math.min(5, countDay(t.getUTCDay())));
-            const w = timeWeek.count(d3.utcYear(t), t);
-            return 'M' + (w + 1) * cellSize + ',' + d * cellSize
-                + 'H' + w * cellSize + 'V' + 5 * cellSize
-                + 'H' + (w + 1) * cellSize + 'V' + d * cellSize;
-        }
-
-        const selector = document.getElementById('yearSelector');
-        availableYears.forEach(y => {
-            const btn = document.createElement('button');
-            btn.className = 'btn' + (y === activeYear ? ' active' : '');
-            btn.textContent = y;
-            btn.onclick = () => renderCalendar(y);
-            selector.appendChild(btn);
-        });
-
-        const legendBar = document.getElementById('calLegend');
-        const steps = [-maxAbs, -maxAbs * 0.66, -maxAbs * 0.33, 0, maxAbs * 0.33, maxAbs * 0.66, maxAbs];
-        steps.forEach(v => {
-            const s = document.createElement('span');
-            s.style.background = color(v);
-            legendBar.appendChild(s);
-        });
-
-        renderCalendar(activeYear);
+        // Try API first, fall back to synthetic data
+        (async function() {
+            var entries = await HistoryService.fetchExecutionLog(500);
+            var dailyPnl = entries ? HistoryService.computeDailyPnl(entries) : null;
+            if (dailyPnl && dailyPnl.length > 0) {
+                initCalendar(dailyPnl);
+            } else {
+                initCalendar(generatePnlDataFallback());
+            }
+        })();
     })();
     </script>
     <script>
     (function() {
-        // Strategy P&L Breakdown — context.md: LP 40%, Arb 30%, Perp 30%
-        const strategies = [
+        // Strategy P&L Breakdown — tries API, falls back to hardcoded
+        var fallbackStrategies = [
             { name: 'LP Rebalancing', alloc: '40%', pnl: 4823.50, trades: 47, winRate: 72.3, maxPnl: 12000, color: 'var(--green)',
               params: 'IL Threshold: 2-3% · Max Pos: 3 · Confidence: 84%' },
             { name: 'Arbitrage', alloc: '30%', pnl: 2156.80, trades: 134, winRate: 81.3, maxPnl: 12000, color: 'var(--green)',
@@ -433,88 +412,103 @@
               params: 'Max Leverage: ≤5x · Hold: 8h · Stop: 5% · TP: 10%' }
         ];
 
-        const stratGrid = document.getElementById('stratGrid');
-        strategies.forEach(s => {
-            const pnlClass = s.pnl >= 0 ? 'text-green' : 'text-red';
-            const barPct = Math.min(Math.abs(s.pnl) / s.maxPnl * 100, 100);
-            const barColor = s.pnl >= 0 ? 'var(--green)' : 'var(--red)';
-            stratGrid.innerHTML += `
-                <div class="strat-card">
-                    <div class="strat-name"><span>${s.name}</span><span class="strat-alloc">${s.alloc}</span></div>
-                    <div class="strat-pnl ${pnlClass}">${s.pnl >= 0 ? '+' : ''}$${s.pnl.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
-                    <div class="strat-bar"><div class="strat-bar-fill" style="width:${barPct}%;background:${barColor}"></div></div>
-                    <div class="strat-meta"><span>${s.trades} trades</span><span>${s.winRate}% win</span></div>
-                    <div style="font-size:0.55rem;color:var(--dim);margin-top:0.4rem">${s.params}</div>
-                </div>`;
-        });
+        function renderStrategyCards(strategies) {
+            var stratGrid = document.getElementById('stratGrid');
+            stratGrid.innerHTML = '';
+            strategies.forEach(function(s) {
+                var pnlClass = s.pnl >= 0 ? 'text-green' : 'text-red';
+                var barPct = Math.min(Math.abs(s.pnl) / (s.maxPnl || 12000) * 100, 100);
+                var barColor = s.pnl >= 0 ? 'var(--green)' : 'var(--red)';
+                var pnlStr = (s.pnl >= 0 ? '+' : '') + '$' + Math.abs(s.pnl).toLocaleString('en-US', {minimumFractionDigits: 2});
+                if (s.pnl < 0) pnlStr = '-$' + Math.abs(s.pnl).toLocaleString('en-US', {minimumFractionDigits: 2});
+                stratGrid.innerHTML +=
+                    '<div class="strat-card">' +
+                    '<div class="strat-name"><span>' + s.name + '</span><span class="strat-alloc">' + s.alloc + '</span></div>' +
+                    '<div class="strat-pnl ' + pnlClass + '">' + pnlStr + '</div>' +
+                    '<div class="strat-bar"><div class="strat-bar-fill" style="width:' + barPct + '%;background:' + barColor + '"></div></div>' +
+                    '<div class="strat-meta"><span>' + s.trades + ' trades</span><span>' + s.winRate + '% win</span></div>' +
+                    '<div style="font-size:0.55rem;color:var(--dim);margin-top:0.4rem">' + (s.params || '') + '</div>' +
+                    '</div>';
+            });
+        }
 
-        // Strategy Monthly Stacked Bar Chart (D3)
-        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        const now = new Date();
-        const activeMonths = months.slice(0, now.getMonth() + 1);
-        const monthlyData = activeMonths.map(m => ({
-            month: m,
-            lp: +(Math.random() * 1200 - 200).toFixed(0),
-            arb: +(Math.random() * 800 - 100).toFixed(0),
-            perp: +(Math.random() * 600 - 400).toFixed(0)
-        }));
+        // Fallback monthly data generator
+        function generateMonthlyFallback() {
+            var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            var now = new Date();
+            var active = months.slice(0, now.getMonth() + 1);
+            return active.map(function(m) {
+                return { month: m, lp: +(Math.random() * 1200 - 200).toFixed(0), arb: +(Math.random() * 800 - 100).toFixed(0), perp: +(Math.random() * 600 - 400).toFixed(0) };
+            });
+        }
 
-        const chartEl = document.getElementById('strategyChart');
-        const margin = { top: 20, right: 20, bottom: 30, left: 50 };
-        const cW = chartEl.clientWidth || 800;
-        const cH = 220;
-        const iW = cW - margin.left - margin.right;
-        const iH = cH - margin.top - margin.bottom;
+        function renderMonthlyChart(monthlyData) {
+            var chartEl = document.getElementById('strategyChart');
+            chartEl.innerHTML = '';
+            var margin = { top: 20, right: 20, bottom: 30, left: 50 };
+            var cW = chartEl.clientWidth || 800;
+            var cH = 220;
+            var iW = cW - margin.left - margin.right;
+            var iH = cH - margin.top - margin.bottom;
+            var activeMonths = monthlyData.map(function(d) { return d.month; });
 
-        const svg = d3.select(chartEl).append('svg')
-            .attr('width', cW).attr('height', cH)
-            .attr('viewBox', [0, 0, cW, cH])
-            .attr('style', 'max-width:100%;height:auto;font-family:var(--font-mono);');
+            var svg = d3.select(chartEl).append('svg')
+                .attr('width', cW).attr('height', cH)
+                .attr('viewBox', [0, 0, cW, cH])
+                .attr('style', 'max-width:100%;height:auto;font-family:var(--font-mono);');
 
-        const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+            var g = svg.append('g').attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+            var keys = ['lp', 'arb', 'perp'];
+            var colors = { lp: '#00aa00', arb: '#0066cc', perp: '#cc8800' };
+            var stack = d3.stack().keys(keys).offset(d3.stackOffsetDiverging);
+            var series = stack(monthlyData);
 
-        const keys = ['lp', 'arb', 'perp'];
-        const colors = { lp: '#00aa00', arb: '#0066cc', perp: '#cc8800' };
-        const stack = d3.stack().keys(keys).offset(d3.stackOffsetDiverging);
-        const series = stack(monthlyData);
+            var x = d3.scaleBand().domain(activeMonths).range([0, iW]).padding(0.3);
+            var yMin = d3.min(series, function(s) { return d3.min(s, function(d) { return d[0]; }); });
+            var yMax = d3.max(series, function(s) { return d3.max(s, function(d) { return d[1]; }); });
+            var y = d3.scaleLinear().domain([yMin, yMax]).nice().range([iH, 0]);
 
-        const x = d3.scaleBand().domain(activeMonths).range([0, iW]).padding(0.3);
-        const yMin = d3.min(series, s => d3.min(s, d => d[0]));
-        const yMax = d3.max(series, s => d3.max(s, d => d[1]));
-        const y = d3.scaleLinear().domain([yMin, yMax]).nice().range([iH, 0]);
+            g.append('g').attr('transform', 'translate(0,' + iH + ')')
+                .call(d3.axisBottom(x).tickSize(0)).select('.domain').remove();
+            g.append('g').call(d3.axisLeft(y).ticks(5).tickFormat(function(d) { return d >= 0 ? '+$' + d : '-$' + Math.abs(d); }))
+                .select('.domain').remove();
+            g.selectAll('text').attr('fill', 'var(--dim)').attr('font-size', '9px');
+            g.selectAll('.tick line').attr('stroke', '#eee');
+            g.append('line').attr('x1', 0).attr('x2', iW).attr('y1', y(0)).attr('y2', y(0))
+                .attr('stroke', 'var(--border)').attr('stroke-width', 0.5);
 
-        g.append('g').attr('transform', `translate(0,${iH})`)
-            .call(d3.axisBottom(x).tickSize(0)).select('.domain').remove();
-        g.append('g').call(d3.axisLeft(y).ticks(5).tickFormat(d => d >= 0 ? '+$' + d : '-$' + Math.abs(d)))
-            .select('.domain').remove();
-        g.selectAll('text').attr('fill', 'var(--dim)').attr('font-size', '9px');
-        g.selectAll('.tick line').attr('stroke', '#eee');
+            series.forEach(function(s) {
+                g.selectAll('.bar-' + s.key).data(s).join('rect')
+                    .attr('x', function(d) { return x(d.data.month); })
+                    .attr('y', function(d) { return y(d[1]); })
+                    .attr('height', function(d) { return Math.abs(y(d[0]) - y(d[1])); })
+                    .attr('width', x.bandwidth())
+                    .attr('fill', colors[s.key]);
+            });
 
-        g.append('line').attr('x1', 0).attr('x2', iW).attr('y1', y(0)).attr('y2', y(0))
-            .attr('stroke', 'var(--border)').attr('stroke-width', 0.5);
+            var legend = svg.append('g').attr('transform', 'translate(' + margin.left + ',5)');
+            [{ key: 'lp', label: 'LP Rebalancing' }, { key: 'arb', label: 'Arbitrage' }, { key: 'perp', label: 'Perpetuals' }].forEach(function(item, i) {
+                var lg = legend.append('g').attr('transform', 'translate(' + (i * 130) + ',0)');
+                lg.append('rect').attr('width', 8).attr('height', 8).attr('fill', colors[item.key]);
+                lg.append('text').attr('x', 12).attr('y', 8).attr('font-size', '9px').attr('fill', 'var(--dim)').text(item.label);
+            });
+        }
 
-        series.forEach(s => {
-            g.selectAll(`.bar-${s.key}`).data(s).join('rect')
-                .attr('x', d => x(d.data.month))
-                .attr('y', d => y(d[1]))
-                .attr('height', d => Math.abs(y(d[0]) - y(d[1])))
-                .attr('width', x.bandwidth())
-                .attr('fill', colors[s.key]);
-        });
-
-        // Chart legend
-        const legend = svg.append('g').attr('transform', `translate(${margin.left},5)`);
-        [{ key: 'lp', label: 'LP Rebalancing' }, { key: 'arb', label: 'Arbitrage' }, { key: 'perp', label: 'Perpetuals' }].forEach((item, i) => {
-            const lg = legend.append('g').attr('transform', `translate(${i * 130},0)`);
-            lg.append('rect').attr('width', 8).attr('height', 8).attr('fill', colors[item.key]);
-            lg.append('text').attr('x', 12).attr('y', 8).attr('font-size', '9px').attr('fill', 'var(--dim)').text(item.label);
-        });
+        // Load from API, fall back to hardcoded
+        (async function() {
+            var entries = await HistoryService.fetchExecutionLog(500);
+            var stratConfig = await HistoryService.fetchStrategyConfig();
+            var breakdown = entries ? HistoryService.computeStrategyBreakdown(entries, stratConfig) : null;
+            var monthly = entries ? HistoryService.computeMonthlyStrategy(entries) : null;
+            renderStrategyCards(breakdown || fallbackStrategies);
+            renderMonthlyChart(monthly || generateMonthlyFallback());
+        })();
     })();
     </script>
     <script>
     (function() {
-        // Agent Attribution — context.md: 4 Analyst + 2 Researcher + 3 Decision = 9 agents
-        const agents = [
+        // Agent Attribution — tries /agents/status API, falls back to hardcoded
+        var fallbackAgents = [
             { name: 'Technical Analyst', role: 'Analyst', trades: 89, winRate: 68.5, pnl: 1842.30 },
             { name: 'On-Chain Analyst', role: 'Analyst', trades: 72, winRate: 71.2, pnl: 1523.60 },
             { name: 'Sentiment Analyst', role: 'Analyst', trades: 65, winRate: 58.4, pnl: -312.40 },
@@ -526,23 +520,35 @@
             { name: 'Portfolio Manager', role: 'Decision', trades: 134, winRate: 69.4, pnl: -164.50 }
         ];
 
-        const maxAbsPnl = Math.max(...agents.map(a => Math.abs(a.pnl)));
-        const tbody = document.getElementById('attrBody');
-        agents.forEach(a => {
-            const pnlClass = a.pnl >= 0 ? 'text-green' : 'text-red';
-            const barPct = (Math.abs(a.pnl) / maxAbsPnl * 50).toFixed(1);
-            const barClass = a.pnl >= 0 ? 'positive' : 'negative';
-            const pnlStr = (a.pnl >= 0 ? '+' : '') + '$' + a.pnl.toLocaleString('en-US', { minimumFractionDigits: 2 });
-            const wrStr = a.role === 'Decision' && a.name === 'Risk Manager' ? '—' : a.winRate + '%';
-            tbody.innerHTML += `<tr>
-                <td>${a.name}</td>
-                <td><span class="agent-role">${a.role}</span></td>
-                <td>${a.trades}</td>
-                <td>${wrStr}</td>
-                <td class="${pnlClass}">${pnlStr}</td>
-                <td class="attr-bar-cell"><div class="attr-bar"><div class="attr-bar-fill ${barClass}" style="width:${barPct}%"></div></div></td>
-            </tr>`;
-        });
+        function renderAgentTable(agents) {
+            var maxAbsPnl = 1;
+            agents.forEach(function(a) { var v = Math.abs(a.pnl || 0); if (v > maxAbsPnl) maxAbsPnl = v; });
+            var tbody = document.getElementById('attrBody');
+            tbody.innerHTML = '';
+            agents.forEach(function(a) {
+                var pnl = a.pnl || 0;
+                var pnlClass = pnl >= 0 ? 'text-green' : 'text-red';
+                var barPct = (Math.abs(pnl) / maxAbsPnl * 50).toFixed(1);
+                var barClass = pnl >= 0 ? 'positive' : 'negative';
+                var pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toLocaleString('en-US', { minimumFractionDigits: 2 });
+                var wrStr = a.role === 'Decision' && a.name === 'Risk Manager' ? '—' : (a.winRate || 0) + '%';
+                var signalInfo = a.signal ? ' · ' + a.signal : '';
+                tbody.innerHTML += '<tr>' +
+                    '<td>' + a.name + '</td>' +
+                    '<td><span class="agent-role">' + a.role + '</span></td>' +
+                    '<td>' + (a.trades || 0) + '</td>' +
+                    '<td>' + wrStr + signalInfo + '</td>' +
+                    '<td class="' + pnlClass + '">' + pnlStr + '</td>' +
+                    '<td class="attr-bar-cell"><div class="attr-bar"><div class="attr-bar-fill ' + barClass + '" style="width:' + barPct + '%"></div></div></td>' +
+                    '</tr>';
+            });
+        }
+
+        (async function() {
+            var agentStatus = await HistoryService.fetchAgentStatus();
+            var attribution = agentStatus ? HistoryService.buildAgentAttribution(agentStatus) : null;
+            renderAgentTable(attribution || fallbackAgents);
+        })();
 
         // Trade Decision Log — fetched from /execution/log, fallback to mock
         const tierLabels = { hot: 'HOT', warm: 'WARM', cold: 'COLD' };
@@ -611,7 +617,7 @@
             if (entries && entries.length > 0) {
                 renderTradeLog(entries);
             } else {
-                renderTradeLog(HistoryService.mockExecutionLog(15));
+                renderTradeLog(HistoryService._mockExecutionLog(15));
             }
         })();
     })();
@@ -650,7 +656,7 @@
                 });
                 if (reports.length > 0) { renderReports(reports); return; }
             }
-            renderReports(HistoryService.mockAnalystReports(12));
+            renderReports(HistoryService._mockAnalystReports(12));
         })();
 
         // Debate Transcript Archive — fetched from /guardian/debates/recent, fallback to mock
@@ -718,7 +724,7 @@
             if (transcripts && transcripts.length > 0) {
                 renderDebates(transcripts);
             } else {
-                renderDebates(HistoryService.mockDebates(6));
+                renderDebates(HistoryService._mockDebates(6));
             }
         })();
     })();
