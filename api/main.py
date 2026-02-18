@@ -165,6 +165,7 @@ if METRICS_ENABLED:
     Instrumentator().instrument(app).expose(app)
 
 _frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
+_ui_dir = _frontend_dir / "ui"
 
 
 @app.get("/health")
@@ -173,8 +174,25 @@ def health():
 
 
 @app.get("/", include_in_schema=False)
-def serve_ui():
+def serve_api_explorer():
     return FileResponse(_frontend_dir / "index.html", media_type="text/html")
+
+
+@app.get("/ui", include_in_schema=False)
+@app.get("/ui/", include_in_schema=False)
+def serve_ui_dashboard():
+    return FileResponse(_ui_dir / "index.html", media_type="text/html")
+
+
+@app.get("/ui/{page}.html", include_in_schema=False)
+def serve_ui_page(page: str):
+    target = _ui_dir / f"{page}.html"
+    if target.is_file():
+        return FileResponse(target, media_type="text/html")
+    return FileResponse(_ui_dir / "index.html", media_type="text/html")
+
+
+app.mount("/ui", StaticFiles(directory=str(_ui_dir)), name="ui-static")
 
 
 if __name__ == "__main__":

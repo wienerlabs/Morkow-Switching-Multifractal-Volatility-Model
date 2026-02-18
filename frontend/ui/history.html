@@ -51,6 +51,7 @@
         .year-selector { display: flex; gap: 0.25rem; }
         .year-selector .btn { font-size: 0.65rem; padding: 3px 10px; border: 1px solid var(--border); background: var(--bg); cursor: pointer; font-family: var(--font-mono); transition: all 0.2s; }
         .year-selector .btn:hover, .year-selector .btn.active { background: var(--fg); color: var(--bg); }
+        footer { border-top: 1px solid var(--border); padding: 1rem; display: flex; justify-content: space-between; font-size: 0.6rem; text-transform: uppercase; color: var(--dim); }
         .scanline { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.02), transparent); pointer-events: none; animation: scanline 8s linear infinite; z-index: 100; }
         @keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100vh); } }
         /* Wallet nav */
@@ -240,6 +241,11 @@
         </div>
         <div class="debate-list" id="debateList"></div>
 
+        <footer>
+            <div>CORTEX TRADE HISTORY</div>
+            <div>SOLANA MAINNET</div>
+            <div>&copy;2026 WIENER LABS</div>
+        </footer>
     </div>
     <div class="cal-tooltip" id="calTooltip"></div>
     <script>
