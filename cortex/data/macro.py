@@ -8,7 +8,7 @@ import logging
 import time
 from typing import Any
 
-from cortex.config import COINGECKO_BASE, FEAR_GREED_URL, MACRO_CACHE_TTL
+from cortex.config import COINGECKO_BASE, FEAR_GREED_URL, MACRO_CACHE_TTL, JUPITER_RPC_URL
 from cortex.data.rpc_failover import get_resilient_pool
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def get_fear_greed() -> dict[str, Any]:
 
 
 def get_btc_dominance() -> dict[str, Any]:
-    """Fetch BTC dominance and total market cap from CoinGecko."""
+    """Fetch BTC/SOL dominance and total market cap from CoinGecko."""
     try:
         resp = _pool.get(f"{COINGECKO_BASE}/global")
         resp.raise_for_status()
@@ -46,6 +46,7 @@ def get_btc_dominance() -> dict[str, Any]:
         return {
             "btc_dominance": round(market_cap_pct.get("btc", 0.0), 2),
             "eth_dominance": round(market_cap_pct.get("eth", 0.0), 2),
+            "sol_dominance": round(market_cap_pct.get("sol", 0.0), 2),
             "total_market_cap_usd": data.get("total_market_cap", {}).get("usd", 0),
             "total_volume_24h_usd": data.get("total_volume", {}).get("usd", 0),
             "active_cryptocurrencies": data.get("active_cryptocurrencies", 0),
@@ -55,6 +56,7 @@ def get_btc_dominance() -> dict[str, Any]:
         return {
             "btc_dominance": 0.0,
             "eth_dominance": 0.0,
+            "sol_dominance": 0.0,
             "total_market_cap_usd": 0,
             "total_volume_24h_usd": 0,
             "active_cryptocurrencies": 0,
@@ -85,14 +87,42 @@ def get_macro_indicators() -> dict[str, Any]:
     else:
         risk_level = "neutral"
 
+    avg_gas = get_solana_avg_gas()
+
     result = {
         "fear_greed": fear_greed,
         "btc_dominance": btc_dom,
         "risk_level": risk_level,
+        "avg_gas_sol": avg_gas,
         "timestamp": now,
     }
 
     _macro_cache = result
     _cache_ts = now
     return result
+
+
+def get_solana_avg_gas() -> float | None:
+    """Fetch average Solana priority fee via getRecentPrioritizationFees RPC."""
+    rpc_url = JUPITER_RPC_URL
+    if not rpc_url:
+        return None
+    try:
+        resp = _pool.post(
+            rpc_url,
+            json={"jsonrpc": "2.0", "id": 1, "method": "getRecentPrioritizationFees", "params": []},
+            headers={"Content-Type": "application/json"},
+        )
+        resp.raise_for_status()
+        fees = resp.json().get("result", [])
+        if not fees:
+            return None
+        nonzero = [f["prioritizationFee"] for f in fees if f.get("prioritizationFee", 0) > 0]
+        if not nonzero:
+            return 0.0
+        avg_lamports = sum(nonzero) / len(nonzero)
+        return avg_lamports / 1e9
+    except Exception:
+        logger.warning("Solana RPC getRecentPrioritizationFees failed")
+        return None
 

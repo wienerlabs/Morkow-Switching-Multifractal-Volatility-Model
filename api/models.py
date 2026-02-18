@@ -1151,6 +1151,7 @@ class FearGreedItem(BaseModel):
 class BtcDominanceItem(BaseModel):
     btc_dominance: float
     eth_dominance: float
+    sol_dominance: float = 0.0
     total_market_cap_usd: float
     total_volume_24h_usd: float
     active_cryptocurrencies: int
@@ -1160,6 +1161,7 @@ class MacroIndicatorsResponse(BaseModel):
     fear_greed: FearGreedItem
     btc_dominance: BtcDominanceItem
     risk_level: str
+    avg_gas_sol: float | None = None
     timestamp: float
 
 
