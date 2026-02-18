@@ -115,6 +115,7 @@ OPENAPI_TAGS = [
     {"name": "execution", "description": "Trade execution — preflight checks, swap execution, execution log"},
     {"name": "calibration-tasks", "description": "Async calibration — task status polling for long-running calibrations"},
     {"name": "models", "description": "Model versioning — list versions, rollback to previous calibrations"},
+    {"name": "narrator", "description": "LLM narrator — trade explanations, news interpretation, market briefings, Q&A"},
 ]
 
 app = FastAPI(

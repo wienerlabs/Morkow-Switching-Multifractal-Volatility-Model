@@ -31,6 +31,7 @@ from api.routes.portfolio_opt import router as portfolio_opt_router
 from api.routes.models import router as models_router
 from api.routes.walk_forward import router as walk_forward_router
 from api.routes.dexscreener import router as dexscreener_router
+from api.routes.narrator import router as narrator_router
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -62,4 +63,5 @@ router.include_router(portfolio_opt_router)
 router.include_router(models_router)
 router.include_router(walk_forward_router)
 router.include_router(dexscreener_router)
+router.include_router(narrator_router)
 

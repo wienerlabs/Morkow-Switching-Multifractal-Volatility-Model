@@ -55,6 +55,9 @@ pyvinecopulib>=0.7.0
 ccxt>=4.0
 skfolio>=0.5.0
 
+# LLM Narrator (OpenAI — optional, graceful fallback when disabled)
+openai>=1.0
+
 # Structured Logging
 structlog>=24.0
 

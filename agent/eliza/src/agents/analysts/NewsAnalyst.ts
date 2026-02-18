@@ -72,6 +72,15 @@ export interface NewsAnalystConfig extends AnalystConfig {
 
 // ============= CONSTANTS =============
 
+/**
+ * DX-Research Task 1: Prospect Theory loss aversion multiplier.
+ * Negative news impacts markets ~267x faster (0.03 min vs 8.03 min — DX Terminal finding).
+ * Kahneman & Tversky empirical value: ~2.25. Conservative default: 1.75.
+ */
+const PROSPECT_THEORY_LOSS_AVERSION = parseFloat(
+  process.env.PROSPECT_THEORY_LOSS_AVERSION ?? '1.75'
+);
+
 export const DEFAULT_NEWS_CONFIG: NewsAnalystConfig = {
   ...DEFAULT_ANALYST_CONFIG,
   minConfidence: 0.4,
@@ -276,20 +285,28 @@ export class NewsAnalyst extends BaseAnalyst<NewsAnalysisInput, NewsOpportunityR
    * Calculate expected return based on news impact
    */
   private calculateExpectedReturn(aggregate: number): number {
-    // Map impact to expected return (rough estimation)
-    // ±100 impact → ±10% expected return
-    return aggregate / 10;
+    // DX-Research Task 1: Prospect Theory asymmetric weighting.
+    // Negative aggregate gets amplified by loss aversion lambda — markets react
+    // to bad news ~267x faster than good news (DX Terminal finding).
+    const adjusted = aggregate < 0
+      ? aggregate * PROSPECT_THEORY_LOSS_AVERSION
+      : aggregate;
+    return adjusted / 10;
   }
 
   /**
    * Calculate risk score from news analysis
    */
   private calculateRiskScore(aggregate: number, scores: NewsImpactScore[]): number {
-    // Higher risk for negative news, especially security/regulatory
+    // DX-Research Task 1: Prospect Theory — negative news carries amplified risk.
+    const effectiveAggregate = aggregate < 0
+      ? aggregate * PROSPECT_THEORY_LOSS_AVERSION
+      : aggregate;
+
     let risk = 5; // Base risk
 
-    if (aggregate < 0) risk += 2;
-    if (aggregate < -50) risk += 2;
+    if (effectiveAggregate < 0) risk += 2;
+    if (effectiveAggregate < -50) risk += 2;
 
     // Check for high-risk news types
     const hasSecurityNews = scores.some(

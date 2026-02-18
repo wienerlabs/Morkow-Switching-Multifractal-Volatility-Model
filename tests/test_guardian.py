@@ -130,6 +130,74 @@ def test_score_news_bearish_long():
     assert result["score"] > 60
 
 
+# ── Prospect Theory Asymmetry (DX-Research Task 1) ──
+
+def test_prospect_theory_asymmetry():
+    """Negative sentiment produces a higher risk score than the same magnitude positive sentiment."""
+    pos_signal = {"sentiment_ewma": 0.5, "strength": 0.7, "confidence": 0.9,
+                  "entropy": 0.3, "direction": "LONG", "n_items": 5}
+    neg_signal = {"sentiment_ewma": -0.5, "strength": 0.7, "confidence": 0.9,
+                  "entropy": 0.3, "direction": "SHORT", "n_items": 5}
+
+    pos_result = _score_news(pos_signal, "long")
+    neg_result = _score_news(neg_signal, "long")
+
+    # With prospect theory: negative sentiment risk should be MORE than the
+    # mirror of positive sentiment. The gap is the asymmetry.
+    pos_risk_above_neutral = pos_result["score"] - 50.0  # should be negative (favorable)
+    neg_risk_above_neutral = neg_result["score"] - 50.0  # should be positive (risky)
+
+    assert neg_risk_above_neutral > abs(pos_risk_above_neutral), (
+        f"Expected asymmetry: neg_risk={neg_risk_above_neutral:.2f} > "
+        f"abs(pos_risk)={abs(pos_risk_above_neutral):.2f}"
+    )
+    assert neg_result["details"]["prospect_theory_applied"] is True
+    assert pos_result["details"]["prospect_theory_applied"] is False
+
+
+def test_prospect_theory_disabled():
+    """When feature flag is off, symmetric scoring returns."""
+    signal_neg = {"sentiment_ewma": -0.5, "strength": 0.7, "confidence": 0.9,
+                  "entropy": 0.3, "direction": "SHORT", "n_items": 5}
+    signal_pos = {"sentiment_ewma": 0.5, "strength": 0.7, "confidence": 0.9,
+                  "entropy": 0.3, "direction": "LONG", "n_items": 5}
+
+    with patch("cortex.guardian.PROSPECT_THEORY_NEWS_ENABLED", False):
+        neg_result = _score_news(signal_neg, "long")
+        pos_result = _score_news(signal_pos, "long")
+
+    # Without prospect theory, scores should be symmetric around 50
+    neg_delta = neg_result["score"] - 50.0
+    pos_delta = 50.0 - pos_result["score"]
+    assert abs(neg_delta - pos_delta) < 1.0, "Symmetric scoring expected when PT disabled"
+    assert neg_result["details"]["prospect_theory_applied"] is False
+
+
+def test_prospect_theory_strong_negative_clamped():
+    """Very strong negative sentiment doesn't exceed score bounds."""
+    signal = {"sentiment_ewma": -0.9, "strength": 0.9, "confidence": 0.95,
+              "entropy": 0.2, "direction": "SHORT", "n_items": 10}
+    result = _score_news(signal, "long")
+    assert 0.0 <= result["score"] <= 100.0
+    assert result["details"]["prospect_theory_applied"] is True
+
+
+def test_prospect_theory_short_direction():
+    """For SHORT trades, positive ewma is the 'adverse' direction and gets amplified."""
+    signal_pos = {"sentiment_ewma": 0.5, "strength": 0.7, "confidence": 0.9,
+                  "entropy": 0.3, "direction": "LONG", "n_items": 5}
+    signal_neg = {"sentiment_ewma": -0.5, "strength": 0.7, "confidence": 0.9,
+                  "entropy": 0.3, "direction": "SHORT", "n_items": 5}
+
+    pos_result = _score_news(signal_pos, "short")  # bullish news = bad for short
+    neg_result = _score_news(signal_neg, "short")  # bearish news = good for short
+
+    # For short: positive ewma is adverse → prospect theory should amplify it
+    assert pos_result["details"]["prospect_theory_applied"] is True
+    assert neg_result["details"]["prospect_theory_applied"] is False
+    assert pos_result["score"] > neg_result["score"]
+
+
 # ── _recommend_size ──
 
 def test_recommend_size_low_risk():

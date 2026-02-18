@@ -37,6 +37,7 @@ from typing import Any
 
 from cortex.config import (
     APPROVAL_THRESHOLD,
+    DEBATE_INFO_ASYMMETRY_ENABLED,
     DEBATE_MAX_ROUNDS,
     DEBATE_EMPIRICAL_PRIOR_ENABLED,
     DEBATE_PRIOR_MAX,
@@ -432,10 +433,15 @@ def _bayesian_update(prior: float, evidence: list[DebateEvidence], direction: st
 
 def _trader_argue(ctx: DebateContext, evidence: dict[str, list[DebateEvidence]],
                   round_num: int, prev_risk_args: AgentArgument | None) -> AgentArgument:
-    """Trader builds quantitative case for approval."""
+    """Trader builds quantitative case for approval.
+
+    DX-Research Task 2: When DEBATE_INFO_ASYMMETRY_ENABLED, trader only sees
+    bullish evidence. This is a structural constraint (not a prompt hint) —
+    the agent literally cannot reference bearish data it was never given.
+    """
     profile = STRATEGY_PROFILES.get(ctx.strategy, STRATEGY_PROFILES["spot"])
     bullish = evidence["bullish"]
-    bearish = evidence["bearish"]
+    bearish = [] if DEBATE_INFO_ASYMMETRY_ENABLED else evidence["bearish"]
 
     # Base confidence from risk score inversion
     base_conf = max(0.1, 1.0 - ctx.risk_score / 100.0)
@@ -445,13 +451,18 @@ def _trader_argue(ctx: DebateContext, evidence: dict[str, list[DebateEvidence]],
     arguments: list[str] = []
     trader_evidence: list[DebateEvidence] = []
 
-    # Lead with favorable component scores
-    low_components = [cs for cs in ctx.component_scores if cs["score"] < 50]
+    # DX-Research Task 2: When info asymmetry on, trader only sees favorable components.
+    visible_components = (
+        [cs for cs in ctx.component_scores if cs["score"] < 50]
+        if DEBATE_INFO_ASYMMETRY_ENABLED
+        else ctx.component_scores
+    )
+    low_components = [cs for cs in visible_components if cs["score"] < 50]
     if low_components:
         names = ", ".join(cs["component"] for cs in low_components)
         arguments.append(f"Favorable risk signals from: {names}")
 
-    # Present bullish evidence
+    # Present bullish evidence (bearish is structurally empty when asymmetry on)
     for ev in sorted(bullish, key=lambda e: -{"low": 1, "medium": 2, "high": 3, "critical": 4}[e.severity]):
         arguments.append(ev.claim)
         trader_evidence.append(ev)
@@ -498,7 +509,11 @@ def _trader_argue(ctx: DebateContext, evidence: dict[str, list[DebateEvidence]],
 
 def _risk_manager_argue(ctx: DebateContext, evidence: dict[str, list[DebateEvidence]],
                         round_num: int, prev_trader_args: AgentArgument | None) -> AgentArgument:
-    """Risk Manager builds quantitative case against or for size reduction."""
+    """Risk Manager builds quantitative case against or for size reduction.
+
+    DX-Research Task 2: When DEBATE_INFO_ASYMMETRY_ENABLED, risk manager only sees
+    bearish evidence. Bullish signals are structurally hidden from this agent.
+    """
     profile = STRATEGY_PROFILES.get(ctx.strategy, STRATEGY_PROFILES["spot"])
     bearish = evidence["bearish"]
 
@@ -810,6 +825,7 @@ def run_debate(
         "original_approved": original_approved,
         "decision_changed": (final["decision"] == "approve") != original_approved,
         "strategy": strategy,
+        "info_asymmetry_active": DEBATE_INFO_ASYMMETRY_ENABLED,
         "evidence_summary": {
             "total": total_evidence,
             "bullish": len(evidence["bullish"]),

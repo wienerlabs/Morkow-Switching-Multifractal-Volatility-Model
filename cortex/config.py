@@ -64,11 +64,23 @@ __all__ = [
     "HAWKES_ENGINE",
     "COPULA_ENGINE",
     "PORTFOLIO_OPT_ENGINE",
+    # Narrator (LLM)
+    "NARRATOR_ENABLED",
+    "NARRATOR_BASE_URL",
+    "NARRATOR_API_KEY",
+    "NARRATOR_MODEL",
+    "NARRATOR_MAX_TOKENS",
+    "NARRATOR_TEMPERATURE",
+    "NARRATOR_TIMEOUT",
     # Observability
     "LOG_FORMAT",
     "LOG_LEVEL",
     "METRICS_ENABLED",
     "API_VERSION",
+    # DX-Research: Prospect Theory
+    "PROSPECT_THEORY_NEWS_ENABLED",
+    "PROSPECT_THEORY_LOSS_AVERSION",
+    "DEBATE_INFO_ASYMMETRY_ENABLED",
 ]
 
 import json
@@ -345,6 +357,13 @@ TAIL_DEPENDENCE_THRESHOLD = float(os.environ.get("TAIL_DEPENDENCE_THRESHOLD", "0
 AGENT_CONFIDENCE_ENABLED = os.environ.get("AGENT_CONFIDENCE_ENABLED", "true").lower() == "true"
 AGENT_CONFIDENCE_VETO_THRESHOLD = float(os.environ.get("AGENT_CONFIDENCE_VETO_THRESHOLD", "0.3"))
 
+# DX-Research Task 1: Prospect Theory — Asymmetric News Weighting
+PROSPECT_THEORY_NEWS_ENABLED = os.environ.get("PROSPECT_THEORY_NEWS_ENABLED", "true").lower() == "true"
+PROSPECT_THEORY_LOSS_AVERSION = float(os.environ.get("PROSPECT_THEORY_LOSS_AVERSION", "1.75"))
+
+# DX-Research Task 2: Environment-Based Constraints — Information Asymmetry
+DEBATE_INFO_ASYMMETRY_ENABLED = os.environ.get("DEBATE_INFO_ASYMMETRY_ENABLED", "true").lower() == "true"
+
 # ── Background News Collector ──
 NEWS_COLLECTOR_INTERVAL_SECONDS = int(os.environ.get("NEWS_COLLECTOR_INTERVAL_SECONDS", "30"))
 NEWS_BUFFER_MAX_ITEMS = int(os.environ.get("NEWS_BUFFER_MAX_ITEMS", "100"))
@@ -361,6 +380,16 @@ LIQUIDITY_SNAPSHOT_RETENTION_HOURS = int(os.environ.get("LIQUIDITY_SNAPSHOT_RETE
 LIQUIDITY_WATCHLIST: list[str] = json.loads(
     os.environ.get("LIQUIDITY_WATCHLIST", "[]")
 )
+
+# ── Narrator (LLM-powered narrative engine) ──
+
+NARRATOR_ENABLED = os.environ.get("NARRATOR_ENABLED", "false").lower() == "true"
+NARRATOR_BASE_URL = os.environ.get("NARRATOR_BASE_URL", "http://localhost:11434/v1")
+NARRATOR_API_KEY = os.environ.get("NARRATOR_API_KEY", "")
+NARRATOR_MODEL = os.environ.get("NARRATOR_MODEL", "llama3.1:8b")
+NARRATOR_MAX_TOKENS = int(os.environ.get("NARRATOR_MAX_TOKENS", "1024"))
+NARRATOR_TEMPERATURE = float(os.environ.get("NARRATOR_TEMPERATURE", "0.3"))
+NARRATOR_TIMEOUT = float(os.environ.get("NARRATOR_TIMEOUT", "30.0"))
 
 # ── Model Versioning ──
 MODEL_VERSION_HISTORY_SIZE = int(os.environ.get("MODEL_VERSION_HISTORY_SIZE", "3"))
@@ -438,6 +467,9 @@ def validate_config() -> list[str]:
     weight_sum = sum(GUARDIAN_WEIGHTS.values())
     if abs(weight_sum - 1.0) > 0.05:
         warnings.append(f"GUARDIAN_WEIGHTS sum to {weight_sum:.3f}, expected ~1.0")
+
+    if NARRATOR_ENABLED and not NARRATOR_BASE_URL:
+        warnings.append("NARRATOR_ENABLED=true but NARRATOR_BASE_URL is empty")
 
     if warnings:
         import logging

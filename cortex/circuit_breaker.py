@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Circuit Breaker State Machine — per-strategy risk isolation with outcome tracking.
 
 States: CLOSED (normal) → OPEN (blocked) → HALF_OPEN (probing) → CLOSED/OPEN.
@@ -28,7 +30,6 @@ __all__ = [
     "persist_cb_state",
     "restore_cb_state",
 ]
-from __future__ import annotations
 
 import logging
 import time

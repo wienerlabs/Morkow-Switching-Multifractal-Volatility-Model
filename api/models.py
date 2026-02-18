@@ -1777,3 +1777,70 @@ class DexNewTokensResponse(BaseModel):
 class DexStatusResponse(BaseModel):
     available: bool
     timestamp: str
+
+
+# ── Narrator (LLM-powered narrative engine) ────────────────────────
+
+
+class NarratorExplainRequest(BaseModel):
+    token: str = Field("", description="Token symbol")
+    direction: str = Field("long", description="Trade direction")
+    trade_size_usd: float = Field(0.0, ge=0, description="Proposed trade size in USD")
+    strategy: str | None = Field(None, description="Trading strategy")
+    assessment: dict | None = Field(None, description="Full guardian assessment dict. If None, runs live assessment.")
+
+
+class NarratorExplainResponse(BaseModel):
+    enabled: bool
+    narrative: str | None = None
+    model: str | None = None
+    latency_ms: float = 0
+    token: str = ""
+    direction: str = ""
+    error: str | None = None
+
+
+class NarratorNewsRequest(BaseModel):
+    news_items: list[dict] | None = Field(None, description="News item dicts. If None, reads from buffer.")
+    news_signal: dict | None = Field(None, description="Aggregate signal dict. If None, reads from buffer.")
+
+
+class NarratorNewsResponse(BaseModel):
+    enabled: bool
+    interpretation: str | None = None
+    model: str | None = None
+    latency_ms: float = 0
+    n_items: int = 0
+    error: str | None = None
+
+
+class NarratorBriefingResponse(BaseModel):
+    enabled: bool
+    briefing: str | None = None
+    model: str | None = None
+    latency_ms: float = 0
+    error: str | None = None
+
+
+class NarratorAskRequest(BaseModel):
+    question: str = Field(..., min_length=1, description="Operator question about the system")
+    context: dict | None = Field(None, description="Optional additional context to inject")
+
+
+class NarratorAskResponse(BaseModel):
+    enabled: bool
+    answer: str | None = None
+    model: str | None = None
+    latency_ms: float = 0
+    question: str = ""
+    error: str | None = None
+
+
+class NarratorStatusResponse(BaseModel):
+    enabled: bool
+    model: str
+    api_key_set: bool
+    call_count: int = 0
+    error_count: int = 0
+    avg_latency_ms: float = 0
+    total_latency_ms: float = 0

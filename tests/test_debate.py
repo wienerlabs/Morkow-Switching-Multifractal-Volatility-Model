@@ -1,5 +1,7 @@
 """Tests for cortex/debate.py — Adversarial Debate System (evidence-based, 4 agents)."""
 
+from unittest.mock import patch
+
 import pytest
 
 from cortex.debate import (
@@ -305,3 +307,100 @@ class TestRunDebate:
             enrich=False,
         )
         assert r["evidence_summary"]["bearish"] > 0
+
+
+# ── DX-Research Task 2: Information Asymmetry Tests ──
+
+
+class TestInfoAsymmetry:
+    """DX01 finding: Environment constraints > prompt engineering.
+    Trader should only see bullish evidence, Risk Manager only bearish."""
+
+    def test_trader_cannot_see_bearish_when_asymmetry_on(self):
+        """With asymmetry on, trader's bearish list is empty even when bearish evidence exists."""
+        ctx = DebateContext(
+            risk_score=60.0,
+            component_scores=[
+                {"component": "vol", "score": 70},  # bearish (>50)
+                {"component": "liq", "score": 30},   # bullish (<50)
+            ],
+            veto_reasons=[],
+            direction="long",
+            trade_size_usd=10_000,
+            original_approved=True,
+        )
+        evidence = _collect_evidence(ctx)
+        assert len(evidence["bearish"]) > 0, "Sanity: bearish evidence exists"
+
+        with patch("cortex.debate.DEBATE_INFO_ASYMMETRY_ENABLED", True):
+            trader = _trader_argue(ctx, evidence, 0, None)
+            # Trader should not reference any high-risk components in arguments
+            args_text = " ".join(trader.arguments)
+            assert "vol" not in args_text.lower() or "Favorable" in args_text
+
+    def test_trader_sees_everything_when_asymmetry_off(self):
+        """With asymmetry off, trader sees all components."""
+        ctx = DebateContext(
+            risk_score=60.0,
+            component_scores=[
+                {"component": "high_risk", "score": 80},
+                {"component": "low_risk", "score": 20},
+            ],
+            veto_reasons=[],
+            direction="long",
+            trade_size_usd=10_000,
+            original_approved=True,
+        )
+        evidence = _collect_evidence(ctx)
+
+        with patch("cortex.debate.DEBATE_INFO_ASYMMETRY_ENABLED", False):
+            trader = _trader_argue(ctx, evidence, 0, None)
+            # Trader still presents evidence, but from both sides
+            assert trader.role == "trader"
+            assert len(trader.evidence) > 0
+
+    def test_info_asymmetry_flag_in_result(self):
+        """run_debate includes info_asymmetry_active flag."""
+        r = run_debate(
+            risk_score=40.0,
+            component_scores=[{"component": "vol", "score": 30}],
+            veto_reasons=[],
+            direction="long",
+            trade_size_usd=5_000,
+            original_approved=True,
+            enrich=False,
+        )
+        assert "info_asymmetry_active" in r
+
+    def test_asymmetry_still_rejects_high_risk(self):
+        """Even with asymmetry, the system correctly rejects dangerous trades.
+        Portfolio Manager and Devil's Advocate see everything."""
+        r = run_debate(
+            risk_score=90.0,
+            component_scores=[
+                {"component": "vol", "score": 92},
+                {"component": "liq", "score": 85},
+            ],
+            veto_reasons=["extreme_risk"],
+            direction="long",
+            trade_size_usd=10_000,
+            original_approved=True,
+            enrich=False,
+        )
+        assert r["final_decision"] == "reject"
+
+    def test_asymmetry_still_approves_low_risk(self):
+        """With asymmetry, low-risk trades still get approved."""
+        r = run_debate(
+            risk_score=15.0,
+            component_scores=[
+                {"component": "vol", "score": 15},
+                {"component": "liq", "score": 10},
+            ],
+            veto_reasons=[],
+            direction="long",
+            trade_size_usd=5_000,
+            original_approved=True,
+            enrich=False,
+        )
+        assert r["final_decision"] == "approve"
