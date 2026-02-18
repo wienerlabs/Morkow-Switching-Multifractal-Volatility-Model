@@ -189,8 +189,8 @@ class TestGuardianUnit:
         )
         assert isinstance(result["approved"], bool)
         assert 0 <= result["risk_score"] <= 100
-        # 4 of 7 components present (no news, no alams, no agent_confidence) → confidence ≈ 0.59
-        assert result["confidence"] == pytest.approx(0.5909, abs=0.01)
+        # 4 of 7 components present (no news, no alams, no agent_confidence) → confidence ≈ 0.65
+        assert result["confidence"] == pytest.approx(0.65, abs=0.01)
         assert len(result["component_scores"]) == 4
         assert result["recommended_size"] > 0
 

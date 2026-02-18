@@ -518,6 +518,8 @@ class TestPersonaDiversity:
     def test_different_personas_produce_different_scores(self):
         """Same evidence, different persona settings = different confidence scores.
         This is the core acceptance criterion."""
+        import cortex.debate as _debate_mod
+
         ctx = DebateContext(
             risk_score=50.0,
             component_scores=[
@@ -532,15 +534,20 @@ class TestPersonaDiversity:
         )
         evidence = _collect_evidence(ctx)
 
-        # High momentum bias trader
-        with patch("cortex.debate.PERSONA_DIVERSITY_ENABLED", True), \
-             patch("cortex.debate.PERSONA_TRADER_MOMENTUM_BIAS", 2.0):
+        orig_enabled = _debate_mod.PERSONA_DIVERSITY_ENABLED
+        orig_bias = _debate_mod.PERSONA_TRADER_MOMENTUM_BIAS
+        try:
+            # High momentum bias trader
+            _debate_mod.PERSONA_DIVERSITY_ENABLED = True
+            _debate_mod.PERSONA_TRADER_MOMENTUM_BIAS = 2.0
             trader_high = _trader_argue(ctx, evidence, 0, None)
 
-        # Low momentum bias trader
-        with patch("cortex.debate.PERSONA_DIVERSITY_ENABLED", True), \
-             patch("cortex.debate.PERSONA_TRADER_MOMENTUM_BIAS", 0.5):
+            # Low momentum bias trader
+            _debate_mod.PERSONA_TRADER_MOMENTUM_BIAS = 0.5
             trader_low = _trader_argue(ctx, evidence, 0, None)
+        finally:
+            _debate_mod.PERSONA_DIVERSITY_ENABLED = orig_enabled
+            _debate_mod.PERSONA_TRADER_MOMENTUM_BIAS = orig_bias
 
         # Different persona settings should produce different confidence
         assert trader_high.confidence != trader_low.confidence
