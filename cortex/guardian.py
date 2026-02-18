@@ -67,6 +67,8 @@ from cortex.config import (
     # DX-Research Task 1: Prospect Theory News
     PROSPECT_THEORY_NEWS_ENABLED,
     PROSPECT_THEORY_LOSS_AVERSION,
+    # DX-Research Task 8: Human Override
+    HUMAN_OVERRIDE_ENABLED,
 )
 
 logger = logging.getLogger(__name__)
@@ -727,6 +729,34 @@ def assess_trade(
         except Exception:
             logger.debug("Debate system unavailable", exc_info=True)
 
+    # ── DX-Research Task 8: Human Override check ──
+    override_result = None
+    if HUMAN_OVERRIDE_ENABLED:
+        try:
+            from cortex.human_override import check_override, OverrideAction
+            ovr = check_override(token)
+            if ovr.has_override:
+                override_result = ovr.to_dict()
+                if ovr.action == OverrideAction.FORCE_APPROVE:
+                    approved = True
+                    veto_reasons = [r for r in veto_reasons if r != "human_override"]
+                elif ovr.action == OverrideAction.FORCE_REJECT:
+                    approved = False
+                    veto_reasons.append(f"human_override:{ovr.reason}")
+                elif ovr.action == OverrideAction.COOLDOWN:
+                    approved = False
+                    veto_reasons.append(f"human_cooldown:{ovr.reason}")
+                elif ovr.action == OverrideAction.SIZE_CAP and ovr.size_cap_usd is not None:
+                    if recommended_size > ovr.size_cap_usd:
+                        recommended_size = ovr.size_cap_usd
+                logger.info(
+                    "HUMAN OVERRIDE applied: %s on %s by %s — %s",
+                    ovr.action.value if ovr.action else "none", token,
+                    ovr.created_by, ovr.reason,
+                )
+        except Exception:
+            logger.debug("Human override check failed", exc_info=True)
+
     request_id = structlog.contextvars.get_contextvars().get("request_id")
     result = {
         "approved": approved,
@@ -744,6 +774,7 @@ def assess_trade(
         "circuit_breaker": cb_states,
         "portfolio_limits": limits,
         "debate": debate_result,
+        "human_override": override_result,
         "from_cache": False,
         "request_id": request_id,
     }
