@@ -64,6 +64,9 @@ from cortex.config import (
     AGENT_CONFIDENCE_VETO_THRESHOLD,
     # P2-E: Debate Auto-Escalation
     GUARDIAN_AUTO_DEBATE_THRESHOLD,
+    # DX-Research Task 1: Prospect Theory News
+    PROSPECT_THEORY_NEWS_ENABLED,
+    PROSPECT_THEORY_LOSS_AVERSION,
 )
 
 logger = logging.getLogger(__name__)
@@ -237,9 +240,17 @@ def _score_news(news_signal: dict, direction: str) -> dict:
     # effective_sentiment: positive = favorable for trade, negative = against
     effective_sentiment = ewma if is_long else -ewma
 
-    # Base score: map effective_sentiment from [-1, 1] to [0, 100]
-    # -1 (strongly against) → 100, 0 (neutral) → 50, +1 (strongly for) → 0
-    base_score = 50.0 - effective_sentiment * 50.0
+    # DX-Research Task 1: Prospect Theory asymmetric weighting.
+    # Negative news spreads 267x faster than positive (DX Terminal: 0.03 vs 8.03 min).
+    # Apply loss aversion: negative effective_sentiment is amplified by lambda factor.
+    if PROSPECT_THEORY_NEWS_ENABLED and effective_sentiment < 0:
+        effective_sentiment = effective_sentiment * PROSPECT_THEORY_LOSS_AVERSION
+
+    # Base score: map effective_sentiment to [0, 100]
+    # After prospect theory, negative sentiment is amplified so risk scores skew higher.
+    # Clamp effective_sentiment to [-1, 1] after amplification to keep score in bounds.
+    clamped_sentiment = max(-1.0, min(1.0, effective_sentiment))
+    base_score = 50.0 - clamped_sentiment * 50.0
 
     # Scale by confidence: low confidence → pull toward 50 (uncertain)
     score = 50.0 + (base_score - 50.0) * confidence
@@ -256,6 +267,10 @@ def _score_news(news_signal: dict, direction: str) -> dict:
         or (not is_long and signal_direction == "LONG")
     )
 
+    prospect_applied = PROSPECT_THEORY_NEWS_ENABLED and ewma != 0 and (
+        (is_long and ewma < 0) or (not is_long and ewma > 0)
+    )
+
     return {
         "component": "news",
         "score": score,
@@ -267,6 +282,8 @@ def _score_news(news_signal: dict, direction: str) -> dict:
             "entropy": round(entropy, 4),
             "n_items": n_items,
             "direction_conflict": direction_conflict,
+            "prospect_theory_applied": prospect_applied,
+            "loss_aversion_lambda": PROSPECT_THEORY_LOSS_AVERSION if prospect_applied else None,
         },
     }
 
