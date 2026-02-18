@@ -61,6 +61,40 @@ services:
       retries: 3
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: cortex-prometheus
+    profiles:
+      - monitoring
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: cortex-grafana
+    profiles:
+      - monitoring
+    depends_on:
+      - prometheus
+    volumes:
+      - ./monitoring/grafana/provisioning/dashboards/dashboard.yml:/etc/grafana/provisioning/dashboards/dashboard.yml:ro
+      - ./monitoring/grafana/cortex-dashboard.json:/etc/grafana/provisioning/dashboards/cortex-dashboard.json:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: cortex
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/cortex-dashboard.json
+    restart: unless-stopped
+
   # Development mode with hot-reload (use: docker compose --profile dev up)
   risk-engine-dev:
     build:
@@ -95,4 +129,6 @@ services:
 volumes:
   postgres_data:
   redis-data:
+  prometheus_data:
+  grafana_data:
 

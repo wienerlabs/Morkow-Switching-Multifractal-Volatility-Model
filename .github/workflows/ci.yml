@@ -43,7 +43,7 @@ jobs:
         env:
           REDIS_URL: redis://localhost:6379/0
           PERSISTENCE_REDIS_URL: redis://localhost:6379/1
-        run: python -m pytest tests/ -q --tb=short -x
+        run: python -m pytest tests/ -q --tb=short --timeout=120
 
   python-lint:
     name: Python Lint
@@ -111,6 +111,28 @@ jobs:
           node-version: "20"
           cache: npm
           cache-dependency-path: agent/eliza/package-lock.json
+
+      - name: Install
+        run: npm ci || npm install
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+  # ─── OpenServ Agent ──────────────────────────────────────────
+  openserv-typecheck:
+    name: OpenServ Agent Typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent/openserv
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
       - name: Install
         run: npm ci || npm install

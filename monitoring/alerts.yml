@@ -1,0 +1,38 @@
+groups:
+  - name: cortex_risk_alerts
+    rules:
+      - alert: HighVaR
+        expr: var_computation_duration_seconds_sum / var_computation_duration_seconds_count > 2.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High VaR computation latency"
+          description: "VaR computation averaging above 2s for 5 minutes."
+
+      - alert: IsingCascadeCritical
+        expr: rate(ising_cascade_alerts_total{severity="critical"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ising cascade critical alert detected"
+          description: "Critical cascade alerts firing in the last 5 minutes."
+
+      - alert: NarratorTimeout
+        expr: rate(narrator_request_total{status="timeout"}[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Narrator request timeouts elevated"
+          description: "Narrator timeout rate exceeds 0.1/s for 3 minutes."
+
+      - alert: GuardianCircuitBreakerTriggered
+        expr: rate(guardian_veto_total{decision="veto"}[5m]) > 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Guardian circuit breaker triggered"
+          description: "Guardian veto rate exceeds 1/s for 2 minutes — possible circuit breaker condition."

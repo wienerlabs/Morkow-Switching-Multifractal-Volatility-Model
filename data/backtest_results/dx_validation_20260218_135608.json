@@ -1,0 +1,177 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-18T13:56:08.071756+00:00",
+    "n_obs": 1000,
+    "seed": 42,
+    "confidence": 95.0,
+    "asset": "SOL",
+    "min_train_window": 120,
+    "refit_interval": 20,
+    "dx_flags": [
+      "PROSPECT_THEORY_NEWS_ENABLED",
+      "DEBATE_INFO_ASYMMETRY_ENABLED",
+      "STIGMERGY_ENABLED",
+      "ISING_CASCADE_ENABLED",
+      "PERSONA_DIVERSITY_ENABLED",
+      "VAULT_DELTA_ENABLED",
+      "HUMAN_OVERRIDE_ENABLED"
+    ]
+  },
+  "baseline": {
+    "label": "baseline",
+    "n_obs": 880,
+    "n_violations": 86,
+    "violation_rate": 0.0977,
+    "expected_rate": 0.05,
+    "kupiec": {
+      "statistic": 33.4134,
+      "p_value": 0.0,
+      "pass": false
+    },
+    "christoffersen": {
+      "statistic": 0.0254,
+      "p_value": 0.8734,
+      "pass": true
+    },
+    "per_regime": {
+      "1": {
+        "n_obs": 21,
+        "n_violations": 6,
+        "violation_rate": 0.2857,
+        "kupiec_p": 0.0004
+      },
+      "2": {
+        "n_obs": 77,
+        "n_violations": 11,
+        "violation_rate": 0.1429,
+        "kupiec_p": 0.002
+      },
+      "3": {
+        "n_obs": 120,
+        "n_violations": 8,
+        "violation_rate": 0.0667,
+        "kupiec_p": 0.4244
+      },
+      "4": {
+        "n_obs": 307,
+        "n_violations": 27,
+        "violation_rate": 0.0879,
+        "kupiec_p": 0.0056
+      },
+      "5": {
+        "n_obs": 355,
+        "n_violations": 34,
+        "violation_rate": 0.0958,
+        "kupiec_p": 0.0004
+      }
+    },
+    "parameter_stability": {
+      "n_refits": 44,
+      "sigma_low": {
+        "mean": 0.423391,
+        "std": 0.024675,
+        "cv": 0.0583
+      },
+      "sigma_high": {
+        "mean": 12.245524,
+        "std": 1.370525,
+        "cv": 0.1119
+      },
+      "stable": true
+    },
+    "elapsed_ms": 3378.8
+  },
+  "dx_enhanced": {
+    "label": "dx_enhanced",
+    "n_obs": 880,
+    "n_violations": 86,
+    "violation_rate": 0.0977,
+    "expected_rate": 0.05,
+    "kupiec": {
+      "statistic": 33.4134,
+      "p_value": 0.0,
+      "pass": false
+    },
+    "christoffersen": {
+      "statistic": 0.0254,
+      "p_value": 0.8734,
+      "pass": true
+    },
+    "per_regime": {
+      "1": {
+        "n_obs": 21,
+        "n_violations": 6,
+        "violation_rate": 0.2857,
+        "kupiec_p": 0.0004
+      },
+      "2": {
+        "n_obs": 77,
+        "n_violations": 11,
+        "violation_rate": 0.1429,
+        "kupiec_p": 0.002
+      },
+      "3": {
+        "n_obs": 120,
+        "n_violations": 8,
+        "violation_rate": 0.0667,
+        "kupiec_p": 0.4244
+      },
+      "4": {
+        "n_obs": 307,
+        "n_violations": 27,
+        "violation_rate": 0.0879,
+        "kupiec_p": 0.0056
+      },
+      "5": {
+        "n_obs": 355,
+        "n_violations": 34,
+        "violation_rate": 0.0958,
+        "kupiec_p": 0.0004
+      }
+    },
+    "parameter_stability": {
+      "n_refits": 44,
+      "sigma_low": {
+        "mean": 0.423391,
+        "std": 0.024675,
+        "cv": 0.0583
+      },
+      "sigma_high": {
+        "mean": 12.245524,
+        "std": 1.370525,
+        "cv": 0.1119
+      },
+      "stable": true
+    },
+    "elapsed_ms": 3370.8
+  },
+  "comparison": {
+    "violation_rate_delta": 0.0,
+    "violation_rate_gap_baseline": 0.0477,
+    "violation_rate_gap_dx": 0.0477,
+    "dx_closer_to_expected": false,
+    "kupiec_p_baseline": 0.0,
+    "kupiec_p_dx": 0.0,
+    "kupiec_improvement": false,
+    "christoffersen_p_baseline": 0.8734,
+    "christoffersen_p_dx": 0.8734,
+    "both_kupiec_pass": false,
+    "speedup_ms": 8.0
+  },
+  "guardian_comparison": {
+    "baseline": {
+      "n_samples": 200,
+      "mean_news_risk_score": 50.42,
+      "std_news_risk_score": 3.5,
+      "prospect_theory_applications": 0,
+      "prospect_theory_pct": 0.0
+    },
+    "dx_enhanced": {
+      "n_samples": 200,
+      "mean_news_risk_score": 50.42,
+      "std_news_risk_score": 3.5,
+      "prospect_theory_applications": 0,
+      "prospect_theory_pct": 0.0
+    }
+  }
+}
