@@ -42,8 +42,14 @@ from cortex.config import (
     DEBATE_EMPIRICAL_PRIOR_ENABLED,
     DEBATE_PRIOR_MAX,
     DEBATE_PRIOR_MIN,
+    ISING_CASCADE_ENABLED,
     MAX_CORRELATED_EXPOSURE,
     MAX_DAILY_DRAWDOWN,
+    PERSONA_DA_CONTRARIAN_STRENGTH,
+    PERSONA_DIVERSITY_ENABLED,
+    PERSONA_RISK_MGR_TAIL_SENSITIVITY,
+    PERSONA_TRADER_MOMENTUM_BIAS,
+    STIGMERGY_ENABLED,
 )
 
 logger = logging.getLogger(__name__)
@@ -196,6 +202,7 @@ class DebateContext:
     alams_data: dict[str, Any] = field(default_factory=dict)
     circuit_breaker_states: list[dict] = field(default_factory=list)
     portfolio_value: float = 100_000.0
+    token: str = ""  # Token symbol for stigmergy consensus lookup
 
 
 def _collect_evidence(ctx: DebateContext) -> dict[str, list[DebateEvidence]]:
@@ -400,6 +407,58 @@ def _collect_evidence(ctx: DebateContext) -> dict[str, list[DebateEvidence]]:
                 quantitative=False,
             ))
 
+    # ── Stigmergy consensus (DX-Research Task 4) ──
+    if STIGMERGY_ENABLED and ctx.token:
+        try:
+            from cortex.stigmergy import get_consensus
+            consensus = get_consensus(ctx.token)
+            if consensus.num_sources > 0:
+                severity = "high" if consensus.swarm_active else "medium"
+                if consensus.direction == "bearish":
+                    bearish.append(DebateEvidence(
+                        source="stigmergy:consensus",
+                        claim=f"Swarm consensus BEARISH on {ctx.token} "
+                              f"({consensus.num_sources} sources, conviction {consensus.conviction:.0%})",
+                        value=consensus.conviction * 100,
+                        threshold=50.0,
+                        severity=severity,
+                    ))
+                elif consensus.direction == "bullish":
+                    bullish.append(DebateEvidence(
+                        source="stigmergy:consensus",
+                        claim=f"Swarm consensus BULLISH on {ctx.token} "
+                              f"({consensus.num_sources} sources, conviction {consensus.conviction:.0%})",
+                        value=(1 - consensus.conviction) * 100,
+                        threshold=50.0,
+                        severity=severity,
+                    ))
+        except Exception:
+            logger.debug("Stigmergy evidence collection failed", exc_info=True)
+
+    # ── Ising cascade detection (DX-Research Task 5) ──
+    if ISING_CASCADE_ENABLED and ctx.token:
+        try:
+            from cortex.ising_cascade import get_cascade_score
+            regime = ctx.alams_data.get("current_regime", 0)
+            cascade = get_cascade_score(ctx.token, regime=regime)
+            if cascade.cascade_score > 20:
+                severity = (
+                    "critical" if cascade.cascade_risk == "critical"
+                    else "high" if cascade.cascade_risk == "high"
+                    else "medium"
+                )
+                bearish.append(DebateEvidence(
+                    source="ising:cascade",
+                    claim=f"Ising cascade risk {cascade.cascade_risk.upper()} — "
+                          f"magnetization {cascade.magnetization:.0%}, "
+                          f"herding {cascade.herding_direction}",
+                    value=cascade.cascade_score,
+                    threshold=40.0,
+                    severity=severity,
+                ))
+        except Exception:
+            logger.debug("Ising cascade evidence collection failed", exc_info=True)
+
     return {"bullish": bullish, "bearish": bearish}
 
 
@@ -491,13 +550,20 @@ def _trader_argue(ctx: DebateContext, evidence: dict[str, list[DebateEvidence]],
     # Task 7: Empirical Bayes prior
     prior = _compute_empirical_prior(ctx.strategy)
 
+    # DX-Research Task 6: Persona — momentum bias amplifies confidence from trend signals.
+    persona_conf_boost = 0.0
+    if PERSONA_DIVERSITY_ENABLED:
+        momentum_sources = [e for e in bullish if e.source in ("kelly", "alams", "guardian:momentum")]
+        if momentum_sources:
+            persona_conf_boost = len(momentum_sources) * 0.02 * PERSONA_TRADER_MOMENTUM_BIAS
+
     # Bayesian posterior
     posterior = _bayesian_update(prior, bullish, "approve")
 
     return AgentArgument(
         role="trader",
         position="approve",
-        confidence=round(min(0.95, base_conf * (1 + len(bullish) * 0.05)), 4),
+        confidence=round(min(0.95, base_conf * (1 + len(bullish) * 0.05) + persona_conf_boost), 4),
         arguments=arguments[:8],
         evidence=trader_evidence[:6],
         suggested_action=ctx.direction,
@@ -554,6 +620,11 @@ def _risk_manager_argue(ctx: DebateContext, evidence: dict[str, list[DebateEvide
     critical_count = sum(1 for e in bearish if e.severity == "critical")
     position = "reject" if critical_count >= 2 or ctx.risk_score >= 80 or len(ctx.veto_reasons) > 0 else "reduce"
 
+    # DX-Research Task 6: Persona — tail risk sensitivity amplifies critical evidence weight.
+    persona_conf_boost = 0.0
+    if PERSONA_DIVERSITY_ENABLED and critical_count > 0:
+        persona_conf_boost = critical_count * 0.03 * PERSONA_RISK_MGR_TAIL_SENSITIVITY
+
     # Task 7: Empirical Bayes prior
     prior = _compute_empirical_prior(ctx.strategy)
 
@@ -563,7 +634,7 @@ def _risk_manager_argue(ctx: DebateContext, evidence: dict[str, list[DebateEvide
     return AgentArgument(
         role="risk_manager",
         position=position,
-        confidence=round(min(0.95, base_conf * (1 + len(bearish) * 0.03)), 4),
+        confidence=round(min(0.95, base_conf * (1 + len(bearish) * 0.03) + persona_conf_boost), 4),
         arguments=arguments[:8],
         evidence=rm_evidence[:6],
         suggested_action="block" if position == "reject" else "reduce_size",
@@ -755,6 +826,7 @@ def run_debate(
     drawdown: dict[str, Any] | None = None,
     correlation: dict[str, Any] | None = None,
     circuit_breaker_states: list[dict] | None = None,
+    token: str = "",
     enrich: bool = True,
 ) -> dict[str, Any]:
     """Run multi-round adversarial debate with evidence marshaling.
@@ -777,6 +849,7 @@ def run_debate(
         drawdown=drawdown or {},
         correlation=correlation or {},
         circuit_breaker_states=circuit_breaker_states or [],
+        token=token,
     )
 
     if enrich:
@@ -826,6 +899,7 @@ def run_debate(
         "decision_changed": (final["decision"] == "approve") != original_approved,
         "strategy": strategy,
         "info_asymmetry_active": DEBATE_INFO_ASYMMETRY_ENABLED,
+        "stigmergy_active": STIGMERGY_ENABLED and bool(token),
         "evidence_summary": {
             "total": total_evidence,
             "bullish": len(evidence["bullish"]),
