@@ -105,9 +105,12 @@ vi.mock('@solana/web3.js', () => {
   };
 });
 
-// Mock fetch for Jupiter/Birdeye APIs
+// Mock fetch for Jupiter/Birdeye/Pyth APIs
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
+
+// Pyth Hermes returns non-ok so getPythPrice falls back to Jupiter in tests
+const PYTH_FAIL_MOCK = { ok: false, status: 503, json: () => Promise.resolve({}) };
 
 describe('GlobalRiskManager', () => {
   let manager: GlobalRiskManager;
@@ -483,6 +486,8 @@ describe('GlobalRiskManager', () => {
 
   describe('5. Oracle Staleness Protection', () => {
     it('should accept fresh oracle price (<30s)', async () => {
+      // Pyth fails → falls back to Jupiter
+      mockFetch.mockResolvedValueOnce(PYTH_FAIL_MOCK);
       // Mock Jupiter response with fresh timestamp
       mockFetch.mockResolvedValueOnce({
         json: () => Promise.resolve({
@@ -505,6 +510,8 @@ describe('GlobalRiskManager', () => {
     });
 
     it('should reject stale oracle price (>30s)', async () => {
+      // Pyth fails → falls back to Jupiter
+      mockFetch.mockResolvedValueOnce(PYTH_FAIL_MOCK);
       // Mock Jupiter response with stale timestamp
       mockFetch.mockResolvedValueOnce({
         json: () => Promise.resolve({
@@ -527,6 +534,8 @@ describe('GlobalRiskManager', () => {
     });
 
     it('should trigger emergency on very stale price (>60s)', async () => {
+      // Pyth fails → falls back to Jupiter
+      mockFetch.mockResolvedValueOnce(PYTH_FAIL_MOCK);
       // Mock Jupiter response with very stale timestamp
       mockFetch.mockResolvedValueOnce({
         json: () => Promise.resolve({
@@ -549,7 +558,9 @@ describe('GlobalRiskManager', () => {
     });
 
     it('should handle oracle API failure gracefully', async () => {
-      // Mock API failure
+      // Pyth fails
+      mockFetch.mockRejectedValueOnce(new Error('API unavailable'));
+      // Jupiter also fails
       mockFetch.mockRejectedValueOnce(new Error('API unavailable'));
 
       const result = await manager.validateOracleForTrade('SOL');
@@ -558,6 +569,8 @@ describe('GlobalRiskManager', () => {
     });
 
     it('should cache price for exposure calculations', async () => {
+      // Pyth fails → falls back to Jupiter
+      mockFetch.mockResolvedValueOnce(PYTH_FAIL_MOCK);
       mockFetch.mockResolvedValueOnce({
         json: () => Promise.resolve({
           data: {
@@ -612,6 +625,8 @@ describe('GlobalRiskManager', () => {
 
   describe('Global Risk Check (Integration)', () => {
     it('should allow trade when all checks pass', async () => {
+      // Pyth fails → falls back to Jupiter
+      mockFetch.mockResolvedValueOnce(PYTH_FAIL_MOCK);
       // Fresh oracle
       mockFetch.mockResolvedValueOnce({
         json: () => Promise.resolve({
@@ -644,6 +659,8 @@ describe('GlobalRiskManager', () => {
       mockPortfolioState.totalValueUsd = 9000;
       manager.calculateDrawdownStatus();
 
+      // Pyth fails → falls back to Jupiter
+      mockFetch.mockResolvedValueOnce(PYTH_FAIL_MOCK);
       // Fresh oracle
       mockFetch.mockResolvedValueOnce({
         json: () => Promise.resolve({
@@ -672,6 +689,8 @@ describe('GlobalRiskManager', () => {
     });
 
     it('should block trade when oracle is stale', async () => {
+      // Pyth fails → falls back to Jupiter
+      mockFetch.mockResolvedValueOnce(PYTH_FAIL_MOCK);
       // Stale oracle
       mockFetch.mockResolvedValueOnce({
         json: () => Promise.resolve({
