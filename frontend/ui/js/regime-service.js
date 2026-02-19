@@ -204,9 +204,11 @@ async function detectRegime() {
         applyRegimeResult(maxIdx, probs);
     } catch (err) {
         console.error('[REGIME] Detection failed:', err.message);
-        // Return mock "unknown" regime when all sources fail
-        const unknownProbs = [0.2, 0.2, 0.2, 0.2, 0.2];
-        applyRegimeResult(0, unknownProbs);
+        // Show error state in UI when all sources fail
+        var valueEl = document.getElementById('regimeValue');
+        if (valueEl) { valueEl.textContent = 'UNAVAILABLE'; valueEl.style.color = 'var(--dim)'; }
+        var confEl = document.getElementById('regimeConfidence');
+        if (confEl) { confEl.textContent = 'Data sources offline'; confEl.style.color = 'var(--dim)'; }
     }
 }
 

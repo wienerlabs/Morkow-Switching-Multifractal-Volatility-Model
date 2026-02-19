@@ -55,6 +55,7 @@ __all__ = [
     "CB_CONSECUTIVE_CHECKS",
     "CB_COOLDOWN_SECONDS",
     "CB_STRATEGIES",
+    "STRATEGY_CONFIG",
     # Debate
     "DEBATE_MAX_ROUNDS",
     "DEBATE_TIMEOUT_MS",
@@ -230,6 +231,115 @@ CB_THRESHOLD = float(os.environ.get("CB_THRESHOLD", "90"))
 CB_CONSECUTIVE_CHECKS = int(os.environ.get("CB_CONSECUTIVE_CHECKS", "3"))
 CB_COOLDOWN_SECONDS = float(os.environ.get("CB_COOLDOWN_SECONDS", "300"))
 CB_STRATEGIES = json.loads(os.environ.get("CB_STRATEGIES", '["lp", "arb", "perp"]'))
+
+# ── Strategy Definitions (dashboard source of truth) ──
+
+_DEFAULT_STRATEGY_CONFIG = [
+    {
+        "name": "LP Rebalancing",
+        "key": "lp",
+        "allocation": 40,
+        "status": "running",
+        "enabled": True,
+        "params": [
+            {"key": "Capital Allocation", "val": "40%"},
+            {"key": "Max Positions", "val": "3"},
+            {"key": "IL Threshold", "val": "2-3%"},
+            {"key": "Slippage Tolerance", "val": "0.5%"},
+            {"key": "ML Confidence", "val": "≥ 84%"},
+        ],
+        "metrics": [
+            {"label": "Active Positions", "value": "2 / 3"},
+            {"label": "Current IL", "value": "1.4%"},
+            {"label": "Fee APY", "value": "38.2%"},
+            {"label": "Pool TVL", "value": "$12.4M"},
+        ],
+        "entry": [
+            "ML confidence ≥ 84%",
+            "Pool TVL above minimum",
+            "Expected fee APY > gas costs",
+            "IL risk assessment acceptable",
+        ],
+        "exit": [
+            "IL exceeds threshold",
+            "Pool TVL drops below minimum",
+            "Better opportunity identified",
+            "Strategy circuit breaker",
+        ],
+    },
+    {
+        "name": "Arbitrage",
+        "key": "arb",
+        "allocation": 30,
+        "status": "running",
+        "enabled": True,
+        "params": [
+            {"key": "Capital Allocation", "val": "30%"},
+            {"key": "Max Concurrent", "val": "5"},
+            {"key": "Min Spread", "val": "≥ 0.5%"},
+            {"key": "ML Confidence", "val": "≥ 80%"},
+            {"key": "Execution", "val": "Atomic + Jito"},
+        ],
+        "metrics": [
+            {"label": "Active Trades", "value": "3 / 5"},
+            {"label": "Avg Spread", "value": "0.62%"},
+            {"label": "Success Rate", "value": "81.3%"},
+            {"label": "Avg Latency", "value": "340ms"},
+        ],
+        "entry": [
+            "Spread ≥ 0.5% detected",
+            "Sufficient liquidity both sides",
+            "MEV protection via Jito bundle",
+            "Atomic execution possible",
+        ],
+        "exit": [
+            "Spread closed",
+            "Execution failed",
+            "Slippage > 2%",
+            "Latency > 500ms",
+        ],
+    },
+    {
+        "name": "Perpetuals",
+        "key": "perp",
+        "allocation": 30,
+        "status": "running",
+        "enabled": True,
+        "params": [
+            {"key": "Capital Allocation", "val": "30%"},
+            {"key": "Max Leverage", "val": "≤ 5x"},
+            {"key": "Max Hold Time", "val": "8h"},
+            {"key": "Max Positions", "val": "2"},
+            {"key": "Stop Loss", "val": "5% (fixed)"},
+            {"key": "Take Profit", "val": "10% (fixed)"},
+            {"key": "Liquidation Distance", "val": "≥ 15%"},
+            {"key": "Min Margin Ratio", "val": "20%"},
+            {"key": "Auto-deleverage", "val": "At 10% margin"},
+        ],
+        "metrics": [
+            {"label": "Open Positions", "value": "1 / 2"},
+            {"label": "Unrealized P&L", "value": "+$142.30"},
+            {"label": "Margin Used", "value": "34%"},
+            {"label": "Avg Hold", "value": "4.2h"},
+        ],
+        "entry": [
+            "ML confidence threshold met",
+            "Funding rate favorable",
+            "Margin ratio sufficient",
+            "Risk manager approval",
+        ],
+        "exit": [
+            "Stop loss hit (5%)",
+            "Take profit hit (10%)",
+            "Max hold time exceeded (8h)",
+            "Liquidation proximity warning",
+        ],
+    },
+]
+
+STRATEGY_CONFIG: list[dict] = json.loads(
+    os.environ.get("STRATEGY_CONFIG", json.dumps(_DEFAULT_STRATEGY_CONFIG))
+)
 
 # ── Adversarial Debate ──
 

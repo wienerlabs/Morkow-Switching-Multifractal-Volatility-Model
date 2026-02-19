@@ -21,7 +21,6 @@ const BEAR_KW = ['crash','drop','fall','bearish','decline','loss','dump','hack',
 let NEWS = {};
 let ALL_NEWS_ITEMS = [];
 let miFilter = 'all';
-let miActiveTab = 'news';
 let refreshTimer = null;
 let tickTimer = null;
 let lastFetch = 0;
@@ -104,7 +103,7 @@ function makeItem(id, source, title, sent, ts, body, imp, assets, link, api) {
         assets: assets.length ? assets.slice(0, 4) : ['CRYPTO'],
         action: sent.cls === 'bullish' ? 'Consider ' + coin0 + ' long' : sent.cls === 'bearish' ? 'Tighten ' + coin0 + ' stops' : 'Monitor ' + coin0,
         actionClass: sent.cls === 'bullish' ? 'text-green' : sent.cls === 'bearish' ? 'text-red' : 'text-dim',
-        signal: { pair: coin0 + '/USDT', type: 'News Signal', dir, conf: sent.cls === 'neutral' ? '55%' : (60 + Math.floor(Math.random() * 25)) + '%' },
+        signal: { pair: coin0 + '/USDT', type: 'News Signal', dir, conf: sent.cls === 'neutral' ? '55%' : Math.round(imp * 10) + '%' },
         link: link || '#',
         agentHint: agentHint(sent, assets),
         apiSource: api
@@ -374,11 +373,9 @@ function applyNewsToUI(cycle, merged, prevIds, t0) {
     renderSentimentStrip();
     renderSentimentBadges();
     renderSparkline();
-    renderMiTabs();
     renderFilters();
     const filtered = miFilter === 'all' ? merged : merged.filter(n => n.sentClass === miFilter);
-    if (miActiveTab === 'news') renderFeed(filtered);
-    else renderSocialFeed(miActiveTab);
+    renderFeed(filtered);
 }
 
 async function fetchCryptoNews() {
@@ -439,126 +436,7 @@ function startNewsRefresh() {
     refreshTimer = setInterval(fetchCryptoNews, REFRESH_MS);
     if (tickTimer) clearInterval(tickTimer);
     tickTimer = setInterval(tick, TICK_MS);
-    setInterval(refreshSocialFeeds, 10000);
 }
-
-// ═══ Social Media Data ═══
-
-const SOCIAL_HANDLES = {
-    twitter: [
-        { handle: '@aaboronin', name: 'Anatoly Yakovenko' },
-        { handle: '@JupiterExchange', name: 'Jupiter' },
-        { handle: '@DriftProtocol', name: 'Drift Protocol' },
-        { handle: '@solaboratory', name: 'Solana Labs' },
-        { handle: '@MarginFi', name: 'MarginFi' },
-        { handle: '@orca_so', name: 'Orca' }
-    ],
-    discord: [
-        { handle: 'Solana Labs', name: '#general' },
-        { handle: 'Jupiter Exchange', name: '#trading' },
-        { handle: 'Drift Protocol', name: '#perps-chat' },
-        { handle: 'Kamino Finance', name: '#vaults' }
-    ],
-    telegram: [
-        { handle: 'SolanaNews', name: 'Solana News' },
-        { handle: 'DeFiPulse', name: 'DeFi Pulse' },
-        { handle: 'CryptoSignals', name: 'Crypto Signals' },
-        { handle: 'SOLTraders', name: 'SOL Traders' }
-    ]
-};
-
-const SOCIAL_TEMPLATES = {
-    twitter: [
-        '{coin} looking strong above {price}. {sentiment} momentum building. #Solana #DeFi',
-        'Just deployed new {protocol} strategy. TVL up {pct}% this week. Bullish on $SOL ecosystem.',
-        'Interesting on-chain data: {coin} whale accumulation at {price} level. Watch closely.',
-        '{protocol} v2 upgrade live. Gas optimization + new vault strategies. LFG 🚀',
-        'Market structure shifting. {coin} forming {pattern} on 4H. Key level: {price}.',
-        'Liquidation cascade on {coin} perps. {amount} wiped in 1hr. Stay safe out there.',
-        'New {protocol} pool launched: {coin}/USDC. Initial APY looking juicy at {apy}%.',
-        '{coin} breaking out of consolidation. Volume spike {pct}% above average.'
-    ],
-    discord: [
-        'Anyone else seeing the {coin} pump? My LP position just rebalanced automatically.',
-        'New governance proposal for {protocol}: increase max leverage to 20x on {coin} perps.',
-        'Heads up — {protocol} maintenance window in 2hrs. Withdraw if you need liquidity.',
-        'Just bridged {amount} SOL from Ethereum. Fees were only {fee} SOL. Wild.',
-        'The {coin} vault APY dropped from {apy}% to {apy2}%. Rotating to {protocol} instead.',
-        'GM everyone. {coin} looking like a solid entry here. NFA but I\'m adding to my position.'
-    ],
-    telegram: [
-        '🔔 {coin} Alert: Price crossed {price} — {sentiment} signal triggered.',
-        '📊 Daily recap: SOL +{pct}%, {coin} +{pct2}%. DeFi TVL at ${tvl}B.',
-        '⚠️ High volatility detected on {coin}. Spread widening on {protocol}.',
-        '🐋 Whale alert: {amount} {coin} moved to {protocol}. Possible LP deposit.',
-        '📈 {protocol} 24h volume: ${vol}M. New ATH for the protocol.',
-        '🔥 {coin} funding rate flipped {sentiment}. Perp traders repositioning.'
-    ]
-};
-
-const COINS = ['SOL', 'JUP', 'DRIFT', 'ORCA', 'KMNO', 'RAY', 'BONK', 'JTO', 'PYTH', 'MNGO'];
-const PROTOCOLS = ['Jupiter', 'Drift', 'Orca', 'Kamino', 'MarginFi', 'Raydium'];
-const PATTERNS = ['ascending triangle', 'bull flag', 'double bottom', 'cup and handle', 'falling wedge'];
-
-let socialCache = { twitter: [], discord: [], telegram: [] };
-
-function generateSocialPost(platform) {
-    const templates = SOCIAL_TEMPLATES[platform];
-    const handles = SOCIAL_HANDLES[platform];
-    const tpl = templates[Math.floor(Math.random() * templates.length)];
-    const handle = handles[Math.floor(Math.random() * handles.length)];
-    const coin = COINS[Math.floor(Math.random() * COINS.length)];
-    const protocol = PROTOCOLS[Math.floor(Math.random() * PROTOCOLS.length)];
-    const price = (Math.random() * 200 + 10).toFixed(2);
-    const pct = (Math.random() * 15 + 1).toFixed(1);
-    const pct2 = (Math.random() * 8 + 0.5).toFixed(1);
-    const amount = Math.floor(Math.random() * 50000 + 1000).toLocaleString();
-    const apy = (Math.random() * 30 + 5).toFixed(1);
-    const apy2 = (Math.random() * 15 + 2).toFixed(1);
-    const fee = (Math.random() * 0.01 + 0.001).toFixed(4);
-    const tvl = (Math.random() * 5 + 1).toFixed(2);
-    const vol = (Math.random() * 100 + 10).toFixed(1);
-    const sentWord = Math.random() > 0.5 ? 'bullish' : 'bearish';
-    const pattern = PATTERNS[Math.floor(Math.random() * PATTERNS.length)];
-
-    const text = tpl
-        .replace(/{coin}/g, coin).replace(/{protocol}/g, protocol)
-        .replace(/{price}/g, '$' + price).replace(/{pct}/g, pct).replace(/{pct2}/g, pct2)
-        .replace(/{amount}/g, amount).replace(/{apy}/g, apy).replace(/{apy2}/g, apy2)
-        .replace(/{fee}/g, fee).replace(/{tvl}/g, tvl).replace(/{vol}/g, vol)
-        .replace(/{sentiment}/g, sentWord).replace(/{pattern}/g, pattern);
-
-    const s = sentiment(text, '');
-    const ago = Math.floor(Math.random() * 3600);
-    const likes = Math.floor(Math.random() * 500);
-    const replies = Math.floor(Math.random() * 50);
-    const retweets = platform === 'twitter' ? Math.floor(Math.random() * 200) : 0;
-
-    return {
-        platform, handle: handle.handle, name: handle.name,
-        text, sentiment: s, ts: Date.now() - ago * 1000,
-        likes, replies, retweets
-    };
-}
-
-function initSocialCache() {
-    ['twitter', 'discord', 'telegram'].forEach(p => {
-        socialCache[p] = [];
-        for (let i = 0; i < 12; i++) socialCache[p].push(generateSocialPost(p));
-        socialCache[p].sort((a, b) => b.ts - a.ts);
-    });
-}
-
-function refreshSocialFeeds() {
-    ['twitter', 'discord', 'telegram'].forEach(p => {
-        if (Math.random() > 0.4) {
-            socialCache[p].unshift(generateSocialPost(p));
-            if (socialCache[p].length > 20) socialCache[p].pop();
-        }
-    });
-    if (miActiveTab !== 'news') renderSocialFeed(miActiveTab);
-}
-
 
 // ═══ Sentiment Badges ═══
 
@@ -572,16 +450,6 @@ function calcSourceSentiment(items, apiSource) {
     return { pct: 50, label: 'Neutral', cls: 'neutral' };
 }
 
-function calcSocialSentiment() {
-    const all = [...socialCache.twitter, ...socialCache.discord, ...socialCache.telegram];
-    if (!all.length) return { pct: 50, label: 'Neutral', cls: 'neutral' };
-    const bull = all.filter(p => p.sentiment.cls === 'bullish').length;
-    const pct = Math.round((bull / all.length) * 100);
-    if (pct >= 55) return { pct, label: 'Bullish', cls: 'bullish' };
-    if (pct <= 35) return { pct: 100 - pct, label: 'Bearish', cls: 'bearish' };
-    return { pct: 50, label: 'Neutral', cls: 'neutral' };
-}
-
 function renderSentimentBadges() {
     const el = document.getElementById('miSentBadges');
     if (!el) return;
@@ -589,14 +457,12 @@ function renderSentimentBadges() {
     const cc = calcSourceSentiment(items, 'cryptocompare');
     const nd = calcSourceSentiment(items, 'newsdata');
     const cp = calcSourceSentiment(items, 'cryptopanic');
-    const social = calcSocialSentiment();
 
     const colorMap = { bullish: 'var(--green)', bearish: 'var(--red)', neutral: 'var(--dim)' };
     const badges = [
         { src: 'CC', data: cc, dot: '#0066cc' },
         { src: 'ND', data: nd, dot: '#555' },
-        { src: 'CP', data: cp, dot: '#e65100' },
-        { src: 'Social', data: social, dot: '#1da1f2' }
+        { src: 'CP', data: cp, dot: '#e65100' }
     ];
 
     el.className = 'mi-sent-badges';
@@ -621,11 +487,9 @@ function renderSparkline() {
     const el = document.getElementById('miSparkline');
     if (!el || typeof d3 === 'undefined') return;
     if (sentimentHistory.length < 2) {
-        // Seed with some initial data points
-        const now = Date.now();
-        for (let i = 20; i >= 1; i--) {
-            sentimentHistory.push({ ts: now - i * 60000, pct: 45 + Math.floor(Math.random() * 20) });
-        }
+        // Not enough data yet — sparkline will render once real data accumulates
+        el.innerHTML = '<span style="font-size:7px;color:var(--dim);font-family:var(--font-mono)">Collecting data…</span>';
+        return;
     }
 
     el.innerHTML = '';
@@ -685,76 +549,3 @@ function renderSparkline() {
         .text(lastPct + '% bull');
 }
 
-// ═══ Feed Tabs ═══
-
-function renderMiTabs() {
-    const el = document.getElementById('miTabs');
-    if (!el) return;
-    const tabs = [
-        { key: 'news', label: 'News', icon: '📰' },
-        { key: 'twitter', label: 'Twitter', icon: '𝕏' },
-        { key: 'discord', label: 'Discord', icon: '💬' },
-        { key: 'telegram', label: 'Telegram', icon: '✈' }
-    ];
-    el.className = 'mi-tabs';
-    el.innerHTML = tabs.map(t =>
-        '<button class="mi-tab' + (miActiveTab === t.key ? ' active' : '') + '" onclick="switchMiTab(\'' + t.key + '\')">' +
-            t.icon + ' ' + t.label +
-        '</button>'
-    ).join('');
-}
-
-function switchMiTab(tab) {
-    miActiveTab = tab;
-    renderMiTabs();
-    if (tab === 'news') {
-        const el = document.getElementById('miFilters');
-        if (el) el.style.display = '';
-        const filtered = miFilter === 'all' ? ALL_NEWS_ITEMS : ALL_NEWS_ITEMS.filter(n => n.sentClass === miFilter);
-        renderFeed(filtered);
-    } else {
-        const el = document.getElementById('miFilters');
-        if (el) el.style.display = 'none';
-        renderSocialFeed(tab);
-    }
-}
-
-// ═══ Social Feed Rendering ═══
-
-function renderSocialFeed(platform) {
-    const el = document.getElementById('miFeed');
-    if (!el) return;
-    const posts = socialCache[platform] || [];
-    if (!posts.length) {
-        el.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--dim);font-size:0.7rem;">No ' + platform + ' data yet...</div>';
-        return;
-    }
-
-    let h = '';
-    posts.forEach(p => {
-        const ago = relTime(p.ts);
-        const stats = platform === 'twitter'
-            ? '♥ ' + p.likes + '  ↻ ' + p.retweets + '  💬 ' + p.replies
-            : platform === 'discord'
-            ? '👍 ' + p.likes + '  💬 ' + p.replies
-            : '👁 ' + p.likes + '  💬 ' + p.replies;
-
-        h += '<div class="mi-social-item">' +
-            '<div class="mi-social-head">' +
-                '<span class="mi-social-platform ' + platform + '">' + platform.toUpperCase().charAt(0) + '</span>' +
-                '<span class="mi-social-handle">' + p.handle + '</span>' +
-                '<span style="font-size:0.5rem;color:var(--dim)">' + p.name + '</span>' +
-                '<span class="mi-social-time">' + ago + '</span>' +
-            '</div>' +
-            '<div class="mi-social-text">' + p.text + '</div>' +
-            '<div class="mi-social-foot">' +
-                '<span class="mi-social-stat">' + stats + '</span>' +
-                '<span class="mi-sent ' + p.sentiment.cls + '" style="margin-left:auto;font-size:0.5rem">' + p.sentiment.label + '</span>' +
-            '</div>' +
-        '</div>';
-    });
-    el.innerHTML = h;
-}
-
-// Initialize social cache on load
-initSocialCache();

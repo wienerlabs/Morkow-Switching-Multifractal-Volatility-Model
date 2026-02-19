@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { PublicKey } from "@solana/web3.js";
-import { solanaService } from "../services/solana.js";
+import { solanaService, TokenSupplyData } from "../services/solana.js";
 import { createChildLogger } from "../lib/logger.js";
 
 const log = createChildLogger({ module: "api:solana" });
@@ -104,6 +104,61 @@ router.get("/programs", (_req: Request, res: Response) => {
     strategy: programIds.strategy.toBase58(),
     treasury: programIds.treasury.toBase58(),
   });
+});
+
+router.get("/tokenomics", async (_req: Request, res: Response) => {
+  try {
+    const tokenPrograms = solanaService.getTokenProgramIds();
+    const mintAddress = tokenPrograms.token.toBase58();
+
+    const [supply, stakingPool, treasuryBalance] = await Promise.all([
+      solanaService.getTokenSupply(mintAddress),
+      solanaService.getStakingPoolData(),
+      solanaService.getAccountBalance(
+        solanaService.getProgramIds().treasury.toBase58()
+      ),
+    ]);
+
+    const totalSupply = supply?.uiAmount ?? 100_000_000;
+    const totalStaked = stakingPool
+      ? Number(stakingPool.totalStaked) / 1e9
+      : 0;
+    const rewardRate = stakingPool
+      ? Number(stakingPool.rewardRate) / 1e9
+      : 0;
+
+    res.json({
+      token: {
+        symbol: "CRTX",
+        decimals: supply?.decimals ?? 9,
+        totalSupply: supply?.amount ?? "100000000000000000",
+        totalSupplyFormatted: totalSupply,
+        mint: mintAddress,
+      },
+      staking: {
+        totalStaked: stakingPool?.totalStaked.toString() ?? "0",
+        totalStakedFormatted: totalStaked,
+        rewardRate: stakingPool?.rewardRate.toString() ?? "0",
+        rewardRateFormatted: rewardRate,
+        lastUpdateTime: stakingPool?.lastUpdateTime.toString() ?? "0",
+      },
+      treasury: {
+        solBalance: treasuryBalance,
+        address: solanaService.getProgramIds().treasury.toBase58(),
+      },
+      programs: {
+        token: tokenPrograms.token.toBase58(),
+        privateSale: tokenPrograms.privateSale.toBase58(),
+        vesting: tokenPrograms.vesting.toBase58(),
+        cortex: solanaService.getProgramIds().cortex.toBase58(),
+        staking: solanaService.getProgramIds().staking.toBase58(),
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    log.error({ err: error }, "Error fetching tokenomics data");
+    res.status(500).json({ error: "Failed to fetch tokenomics data" });
+  }
 });
 
 export default router;

@@ -150,18 +150,18 @@
             </div>
             <div class="tk-metric">
                 <div class="tk-metric-label">Total Supply</div>
-                <div class="tk-metric-value">100,000,000</div>
+                <div class="tk-metric-value" id="totalSupplyValue">--</div>
                 <div class="tk-metric-sub">Fixed Supply · No Inflation</div>
             </div>
             <div class="tk-metric">
-                <div class="tk-metric-label">FDV at Launch</div>
-                <div class="tk-metric-value">$3.33M</div>
-                <div class="tk-metric-sub">$0.0333 per token</div>
+                <div class="tk-metric-label">Total Staked</div>
+                <div class="tk-metric-value" id="totalStakedValue">--</div>
+                <div class="tk-metric-sub" id="stakingRewardSub">Loading...</div>
             </div>
             <div class="tk-metric">
-                <div class="tk-metric-label">Seed Round Target</div>
-                <div class="tk-metric-value">$100,000</div>
-                <div class="tk-metric-sub">10% Allocation · 10M Tokens</div>
+                <div class="tk-metric-label">Treasury Balance</div>
+                <div class="tk-metric-value" id="treasuryBalanceValue">--</div>
+                <div class="tk-metric-sub" id="treasuryAddrSub">Loading...</div>
             </div>
         </div>
 
@@ -387,23 +387,24 @@
     })();
 
 
-    // Circulating Supply Animation
-    (function() {
-        // Public Sale (10%) unlocks at TGE, rest locked
-        // Simulate ~6 months post-TGE: Public 100% + partial Ecosystem/Mining emissions
-        const publicUnlocked = 10000000;
-        const ecoEmitted = Math.round(30000000 * (6/48));
-        const miningEmitted = Math.round(25000000 * (6/48));
-        const circulating = publicUnlocked + ecoEmitted + miningEmitted;
-        const pct = ((circulating / 100000000) * 100).toFixed(1);
-
+    // Circulating supply — static fallback, overridden by API below
+    function updateCirculatingSupply(circulating, totalSupply) {
+        const pct = ((circulating / totalSupply) * 100).toFixed(1);
         document.getElementById('circSupplyPct').textContent = pct + '% Circulating';
-        document.getElementById('circSupplyLabel').textContent = circulating.toLocaleString() + ' / 100,000,000 CRTX';
-
-        setTimeout(() => {
+        document.getElementById('circSupplyLabel').textContent =
+            circulating.toLocaleString() + ' / ' + totalSupply.toLocaleString() + ' CRTX';
+        setTimeout(function() {
             document.getElementById('circSupplyBar').style.width = pct + '%';
             document.getElementById('circSupplyBar').textContent = pct + '%';
         }, 300);
+    }
+
+    // Static fallback: ~6 months post-TGE estimate
+    (function() {
+        var publicUnlocked = 10000000;
+        var ecoEmitted = Math.round(30000000 * (6/48));
+        var miningEmitted = Math.round(25000000 * (6/48));
+        updateCirculatingSupply(publicUnlocked + ecoEmitted + miningEmitted, 100000000);
     })();
     </script>
 
@@ -412,5 +413,51 @@
     <script src="js/ticker.js"></script>
     <script src="js/wallet.js"></script>
     <script src="js/toast.js"></script>
+
+    <script>
+    // Fetch live tokenomics data from backend
+    (async function() {
+        if (typeof CortexAPI === 'undefined') return;
+        var data = await CortexAPI.get('/token/supply');
+        if (!data) return;
+
+        // Total Supply
+        var ts = data.total_supply_formatted || 100000000;
+        var el = document.getElementById('totalSupplyValue');
+        if (el) el.textContent = ts.toLocaleString();
+
+        // Staking
+        var staked = data.staking && data.staking.total_staked_formatted || 0;
+        var stakedEl = document.getElementById('totalStakedValue');
+        if (stakedEl) stakedEl.textContent = staked > 0 ? staked.toLocaleString() + ' CRTX' : '0 CRTX';
+
+        var rewardRate = data.staking && data.staking.reward_rate_formatted || 0;
+        var rewardSub = document.getElementById('stakingRewardSub');
+        if (rewardSub) rewardSub.textContent = rewardRate > 0
+            ? 'Reward Rate: ' + rewardRate.toFixed(4) + ' CRTX/s'
+            : 'No active staking pool';
+
+        // Treasury
+        var solBal = data.treasury && data.treasury.sol_balance || 0;
+        var treasuryEl = document.getElementById('treasuryBalanceValue');
+        if (treasuryEl) treasuryEl.textContent = solBal > 0 ? solBal.toFixed(4) + ' SOL' : '0 SOL';
+
+        var treasuryAddr = data.treasury && data.treasury.address || '';
+        var addrSub = document.getElementById('treasuryAddrSub');
+        if (addrSub && treasuryAddr) {
+            addrSub.textContent = treasuryAddr.slice(0, 4) + '...' + treasuryAddr.slice(-4);
+            addrSub.title = treasuryAddr;
+        } else if (addrSub) {
+            addrSub.textContent = 'Address unavailable';
+        }
+
+        // Circulating supply: total - staked (simplified on-chain estimate)
+        if (ts > 0) {
+            var circulating = ts - staked;
+            if (circulating < 0) circulating = ts;
+            updateCirculatingSupply(circulating, ts);
+        }
+    })();
+    </script>
 </body>
 </html>

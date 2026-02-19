@@ -116,6 +116,9 @@ OPENAPI_TAGS = [
     {"name": "calibration-tasks", "description": "Async calibration — task status polling for long-running calibrations"},
     {"name": "models", "description": "Model versioning — list versions, rollback to previous calibrations"},
     {"name": "narrator", "description": "LLM narrator — trade explanations, news interpretation, market briefings, Q&A"},
+    {"name": "agents", "description": "Agent status and performance — live signals, accuracy heatmaps"},
+    {"name": "strategies", "description": "Strategy configuration — list, toggle, circuit breaker state"},
+    {"name": "system", "description": "System health — data source availability, latency, connection status"},
 ]
 
 app = FastAPI(

@@ -1,9 +1,12 @@
 """Wave 9 — Trade Execution endpoints."""
 
+import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -128,4 +131,71 @@ def get_execution_stats():
     result = _stats()
     result["timestamp"] = datetime.now(timezone.utc).isoformat()
     return result
+
+
+@router.get("/execution/pipeline-status", summary="Get execution pipeline status for dashboard monitor")
+def get_pipeline_status():
+    """Return the current execution pipeline state for the dashboard execution monitor.
+
+    Maps the latest execution to a structured view with step progress,
+    guardian checks, TX metrics, and overall status. Returns IDLE when
+    no recent executions exist.
+    """
+    from cortex.execution import get_pipeline_status as _status
+
+    try:
+        return _status()
+    except Exception as exc:
+        logger.exception("Pipeline status fetch failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/execution/status", summary="Get current execution status")
+def get_execution_status():
+    """Return the current execution pipeline state.
+
+    Alias for /execution/pipeline-status — used by the dashboard UI
+    to poll execution state (idle, executing, confirming, etc.).
+    """
+    from cortex.execution import get_pipeline_status as _status
+
+    try:
+        return _status()
+    except Exception as exc:
+        logger.exception("Execution status fetch failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/execution/stream", summary="Execution events SSE stream")
+async def execution_sse_stream():
+    """SSE endpoint streaming execution pipeline events in real time.
+
+    Connect with: curl -N /api/v1/execution/stream
+    Events are pushed after each execution log entry.
+    """
+    from cortex.execution import subscribe_execution_events, unsubscribe_execution_events
+
+    queue = subscribe_execution_events()
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    if queue:
+                        event = queue.popleft()
+                        yield f"data: {json.dumps(event, default=str)}\n\n"
+                    else:
+                        await asyncio.sleep(0.5)
+                except IndexError:
+                    await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            unsubscribe_execution_events(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 

@@ -18,10 +18,14 @@ __all__ = [
     "record_execution_result",
     "get_execution_log",
     "get_execution_stats",
+    "get_pipeline_status",
+    "subscribe_execution_events",
+    "unsubscribe_execution_events",
 ]
 
 import logging
 import time
+from collections import deque
 from typing import Any
 
 import structlog.contextvars
@@ -37,10 +41,30 @@ from cortex.config import (
 logger = logging.getLogger(__name__)
 
 _execution_log: list[dict[str, Any]] = []
+_event_subscribers: list[deque] = []
 
 
 def _get_request_id() -> str | None:
     return structlog.contextvars.get_contextvars().get("request_id")
+
+
+def _broadcast_event(event: dict[str, Any]) -> None:
+    for q in _event_subscribers:
+        try:
+            q.append(event)
+        except Exception:
+            pass
+
+
+def subscribe_execution_events() -> deque:
+    q: deque = deque(maxlen=100)
+    _event_subscribers.append(q)
+    return q
+
+
+def unsubscribe_execution_events(q: deque) -> None:
+    if q in _event_subscribers:
+        _event_subscribers.remove(q)
 
 
 def _log_execution(entry: dict[str, Any]) -> None:
@@ -50,6 +74,7 @@ def _log_execution(entry: dict[str, Any]) -> None:
     _execution_log.append(entry)
     if len(_execution_log) > 500:
         _execution_log.pop(0)
+    _broadcast_event(entry)
 
 
 def preflight_check(
@@ -298,3 +323,175 @@ def get_execution_stats() -> dict[str, Any]:
         "trading_mode": TRADING_MODE,
     }
 
+
+
+def get_pipeline_status() -> dict[str, Any]:
+    """Return the current execution pipeline state for the dashboard monitor.
+
+    Maps the latest execution log entry to a structured pipeline view with
+    step progress, guardian checks, TX metrics, and overall status.
+    """
+    STALE_THRESHOLD = 30  # seconds — entries older than this are considered idle
+
+    if not _execution_log:
+        return _idle_pipeline()
+
+    latest = _execution_log[-1]
+    age = time.time() - latest.get("timestamp", 0)
+    status = latest.get("status", "unknown")
+
+    if age > STALE_THRESHOLD and status in ("executed", "simulated", "completed", "failed", "rejected", "blocked"):
+        return _idle_pipeline(last_execution=_format_entry(latest))
+
+    return _format_entry(latest)
+
+
+def _idle_pipeline(last_execution: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return an IDLE pipeline status with no active execution."""
+    return {
+        "status": "IDLE",
+        "steps": [
+            {"name": "TX Simulation", "state": "pending", "detail": "Waiting"},
+            {"name": "Guardian Validation", "state": "pending", "detail": "Waiting"},
+            {"name": "Broadcast", "state": "pending", "detail": "Waiting"},
+            {"name": "Confirmation", "state": "pending", "detail": "Waiting"},
+        ],
+        "guardian_checks": [
+            {"name": "Transaction Simulation", "passed": None},
+            {"name": "Slippage Verification", "passed": None},
+            {"name": "Balance Confirmation", "passed": None},
+            {"name": "Rate Limit Check", "passed": None},
+        ],
+        "slippage": {"expected_pct": 0, "actual_pct": 0},
+        "retries": {"count": 0, "max": 3, "results": []},
+        "confirmation": {"stage": "none", "stages": ["Submitted", "Processed", "Confirmed", "Finalized"]},
+        "tx_metrics": {
+            "mev_protection": "JITO",
+            "priority_fee_sol": 0,
+            "latency_ms": 0,
+            "tx_status": "IDLE",
+            "tx_signature": None,
+        },
+        "last_execution": last_execution,
+        "timestamp": time.time(),
+        "execution_enabled": EXECUTION_ENABLED,
+        "simulation_mode": SIMULATION_MODE,
+    }
+
+
+def _format_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Format an execution log entry into pipeline status."""
+    status = entry.get("status", "unknown")
+    gates = entry.get("preflight", {}).get("gates", []) if "preflight" in entry else entry.get("gates", [])
+
+    gate_map = {g["gate"]: g for g in gates} if gates else {}
+
+    # Map status to pipeline step states
+    overall = _map_overall_status(status)
+    steps = _build_steps(status, gate_map)
+    guardian_checks = _build_guardian_checks(gate_map)
+
+    # Slippage from preflight or entry
+    slippage_bps = entry.get("slippage_bps", EXECUTION_MAX_SLIPPAGE_BPS)
+    slippage_pct = slippage_bps / 100.0 if slippage_bps else 0
+
+    # TX result data
+    jupiter = entry.get("jupiter_result", {}) or {}
+    tx_sig = jupiter.get("tx_hash") or jupiter.get("signature") or entry.get("tx_hash")
+
+    return {
+        "status": overall,
+        "steps": steps,
+        "guardian_checks": guardian_checks,
+        "slippage": {
+            "expected_pct": round(slippage_pct, 2),
+            "actual_pct": round(jupiter.get("actual_slippage_pct", slippage_pct), 2),
+        },
+        "retries": {
+            "count": jupiter.get("retries", 1 if status == "executed" else 0),
+            "max": 3,
+            "results": jupiter.get("retry_results", []),
+        },
+        "confirmation": _build_confirmation(status),
+        "tx_metrics": {
+            "mev_protection": "JITO" if entry.get("preflight", {}).get("gates") and gate_map.get("mev_protection", {}).get("enabled", EXECUTION_MEV_PROTECTION) else "STANDARD",
+            "priority_fee_sol": jupiter.get("priority_fee_sol", 0),
+            "latency_ms": jupiter.get("latency_ms", 0),
+            "tx_status": overall,
+            "tx_signature": tx_sig,
+        },
+        "token": entry.get("token_mint", ""),
+        "direction": entry.get("direction", ""),
+        "amount": entry.get("amount", 0),
+        "trade_size_usd": entry.get("trade_size_usd", 0),
+        "strategy": entry.get("strategy"),
+        "last_execution": None,
+        "timestamp": entry.get("timestamp", time.time()),
+        "execution_enabled": EXECUTION_ENABLED,
+        "simulation_mode": SIMULATION_MODE,
+    }
+
+
+def _map_overall_status(status: str) -> str:
+    return {
+        "executed": "SUCCESS",
+        "simulated": "SIMULATED",
+        "rejected": "REJECTED",
+        "failed": "FAILED",
+        "blocked": "BLOCKED",
+    }.get(status, "EXECUTING")
+
+
+def _build_steps(status: str, gate_map: dict) -> list[dict[str, Any]]:
+    exec_enabled = gate_map.get("execution_enabled", {}).get("passed", True)
+    guardian_ok = gate_map.get("guardian_approval", {}).get("passed", True)
+    is_done = status in ("executed", "simulated")
+    is_failed = status in ("failed", "rejected", "blocked")
+
+    def step_state(idx: int) -> tuple[str, str]:
+        if is_done:
+            return ("done", "✓ Passed")
+        if is_failed:
+            fail_step = 0 if not exec_enabled else (1 if not guardian_ok else 2)
+            if idx < fail_step:
+                return ("done", "✓ Passed")
+            if idx == fail_step:
+                return ("failed", "✗ Failed")
+            return ("pending", "Waiting")
+        return ("active" if idx == 0 else "pending", "Processing..." if idx == 0 else "Waiting")
+
+    names = ["TX Simulation", "Guardian Validation", "Broadcast", "Confirmation"]
+    steps = []
+    for i, name in enumerate(names):
+        state, detail = step_state(i)
+        if i == 1 and state == "done":
+            veto = gate_map.get("guardian_approval", {}).get("veto_reasons", [])
+            checks_passed = 4 - len(veto)
+            detail = f"✓ {checks_passed}/4 Checks"
+        steps.append({"name": name, "state": state, "detail": detail})
+    return steps
+
+
+def _build_guardian_checks(gate_map: dict) -> list[dict[str, Any]]:
+    checks = [
+        ("Transaction Simulation", "simulation_mode"),
+        ("Slippage Verification", "slippage_cap"),
+        ("Balance Confirmation", "execution_enabled"),
+        ("Rate Limit Check", "mev_protection"),
+    ]
+    result = []
+    for name, gate_key in checks:
+        gate = gate_map.get(gate_key)
+        result.append({"name": name, "passed": gate["passed"] if gate else None})
+    return result
+
+
+def _build_confirmation(status: str) -> dict[str, Any]:
+    stages = ["Submitted", "Processed", "Confirmed", "Finalized"]
+    if status == "executed":
+        return {"stage": "Finalized", "stages": stages, "current_index": 3}
+    if status == "simulated":
+        return {"stage": "Simulated", "stages": stages, "current_index": 1}
+    if status in ("failed", "rejected", "blocked"):
+        return {"stage": "none", "stages": stages, "current_index": -1}
+    return {"stage": "Submitted", "stages": stages, "current_index": 0}

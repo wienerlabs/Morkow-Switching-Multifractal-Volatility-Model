@@ -12,6 +12,18 @@ const PROGRAM_IDS = {
   treasury: new PublicKey("GsMtBFGq3DWFGDqtJ6Fb4LjdB6sBADKL2Lix9xaYV7GS"),
 };
 
+const TOKEN_PROGRAM_IDS = {
+  token: new PublicKey("HAUqFj3uYsFt6PhMgztaVkRi5RC3mFWxyLceJzCRDevg"),
+  privateSale: new PublicKey("Cr3msfrK46Mx4id7thTGeihCwK2dpaXWioEWNYgETJGU"),
+  vesting: new PublicKey("5PDicSrsh9zyVMwDjL61WXHuNkzQTk6rpCs5CnGzpXns"),
+};
+
+export interface TokenSupplyData {
+  amount: string;
+  decimals: number;
+  uiAmount: number;
+}
+
 export class SolanaService {
   private connection: Connection;
   private provider: AnchorProvider | null = null;
@@ -111,12 +123,57 @@ export class SolanaService {
     }
   }
 
+  async getTokenSupply(mintAddress: string): Promise<TokenSupplyData | null> {
+    try {
+      const mintPubkey = new PublicKey(mintAddress);
+      const supply = await this.connection.getTokenSupply(mintPubkey);
+      return {
+        amount: supply.value.amount,
+        decimals: supply.value.decimals,
+        uiAmount: supply.value.uiAmount ?? 0,
+      };
+    } catch (error) {
+      log.error({ err: error, mint: mintAddress }, "Failed to fetch token supply");
+      return null;
+    }
+  }
+
+  async getAccountBalance(address: string): Promise<number> {
+    try {
+      const pubkey = new PublicKey(address);
+      const balance = await this.connection.getBalance(pubkey);
+      return balance / 1e9; // Convert lamports to SOL
+    } catch (error) {
+      log.error({ err: error, address }, "Failed to fetch account balance");
+      return 0;
+    }
+  }
+
+  async getTokenAccountBalance(tokenAccountAddress: string): Promise<TokenSupplyData | null> {
+    try {
+      const pubkey = new PublicKey(tokenAccountAddress);
+      const balance = await this.connection.getTokenAccountBalance(pubkey);
+      return {
+        amount: balance.value.amount,
+        decimals: balance.value.decimals,
+        uiAmount: balance.value.uiAmount ?? 0,
+      };
+    } catch (error) {
+      log.error({ err: error, address: tokenAccountAddress }, "Failed to fetch token account balance");
+      return null;
+    }
+  }
+
   getConnection(): Connection {
     return this.connection;
   }
 
   getProgramIds() {
     return PROGRAM_IDS;
+  }
+
+  getTokenProgramIds() {
+    return TOKEN_PROGRAM_IDS;
   }
 }
 

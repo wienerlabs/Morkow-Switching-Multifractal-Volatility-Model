@@ -332,7 +332,7 @@
         <div class="rg-formula" id="fSankey"></div>
 
         <!-- 2. Adversarial Debate Theater -->
-        <div class="section-header"><span>Adversarial Debate Theater</span><span class="text-dim" id="dtTimestamp">--</span></div>
+        <div class="section-header"><span>Adversarial Debate Theater <span class="text-dim" style="font-size:0.6rem;margin-left:0.5rem" id="dtLiveStatus">Offline</span></span><span class="text-dim" id="dtTimestamp">--</span></div>
         <div id="dtContainer"></div>
         <div id="dtSummary"></div>
         <div id="dtArchive"></div>
@@ -364,7 +364,7 @@
 
             <!-- 4. ML Signal Dashboard (right) -->
             <div class="cb-cell">
-                <div class="section-header"><span>ML Signal Dashboard</span><span class="text-dim">Live</span></div>
+                <div class="section-header"><span>ML Signal Dashboard</span><span class="text-dim" id="mlSignalStatus">Offline</span></div>
                 <div class="ml-grid" id="mlGrid"></div>
                 <div class="section-header" style="border-top:1px solid var(--border)"><span>Confidence Thresholds</span></div>
                 <div style="padding:0.75rem 1rem; font-size:0.65rem; line-height:2; color:var(--dim)">
@@ -378,7 +378,7 @@
 
             <!-- 5. Agent Cognitive Load (left) -->
             <div class="cb-cell">
-                <div class="section-header"><span>Agent Cognitive Load</span><span class="text-dim">10 Agents</span></div>
+                <div class="section-header"><span>Agent Cognitive Load</span><span class="text-dim" id="agLoadStatus">Offline</span></div>
                 <div class="ag-grid" id="agGrid"></div>
                 <div class="rg-formula" id="fLoad"></div>
             </div>
@@ -507,6 +507,19 @@
     <script src="js/cerebral-api.js"></script>
     <script src="js/regime-service.js"></script>
     <script>
+    // Seeded PRNG (mulberry32) — deterministic random for visualizations
+    var _cxSeed = 42;
+    function cxRandom() {
+        _cxSeed = (_cxSeed + 0x6D2B79F5) | 0;
+        var t = Math.imul(_cxSeed ^ (_cxSeed >>> 15), 1 | _cxSeed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    function cxSeed(s) { _cxSeed = s | 0; }
+    // Deterministic hash for index-based seeding
+    function cxHash(i) { return (i * 2654435761) >>> 0; }
+    </script>
+    <script>
     // === 1. DECISION FLOW PIPELINE — Sankey Diagram ===
     (function() {
         const container = document.getElementById('sankeyChart');
@@ -560,7 +573,12 @@
             'Guardian Exec': '#222222', 'Live Execution': '#080808', 'Rejected': '#cc0000',
         };
 
-        function jitter(val) { return Math.max(5, Math.round(val + (Math.random() - 0.5) * val * 0.15)); }
+        var _sankeyTick = 0;
+        function jitter(val) {
+            _sankeyTick++;
+            var wave = Math.sin(_sankeyTick * 0.7 + val * 0.3) * 0.075;
+            return Math.max(5, Math.round(val + val * wave));
+        }
 
         function renderSankey() {
             container.innerHTML = '';
@@ -803,24 +821,32 @@
         }
     }
 
-    // Initial render with mock, then try live
+    var _debateLiveActive = false;
+
+    // Initial render with scenarios, then try live
     pushToArchive();
     renderDebate();
 
-    // Try live debates, fall back to mock rotation
+    // Try live debates first, fall back to scenario rotation
     (async function() {
         var live = await fetchLiveDebate();
-        if (!live) console.log('[Cerebral] No live debates — using mock scenarios');
+        _debateLiveActive = live;
+        var statusEl = document.getElementById('dtLiveStatus');
+        if (statusEl) statusEl.textContent = live ? 'LIVE' : 'Offline';
+        if (!live) console.log('[Cerebral] No live debates — using built-in scenarios');
     })();
 
     setInterval(async function() {
         var live = await fetchLiveDebate();
+        _debateLiveActive = live;
+        var statusEl = document.getElementById('dtLiveStatus');
+        if (statusEl) statusEl.textContent = live ? 'LIVE' : 'Offline';
         if (!live) {
             currentDebateIdx++;
             pushToArchive();
             renderDebate();
         }
-    }, 15000);
+    }, 10000);
     </script>
 
     <script>
@@ -993,12 +1019,14 @@
     // === 3b. REGIME ACCURACY CHART ===
     var rgAccHistory = [];
     (function seedAccuracy() {
+        // Deterministic seed using sine-based pseudo-variation
         for (var i = 0; i < 20; i++) {
+            var t = i / 20;
             rgAccHistory.push({
                 cycle: i + 1,
-                accuracy: 55 + Math.random() * 35,
-                falsePos: 2 + Math.random() * 12,
-                stability: 40 + Math.random() * 50
+                accuracy: 65 + Math.sin(i * 0.7) * 15 + i * 0.8,
+                falsePos: 7 + Math.sin(i * 1.1 + 2) * 4,
+                stability: 55 + Math.sin(i * 0.5 + 1) * 18 + i * 0.5
             });
         }
     })();
@@ -1102,14 +1130,28 @@
             observedTransitions[from] = observedTransitions[from].map(function(v) { return v / rowSum; });
             prevRegimeForHeatmap = curr;
         }
-        // Add accuracy data point
+        // Add accuracy data point — use live regime statistics when available
         if (rgAccHistory.length >= 30) rgAccHistory.shift();
-        rgAccHistory.push({
-            cycle: (rgAccHistory[rgAccHistory.length - 1]?.cycle || 0) + 1,
-            accuracy: Math.max(40, Math.min(98, rgAccHistory[rgAccHistory.length - 1].accuracy + (Math.random() - 0.45) * 5)),
-            falsePos: Math.max(0, Math.min(25, rgAccHistory[rgAccHistory.length - 1].falsePos + (Math.random() - 0.5) * 3)),
-            stability: Math.max(30, Math.min(95, rgAccHistory[rgAccHistory.length - 1].stability + (Math.random() - 0.45) * 4))
-        });
+        var liveStats = window._liveRegimeStats;
+        var prev = rgAccHistory[rgAccHistory.length - 1] || { cycle: 0, accuracy: 75, falsePos: 8, stability: 70 };
+        if (liveStats && liveStats.accuracy !== undefined) {
+            rgAccHistory.push({
+                cycle: prev.cycle + 1,
+                accuracy: Math.max(40, Math.min(98, liveStats.accuracy * 100 || prev.accuracy)),
+                falsePos: Math.max(0, Math.min(25, liveStats.false_positive_rate * 100 || prev.falsePos)),
+                stability: Math.max(30, Math.min(95, liveStats.stability * 100 || prev.stability)),
+            });
+        } else {
+            // Fallback: deterministic drift based on regime confidence
+            var conf = currentRegime.confidence || 0.5;
+            var drift = (conf - 0.5) * 2; // -1 to 1
+            rgAccHistory.push({
+                cycle: prev.cycle + 1,
+                accuracy: Math.max(40, Math.min(98, prev.accuracy + drift * 2)),
+                falsePos: Math.max(0, Math.min(25, prev.falsePos - drift * 1.5)),
+                stability: Math.max(30, Math.min(95, prev.stability + drift * 1.8)),
+            });
+        }
         renderAccuracyChart();
         renderTransitionHeatmap();
     }
@@ -1133,6 +1175,8 @@
         const grid = document.getElementById('mlGrid');
         const regime = currentRegime.state;
         const signals = generateMLSignals(regime);
+        var mlStatus = document.getElementById('mlSignalStatus');
+        if (mlStatus) mlStatus.textContent = (window._liveAgentData && window._liveAgentData.agents) ? 'LIVE' : 'Offline';
         grid.innerHTML = signals.map(s => {
             const color = s.value >= 70 ? 'var(--green)' : s.value >= 40 ? 'var(--dim)' : 'var(--red)';
             return '<div class="ml-signal">' +
@@ -1144,6 +1188,22 @@
     }
 
     function generateMLSignals(regime) {
+        // Use live agent status data when available
+        var liveAgents = window._liveAgentData;
+        if (liveAgents && liveAgents.agents) {
+            var a = liveAgents.agents;
+            var mom = a.momentum || {};
+            var mr = a.meanrev || {};
+            var risk = a.risk || {};
+            var sent = a.sentiment || {};
+            return [
+                { name: 'Momentum', value: parseInt(mom.confidence) || 50, direction: mom.signal || 'Neutral' },
+                { name: 'Mean Reversion', value: parseInt(mr.confidence) || 50, direction: mr.signal || 'Neutral' },
+                { name: 'Volatility', value: parseInt(risk.confidence) || 50, direction: risk.signal || 'Monitor' },
+                { name: 'Sentiment', value: parseInt(sent.confidence) || 50, direction: sent.signal || 'Neutral' },
+            ];
+        }
+        // Fallback: regime-based deterministic values
         const base = {
             0: [55, 65, 30, 50],
             1: [82, 35, 45, 72],
@@ -1162,7 +1222,7 @@
         const d = dirs[regime] || dirs[0];
         return ML_SIGNALS.map((s, i) => ({
             name: s.name,
-            value: Math.max(0, Math.min(100, b[i] + Math.round((Math.random() - 0.5) * 8))),
+            value: b[i],
             direction: d[i],
         }));
     }
@@ -1184,10 +1244,56 @@
         { name: 'Guardian', fullName: 'Guardian Validator' },
     ];
 
+    // Map live agent status to load percentage
+    function _agentLoadFromLive(agentKey) {
+        var liveAgents = window._liveAgentData;
+        if (!liveAgents || !liveAgents.agents) return null;
+        var a = liveAgents.agents[agentKey];
+        if (!a) return null;
+        var conf = parseInt(a.confidence) || 50;
+        // ACTIVE agents with high confidence = high load, PAUSED = low
+        if (a.status === 'PAUSED') return 15;
+        if (a.status === 'WARNING') return 70 + Math.round(conf * 0.2);
+        return Math.min(95, 40 + Math.round(conf * 0.5));
+    }
+
+    // Map AGENTS array indices to backend agent keys
+    var AGENT_KEY_MAP = {
+        'Technical': 'momentum',
+        'On-Chain': 'momentum',
+        'Sentiment': 'sentiment',
+        'Macro': 'risk',
+        'Protocol': 'arbitrage',
+        'Risk Res.': 'risk',
+        'Trader': 'momentum',
+        'Risk Mgr': 'risk',
+        'Portfolio': 'risk',
+        'Guardian': 'risk',
+    };
+
+    // Deterministic fallback loads per agent (regime-indexed)
+    var AGENT_FALLBACK_LOADS = {
+        0: [42, 55, 38, 30, 48, 62, 70, 58, 45, 50],
+        1: [65, 48, 52, 35, 55, 72, 82, 68, 58, 60],
+        2: [55, 60, 45, 42, 50, 68, 75, 65, 52, 55],
+        3: [72, 68, 58, 55, 62, 85, 88, 78, 65, 75],
+        4: [85, 78, 70, 65, 75, 92, 95, 88, 78, 90],
+    };
+    var _agLoadTick = 0;
+
     function renderAgentLoad() {
+        var isLive = !!(window._liveAgentData && window._liveAgentData.agents);
+        var statusEl = document.getElementById('agLoadStatus');
+        if (statusEl) statusEl.textContent = isLive ? 'LIVE' : 'Offline';
+        _agLoadTick++;
+
         const grid = document.getElementById('agGrid');
-        grid.innerHTML = AGENTS.map(a => {
-            const load = 30 + Math.round(Math.random() * 60);
+        grid.innerHTML = AGENTS.map(function(a, idx) {
+            var liveLoad = _agentLoadFromLive(AGENT_KEY_MAP[a.name]);
+            var ri = (typeof currentRegime !== 'undefined') ? currentRegime.state : 0;
+            var baseLoads = AGENT_FALLBACK_LOADS[ri] || AGENT_FALLBACK_LOADS[0];
+            var drift = Math.round(Math.sin(_agLoadTick * 0.3 + idx * 1.1) * 5);
+            const load = liveLoad !== null ? liveLoad : Math.max(15, Math.min(95, baseLoads[idx] + drift));
             const color = load >= 80 ? 'var(--red)' : load >= 50 ? 'var(--dim)' : 'var(--green)';
             const status = load >= 80 ? 'HIGH LOAD' : load >= 50 ? 'PROCESSING' : 'IDLE';
             const pct = load / 100;
@@ -1311,11 +1417,43 @@
             renderAlertLog();
         }
 
+        var _cbLiveActive = false;
+
+        function applyLiveDrawdown() {
+            var dd = window._liveDrawdownData;
+            if (!dd) return false;
+            var prevDaily = dailyDD, prevWeekly = weeklyDD;
+            if (dd.daily_drawdown !== undefined) dailyDD = Math.abs(dd.daily_drawdown * 100);
+            if (dd.weekly_drawdown !== undefined) weeklyDD = Math.abs(dd.weekly_drawdown * 100);
+            if (dd.oracle_staleness !== undefined) oracleStale = dd.oracle_staleness;
+
+            // Generate alerts on significant changes
+            var dailyLim = 5;
+            if (dailyDD >= dailyLim && prevDaily < dailyLim) {
+                addAlert('Drawdown', 'critical', 'Daily DD ' + dailyDD.toFixed(1) + '% ≥ ' + dailyLim + '% — PAUSED', 'Pause All');
+            } else if (dailyDD >= dailyLim * 0.6 && prevDaily < dailyLim * 0.6) {
+                addAlert('Drawdown', 'warning', 'Daily DD ' + dailyDD.toFixed(1) + '% approaching limit', 'Monitor');
+            }
+            return true;
+        }
+
+        var _cbTick = 0;
         function simulateCycle() {
-            // Drawdown drift
-            dailyDD = Math.max(0, Math.min(8, dailyDD + (Math.random() - 0.45) * 0.3));
-            weeklyDD = Math.max(0, Math.min(15, weeklyDD + (Math.random() - 0.45) * 0.2));
-            oracleStale = Math.max(1, Math.min(45, oracleStale + Math.floor((Math.random() - 0.4) * 5)));
+            // Prefer live data; fall back to deterministic oscillation
+            if (applyLiveDrawdown()) {
+                _cbLiveActive = true;
+                applyLiveCBData();
+                renderBreakers();
+                return;
+            }
+            _cbLiveActive = false;
+            _cbTick++;
+
+            // Deterministic oscillation for drawdown values
+            var ddWave = Math.sin(_cbTick * 0.25) * 0.15 + Math.sin(_cbTick * 0.11) * 0.08;
+            dailyDD = Math.max(0, Math.min(8, dailyDD + ddWave));
+            weeklyDD = Math.max(0, Math.min(15, weeklyDD + ddWave * 0.6));
+            oracleStale = Math.max(1, Math.min(45, Math.round(4 + Math.sin(_cbTick * 0.18) * 8)));
 
             var dailyLim = 5;
             if (dailyDD >= dailyLim) {
@@ -1325,9 +1463,9 @@
                 addAlert('Drawdown', 'warning', 'Daily DD ' + dailyDD.toFixed(1) + '% approaching limit', 'Monitor');
             }
 
-            // Breaker simulation
-            if (Math.random() < 0.15) {
-                var idx = Math.floor(Math.random() * 3);
+            // Deterministic breaker cycling (every ~7 ticks one breaker increments, every ~10 one resets)
+            if (_cbTick % 7 === 0) {
+                var idx = _cbTick % 3;
                 BREAKERS[idx].current = Math.min(BREAKERS[idx].threshold, BREAKERS[idx].current + 1);
                 var ratio = BREAKERS[idx].current / BREAKERS[idx].threshold;
                 var sev = ratio >= 1 ? 'critical' : ratio >= 0.66 ? 'warning' : 'info';
@@ -1336,9 +1474,8 @@
                     showCircuitBreakerAlert(BREAKERS[idx].name, BREAKERS[idx].triggers[0], 'TRIPPED');
                 }
             }
-            // Auto-recovery
-            if (Math.random() < 0.1) {
-                var ri = Math.floor(Math.random() * 3);
+            if (_cbTick % 10 === 0) {
+                var ri = (_cbTick / 10) % 3;
                 if (BREAKERS[ri].current > 0) {
                     BREAKERS[ri].current--;
                     addAlert('Recovery', 'info', BREAKERS[ri].name + ' auto-reset to ' + BREAKERS[ri].current + '/' + BREAKERS[ri].threshold, 'Resume');
@@ -1370,7 +1507,7 @@
             const live = window._liveVaRData || {};
             const liveReg = window._liveRegimeData || {};
 
-            // Use live data if available, else mock
+            // Use live data if available, else deterministic fallback
             let varVal, sigma, delta, liqContrib;
             let distribution = 'normal';
 
@@ -1378,16 +1515,18 @@
                 varVal = Math.abs(live.var95.var_value);
                 sigma = live.var95.sigma_forecast ? Math.abs(live.var95.sigma_forecast) / 100 : 0.031;
                 distribution = live.var95.distribution || 'normal';
-                delta = 0.127 + Math.random() * 0.062;
-                liqContrib = 23 + Math.random() * 24;
+                // Derive delta from live sigma (higher vol = higher asymmetry)
+                delta = Math.min(0.189, 0.127 + sigma * 0.8);
+                // Derive liquidity impact from regime index (higher regime = more liq stress)
+                liqContrib = Math.min(47, 23 + ri * 6);
                 document.getElementById('varLastUpdate').textContent = 'Live \u00b7 ' + distribution + ' \u00b7 ' + CerebralAPI.getToken();
             } else {
                 const sigmas = [0.012, 0.018, 0.031, 0.052, 0.089];
                 sigma = sigmas[ri];
-                delta = 0.127 + Math.random() * 0.062;
-                liqContrib = 23 + Math.random() * 24;
+                delta = Math.min(0.189, 0.127 + sigma * 0.8);
+                liqContrib = 23 + ri * 6;
                 varVal = (sigma * 1.645 + (liqContrib / 100) * sigma * 0.5) * 100;
-                document.getElementById('varLastUpdate').textContent = 'Mock \u00b7 Risk Researcher';
+                document.getElementById('varLastUpdate').textContent = 'Estimated · Risk Researcher';
             }
 
             const volForecast = liveReg.volatility_forecast
@@ -1422,9 +1561,9 @@
                 varMetricsEl.appendChild(card);
             });
 
-            // Asymmetry gauge
-            const deltaBear = 0.140 + Math.random() * 0.049;
-            const deltaBull = 0.085 + Math.random() * 0.030;
+            // Asymmetry gauge — derive from delta and regime
+            const deltaBear = Math.min(0.189, delta * 1.1 + ri * 0.005);
+            const deltaBull = Math.max(0.085, delta * 0.7 - ri * 0.003);
             const gaugeData = [
                 { label: 'Bear δ (negative returns)', value: deltaBear, max: 0.25, color: 'var(--red)' },
                 { label: 'Bull δ (positive returns)', value: deltaBull, max: 0.25, color: 'var(--green)' },
@@ -1479,18 +1618,49 @@
             });
         }
 
+        // Live regime-profile data cache
+        var _liveRegimeProfile = null;
+
+        async function fetchLiveRegimeProfile() {
+            if (typeof CerebralAPI === 'undefined') return;
+            try {
+                var data = await CerebralAPI.fetchRegimeProfile();
+                if (data && data.profiles) _liveRegimeProfile = data;
+            } catch (e) { /* graceful fallback */ }
+        }
+
         function renderLiquidityScoring() {
             const ri = getRegimeIndex();
-            const pools = [
-                { name: 'SOL/USDC', protocol: 'Orca', depth: 85 - ri * 12, slippage: 0.05 + ri * 0.08, tvl: '$42.1M' },
-                { name: 'SOL/USDT', protocol: 'Raydium', depth: 78 - ri * 10, slippage: 0.08 + ri * 0.12, tvl: '$28.7M' },
-                { name: 'RAY/USDC', protocol: 'Raydium', depth: 52 - ri * 8, slippage: 0.15 + ri * 0.22, tvl: '$8.3M' },
-                { name: 'JUP/SOL', protocol: 'Jupiter', depth: 65 - ri * 11, slippage: 0.12 + ri * 0.15, tvl: '$15.6M' },
-                { name: 'mSOL/SOL', protocol: 'Marinade', depth: 90 - ri * 7, slippage: 0.03 + ri * 0.05, tvl: '$67.2M' },
-                { name: 'BONK/SOL', protocol: 'Orca', depth: 35 - ri * 6, slippage: 0.25 + ri * 0.35, tvl: '$4.1M' },
-            ];
+            var pools;
 
-            document.getElementById('varLiqGrid').innerHTML = pools.map(p => {
+            if (_liveRegimeProfile && _liveRegimeProfile.profiles) {
+                // Map live regime profiles to pool-like display items
+                var REGIME_NAMES = ['ACCUM', 'MARKUP', 'DISTRIB', 'MARKDN', 'CRISIS'];
+                pools = _liveRegimeProfile.profiles.map(function(p) {
+                    var score = p.liquidity_score != null ? p.liquidity_score : 50;
+                    var spread = p.spread_pct != null ? p.spread_pct : 0.1;
+                    var rName = REGIME_NAMES[p.regime - 1] || ('R' + p.regime);
+                    return {
+                        name: rName + ' Regime',
+                        protocol: 'n=' + p.n_obs,
+                        depth: Math.round(score),
+                        slippage: spread,
+                        tvl: p.insufficient_data ? 'N/A' : (p.n_obs + ' obs'),
+                    };
+                });
+            } else {
+                // Deterministic fallback
+                pools = [
+                    { name: 'SOL/USDC', protocol: 'Orca', depth: 85 - ri * 12, slippage: 0.05 + ri * 0.08, tvl: '$42.1M' },
+                    { name: 'SOL/USDT', protocol: 'Raydium', depth: 78 - ri * 10, slippage: 0.08 + ri * 0.12, tvl: '$28.7M' },
+                    { name: 'RAY/USDC', protocol: 'Raydium', depth: 52 - ri * 8, slippage: 0.15 + ri * 0.22, tvl: '$8.3M' },
+                    { name: 'JUP/SOL', protocol: 'Jupiter', depth: 65 - ri * 11, slippage: 0.12 + ri * 0.15, tvl: '$15.6M' },
+                    { name: 'mSOL/SOL', protocol: 'Marinade', depth: 90 - ri * 7, slippage: 0.03 + ri * 0.05, tvl: '$67.2M' },
+                    { name: 'BONK/SOL', protocol: 'Orca', depth: 35 - ri * 6, slippage: 0.25 + ri * 0.35, tvl: '$4.1M' },
+                ];
+            }
+
+            document.getElementById('varLiqGrid').innerHTML = pools.map(function(p) {
                 const d = Math.max(p.depth, 5);
                 const col = d >= 60 ? 'var(--green)' : d >= 35 ? '#cc8800' : 'var(--red)';
                 return '<div class="var-liq-item">' +
@@ -1499,6 +1669,9 @@
                     '<div class="var-liq-detail">Depth: ' + d + '% · Slippage: ' + p.slippage.toFixed(2) + '% · TVL: ' + p.tvl + '</div></div>';
             }).join('');
         }
+
+        // Fetch live data on init
+        fetchLiveRegimeProfile();
 
         function renderSlippageChart() {
             const container = document.getElementById('varSlippageChart');
@@ -1657,7 +1830,11 @@
         }
 
         renderAllVaR();
-        setInterval(function() { renderVarMetrics(); renderLiquidityScoring(); }, 5000);
+        setInterval(function() {
+            fetchLiveRegimeProfile();
+            renderVarMetrics();
+            renderLiquidityScoring();
+        }, 5000);
         window.addEventListener('resize', renderSlippageChart);
     })();
     </script>
@@ -1665,7 +1842,7 @@
     <script>
     // === 5b. AGENT MEMORY TIMELINE ===
     (function() {
-        const memOps = [
+        const FALLBACK_MEM_OPS = [
             { action: 'store', agent: 'Technical Analyst', desc: 'Stored RSI divergence pattern for SOL/USDC — bearish signal at 4H timeframe', ago: '2m' },
             { action: 'recall', agent: 'Trader Agent', desc: 'Retrieved last 5 trade outcomes for LP Rebalancing strategy — 4/5 profitable', ago: '3m' },
             { action: 'store', agent: 'On-Chain Analyst', desc: 'Stored whale wallet movement: 45K SOL transferred to Raydium LP', ago: '5m' },
@@ -1680,17 +1857,46 @@
             { action: 'prune', agent: 'System', desc: 'Compressed 156 warm-tier entries to cold storage — indefinite retention', ago: '1h' },
         ];
 
-        const timeline = document.getElementById('memTimeline');
-        memOps.forEach(m => {
-            timeline.innerHTML += '<div class="mem-entry">' +
-                '<div class="mem-dot ' + m.action + '"></div>' +
-                '<div class="mem-content">' +
-                    '<div class="mem-action">' + m.action + ' — ' + m.agent + '</div>' +
-                    '<div class="mem-desc">' + m.desc + '</div>' +
-                '</div>' +
-                '<div class="mem-time">' + m.ago + '</div>' +
-            '</div>';
-        });
+        function renderMemoryTimeline(memOps) {
+            const timeline = document.getElementById('memTimeline');
+            timeline.innerHTML = '';
+            memOps.forEach(function(m) {
+                timeline.innerHTML += '<div class="mem-entry">' +
+                    '<div class="mem-dot ' + m.action + '"></div>' +
+                    '<div class="mem-content">' +
+                        '<div class="mem-action">' + m.action + ' — ' + m.agent + '</div>' +
+                        '<div class="mem-desc">' + m.desc + '</div>' +
+                    '</div>' +
+                    '<div class="mem-time">' + m.ago + '</div>' +
+                '</div>';
+            });
+        }
+
+        async function fetchAndRenderMemory() {
+            if (typeof CerebralAPI !== 'undefined') {
+                try {
+                    var status = await CerebralAPI.fetchNarratorStatus();
+                    if (status && status.enabled) {
+                        // Build live status entry + keep fallback entries for history
+                        var liveOps = [{
+                            action: 'update',
+                            agent: 'Narrator',
+                            desc: 'Model: ' + (status.model || 'unknown') +
+                                  ' · Calls: ' + (status.call_count || 0) +
+                                  ' · Errors: ' + (status.error_count || 0) +
+                                  ' · Avg latency: ' + (status.avg_latency_ms || 0).toFixed(0) + 'ms',
+                            ago: 'now',
+                        }];
+                        renderMemoryTimeline(liveOps.concat(FALLBACK_MEM_OPS.slice(0, 11)));
+                        return;
+                    }
+                } catch (e) { /* fallback */ }
+            }
+            renderMemoryTimeline(FALLBACK_MEM_OPS);
+        }
+
+        fetchAndRenderMemory();
+        setInterval(fetchAndRenderMemory, 15000);
 
         // Goal Tracking — context.md: ElizaOS goal tracking
         const goals = [
@@ -1892,12 +2098,13 @@
 
         function seedBuffer() {
             buffer = [];
+            cxSeed(1337 + currentRegime.state * 7919);
             const regime = currentRegime.state;
             const base = REGIME_BASES[regime] || REGIME_BASES[0];
             const corrs = CORR[regime] || [];
             for (let s = 0; s < POOL; s++) {
-                const shared = (Math.random() - 0.5) * 0.5;
-                const raw = traits.map((_, i) => base[i] + (Math.random() - 0.5) * 28 + shared * 12);
+                const shared = (cxRandom() - 0.5) * 0.5;
+                const raw = traits.map((_, i) => base[i] + (cxRandom() - 0.5) * 28 + shared * 12);
                 corrs.forEach(([a, b, str]) => { raw[b] += (raw[a] - base[a]) * str; });
                 const row = { regime };
                 traits.forEach((t, i) => { row[t] = Math.max(0, Math.min(100, raw[i])); });
@@ -1905,18 +2112,20 @@
             }
         }
 
-        // Drift existing points + replace a few
+        var _scatterTick = 0;
         function evolveBuffer() {
+            _scatterTick++;
             const regime = currentRegime.state;
             const base = REGIME_BASES[regime] || REGIME_BASES[0];
             const corrs = CORR[regime] || [];
             const drift = 2.5;
             const replace = 6;
 
-            buffer.forEach(row => {
+            buffer.forEach(function(row, ri) {
                 traits.forEach((t, i) => {
                     const pull = (base[i] - row[t]) * 0.04;
-                    row[t] = Math.max(0, Math.min(100, row[t] + pull + (Math.random() - 0.5) * drift));
+                    var wave = Math.sin(_scatterTick * 0.4 + ri * 0.7 + i * 1.3) * 0.5;
+                    row[t] = Math.max(0, Math.min(100, row[t] + pull + wave * drift));
                 });
                 corrs.forEach(([a, b, str]) => {
                     const ta = traits[a], tb = traits[b];
@@ -1926,9 +2135,10 @@
             });
 
             for (let r = 0; r < replace; r++) {
-                const idx = Math.floor(Math.random() * POOL);
-                const shared = (Math.random() - 0.5) * 0.5;
-                const raw = traits.map((_, i) => base[i] + (Math.random() - 0.5) * 28 + shared * 12);
+                cxSeed(cxHash(_scatterTick * 100 + r));
+                const idx = Math.floor(cxRandom() * POOL);
+                const shared = (cxRandom() - 0.5) * 0.5;
+                const raw = traits.map((_, i) => base[i] + (cxRandom() - 0.5) * 28 + shared * 12);
                 corrs.forEach(([a, b, str]) => { raw[b] += (raw[a] - base[a]) * str; });
                 const row = { regime };
                 traits.forEach((t, i) => { row[t] = Math.max(0, Math.min(100, raw[i])); });
@@ -2104,13 +2314,14 @@
             const startHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0);
             const dates = Array.from({ length: bins }, (_, i) => new Date(+startHour + i * 15 * 60000));
 
-            return AGENTS.map(a => {
+            return AGENTS.map(function(a, ai) {
                 const prof = ACTIVITY[a.fullName];
-                const values = dates.map((d, i) => {
+                const values = dates.map(function(d, i) {
                     const hour = i / 4;
                     const dist = Math.min(Math.abs(hour - prof.peak), 24 - Math.abs(hour - prof.peak));
                     const gaussian = Math.exp(-0.5 * (dist / 3) * (dist / 3));
-                    return prof.base + prof.base * (prof.mult - 1) * gaussian + (Math.random() - 0.5) * prof.base * 0.4;
+                    var noise = Math.sin(i * 0.7 + ai * 2.3) * 0.2 * prof.base;
+                    return prof.base + prof.base * (prof.mult - 1) * gaussian + noise;
                 });
                 return { name: a.fullName, values };
             });
@@ -2197,10 +2408,10 @@
         const POINTS = 120;
         const overlap = 7;
 
-        // Phase offsets per parameter for wave variety
-        const phases = paramNames.map(() => Math.random() * Math.PI * 2);
-        const freqs = paramNames.map(() => 0.08 + Math.random() * 0.12);
-        const amps = paramNames.map(() => 0.4 + Math.random() * 0.5);
+        // Deterministic phase offsets per parameter (golden-ratio spaced)
+        const phases = paramNames.map(function(_, i) { return (i * 2.399) % (Math.PI * 2); });
+        const freqs  = paramNames.map(function(_, i) { return 0.08 + ((i * 0.618) % 1) * 0.12; });
+        const amps   = paramNames.map(function(_, i) { return 0.4 + ((i * 0.382) % 1) * 0.5; });
 
         let tick = 0;
 
@@ -2220,7 +2431,7 @@
                     const wave1 = Math.sin(t * Math.PI * 6 * fr + ph) * am;
                     const wave2 = Math.sin(t * Math.PI * 10 * fr + ph * 1.7) * am * 0.5;
                     const wave3 = Math.sin(t * Math.PI * 16 * fr + ph * 2.3) * am * 0.25;
-                    const noise = (Math.random() - 0.5) * 0.15;
+                    var noise = Math.sin(i * 1.1 + pi * 3.7 + tick * 0.2) * 0.075;
                     return Math.max(0, wave1 + wave2 + wave3 + noise + am + 0.3);
                 });
                 return { name, values };
@@ -2326,12 +2537,15 @@
         }
 
         function generateData() {
+            cxSeed(9973);
             const data = [];
             for (let i = 0; i < N; i++) {
-                const agentIdx = Math.floor(Math.random() * AGENTS.length);
+                const agentIdx = Math.floor(cxRandom() * AGENTS.length);
                 const cl = CLUSTERS[agentIdx];
-                const angle = Math.random() * Math.PI * 2;
-                const r = cl.spread * Math.sqrt(-2 * Math.log(Math.random()));
+                const angle = cxRandom() * Math.PI * 2;
+                var logVal = cxRandom();
+                if (logVal <= 0) logVal = 0.001;
+                const r = cl.spread * Math.sqrt(-2 * Math.log(logVal));
                 const sx = cl.cx + Math.cos(angle) * r * 0.5;
                 const sy = cl.cy + Math.sin(angle) * r * 4;
                 data.push({
@@ -2341,13 +2555,13 @@
                 });
             }
             for (let i = 0; i < 2000; i++) {
-                const t = Math.random();
-                const sx = 0.1 + t * 1.8 + (Math.random() - 0.5) * 0.15;
-                const sy = 1 + t * 15 + (Math.random() - 0.5) * 2;
+                const t = cxRandom();
+                const sx = 0.1 + t * 1.8 + (cxRandom() - 0.5) * 0.15;
+                const sy = 1 + t * 15 + (cxRandom() - 0.5) * 2;
                 data.push({
                     signal: Math.max(-0.2, Math.min(2.1, sx)),
                     magnitude: Math.max(-1, Math.min(18, sy)),
-                    agent: AGENTS[Math.floor(Math.random() * AGENTS.length)]
+                    agent: AGENTS[Math.floor(cxRandom() * AGENTS.length)]
                 });
             }
             return data;
@@ -2484,8 +2698,11 @@
         };
         const color = i => scheme[Math.max(3, bands)][i + Math.max(0, 3 - bands)];
 
+        var _walkTick = 0;
         function walk(v) {
-            return Math.max(0, Math.min(1, v + (Math.random() - 0.5) * 0.05));
+            _walkTick++;
+            var drift = Math.sin(_walkTick * 0.37) * 0.025;
+            return Math.max(0, Math.min(1, v + drift));
         }
 
         function buildChart() {
@@ -2743,14 +2960,14 @@
                     name: 'Long', type: 'scatter', id: 'long', dataGroupId: 'long',
                     itemStyle: { color: green, opacity: 0.7 },
                     symbolSize: 6,
-                    universalTransition: { enabled: true, delay: function (idx) { return Math.random() * 400; } },
+                    universalTransition: { enabled: true, delay: function (idx) { return (idx * 23) % 400; } },
                     data: longData
                 },
                 {
                     name: 'Short', type: 'scatter', id: 'short', dataGroupId: 'short',
                     itemStyle: { color: fg, opacity: 0.55 },
                     symbolSize: 6,
-                    universalTransition: { enabled: true, delay: function (idx) { return Math.random() * 400; } },
+                    universalTransition: { enabled: true, delay: function (idx) { return (idx * 29) % 400; } },
                     data: shortData
                 }
             ]
@@ -2771,7 +2988,7 @@
                     { value: avg(shortData, 0), groupId: 'short' },
                     { value: avg(longData, 0), groupId: 'long' }
                 ],
-                universalTransition: { enabled: true, seriesKey: ['long', 'short'], delay: function (idx) { return Math.random() * 400; } }
+                universalTransition: { enabled: true, seriesKey: ['long', 'short'], delay: function (idx) { return (idx * 37) % 400; } }
             }]
         };
 
@@ -3040,20 +3257,69 @@
         }
     }
 
+    async function fetchLiveAgentStatus() {
+        if (!CerebralAPI.isAvailable()) return false;
+        try {
+            var data = await CerebralAPI.fetchAgentStatus();
+            if (!data || !data.agents) return false;
+            window._liveAgentData = data;
+            var statusEl = document.getElementById('mlSignalStatus');
+            if (statusEl) statusEl.textContent = 'LIVE';
+            var agStatusEl = document.getElementById('agLoadStatus');
+            if (agStatusEl) agStatusEl.textContent = 'LIVE';
+            console.log('[Cerebral] Live agent status loaded');
+            return true;
+        } catch (e) {
+            console.warn('[Cerebral] Live agent status fetch failed:', e.message);
+            return false;
+        }
+    }
+
+    async function fetchLiveDrawdown() {
+        if (!CerebralAPI.isAvailable()) return false;
+        try {
+            var data = await CerebralAPI.fetchDrawdown();
+            if (!data) return false;
+            window._liveDrawdownData = data;
+            console.log('[Cerebral] Live drawdown loaded');
+            return true;
+        } catch (e) {
+            console.warn('[Cerebral] Live drawdown fetch failed:', e.message);
+            return false;
+        }
+    }
+
+    async function fetchLiveRegimeStats() {
+        if (!CerebralAPI.isAvailable()) return false;
+        try {
+            var data = await CerebralAPI.fetchRegimeStatistics();
+            if (!data) return false;
+            window._liveRegimeStats = data;
+            console.log('[Cerebral] Live regime statistics loaded');
+            return true;
+        } catch (e) {
+            console.warn('[Cerebral] Live regime stats fetch failed:', e.message);
+            return false;
+        }
+    }
+
     // Master refresh: try live API, then update displays
     async function cerebralRefresh() {
         var liveRegime = await fetchLiveRegime();
         if (!liveRegime) {
-            // Fallback: CoinGecko HMM regime detection
             await detectRegime();
         }
         updateRegimeDisplay();
         renderMLSignals();
 
-        // VaR — try live data
-        await fetchLiveVaR();
-        // Circuit breakers — try live data
-        await fetchLiveCircuitBreakers();
+        // Parallel fetch: VaR, circuit breakers, agents, drawdown, regime stats
+        await Promise.all([
+            fetchLiveVaR(),
+            fetchLiveCircuitBreakers(),
+            fetchLiveAgentStatus(),
+            fetchLiveDrawdown(),
+            fetchLiveRegimeStats(),
+        ]);
     }
 
     // Initialize
@@ -3063,7 +3329,7 @@
             console.log('[Cerebral] API connected — using live data');
             await cerebralRefresh();
         } else {
-            console.log('[Cerebral] API unavailable — falling back to mock data');
+            console.log('[Cerebral] API unavailable — using deterministic fallbacks');
             startRegimeDetection();
         }
     })();
@@ -3085,7 +3351,7 @@
     console.log('CORTEX Cerebral initialized');
     console.log('Regime Detection: Active (live API preferred, CoinGecko HMM fallback)');
     console.log('Decision Pipeline: Cycling');
-    console.log('Debate Theater: Live API + mock scenarios fallback');
+    console.log('Debate Theater: Live API + built-in scenarios fallback');
     </script>
     <script src="js/ticker.js"></script>
     <script src="js/wallet.js"></script>

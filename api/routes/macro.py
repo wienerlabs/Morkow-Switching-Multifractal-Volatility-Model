@@ -30,6 +30,7 @@ def get_macro_indicators():
         fear_greed=FearGreedItem(**result["fear_greed"]),
         btc_dominance=BtcDominanceItem(**result["btc_dominance"]),
         risk_level=result["risk_level"],
+        avg_gas_sol=result.get("avg_gas_sol"),
         timestamp=result["timestamp"],
     )
 
