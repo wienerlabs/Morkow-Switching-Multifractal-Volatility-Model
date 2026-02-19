@@ -1,4 +1,4 @@
-// Cerebral page — live API connections with graceful fallback to mock data
+// Cerebral page — live API connections with graceful error states
 // Uses cortexFetch from api.js + CORTEX_CONFIG from config.js
 
 const CerebralAPI = (function() {
@@ -143,6 +143,16 @@ const CerebralAPI = (function() {
         return _fetch('/portfolio/drawdown');
     }
 
+    // --- Regime Liquidity Profile ---
+    async function fetchRegimeProfile() {
+        return _fetch('/lvar/regime-profile?token=' + encodeURIComponent(_token));
+    }
+
+    // --- Narrator Status ---
+    async function fetchNarratorStatus() {
+        return _fetch('/narrator/status');
+    }
+
     return {
         setToken, getToken,
         checkHealth, isAvailable,
@@ -152,5 +162,6 @@ const CerebralAPI = (function() {
         fetchRegimeHistory, fetchRegimeDurations,
         fetchRegimeStatistics, fetchTransitionAlert,
         fetchAgentStatus, fetchDrawdown,
+        fetchRegimeProfile, fetchNarratorStatus,
     };
 })();
