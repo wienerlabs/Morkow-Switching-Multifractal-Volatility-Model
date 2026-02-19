@@ -2367,32 +2367,32 @@
                     <div class="graph-area-widget">
                         <div class="graph-box-widget">
                             <span class="graph-label-widget">LOSS_FUNC</span>
-                            <canvas id="canvasLoss"></canvas>
+                            <div id="canvasLoss" style="display:flex;align-items:center;justify-content:center;height:100%;font-size:0.6rem;color:var(--dim);font-family:var(--font-mono)">No model training data available</div>
                         </div>
                         <div class="graph-box-widget">
                             <span class="graph-label-widget">ACCURACY</span>
-                            <canvas id="canvasAcc"></canvas>
+                            <div id="canvasAcc" style="display:flex;align-items:center;justify-content:center;height:100%;font-size:0.6rem;color:var(--dim);font-family:var(--font-mono)">No model training data available</div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Trade Mode Selector -->
                 <div class="mode-selector">
-                    <div class="mode-option active">
+                    <div class="mode-option active" data-mode="autonomous">
                         <div class="mode-radio"></div>
                         <div>
                             <div class="mode-name">Autonomous</div>
                             <div class="mode-desc">Full agent control</div>
                         </div>
                     </div>
-                    <div class="mode-option">
+                    <div class="mode-option" data-mode="semi-auto">
                         <div class="mode-radio"></div>
                         <div>
                             <div class="mode-name">Semi-Auto</div>
                             <div class="mode-desc">Approval required</div>
                         </div>
                     </div>
-                    <div class="mode-option">
+                    <div class="mode-option" data-mode="manual">
                         <div class="mode-radio"></div>
                         <div>
                             <div class="mode-name">Manual</div>
@@ -2424,8 +2424,8 @@
                     </div>
                     <div class="agent-meta">Trend-following · 20-period EMA</div>
                     <div class="agent-metrics">
-                        <span class="metric-label">Win Rate</span><span class="metric-value">68.4%</span>
-                        <span class="metric-label">Signal</span><span class="metric-value text-green">LONG</span>
+                        <span class="metric-label">Win Rate</span><span class="metric-value" id="agentWinRate-momentum">—</span>
+                        <span class="metric-label">Signal</span><span class="metric-value text-dim" id="agentSignal-momentum">—</span>
                     </div>
                 </div>
 
@@ -2436,8 +2436,8 @@
                     </div>
                     <div class="agent-meta">Bollinger Bands · Z-Score</div>
                     <div class="agent-metrics">
-                        <span class="metric-label">Win Rate</span><span class="metric-value">72.1%</span>
-                        <span class="metric-label">Signal</span><span class="metric-value text-red">SHORT</span>
+                        <span class="metric-label">Win Rate</span><span class="metric-value" id="agentWinRate-meanrev">—</span>
+                        <span class="metric-label">Signal</span><span class="metric-value text-dim" id="agentSignal-meanrev">—</span>
                     </div>
                 </div>
 
@@ -2448,8 +2448,8 @@
                     </div>
                     <div class="agent-meta">NLP · Social signals</div>
                     <div class="agent-metrics">
-                        <span class="metric-label">Win Rate</span><span class="metric-value">61.8%</span>
-                        <span class="metric-label">Signal</span><span class="metric-value text-green">LONG</span>
+                        <span class="metric-label">Win Rate</span><span class="metric-value" id="agentWinRate-sentiment">—</span>
+                        <span class="metric-label">Signal</span><span class="metric-value text-dim" id="agentSignal-sentiment">—</span>
                     </div>
                 </div>
 
@@ -2460,8 +2460,8 @@
                     </div>
                     <div class="agent-meta">VaR · Drawdown limits</div>
                     <div class="agent-metrics">
-                        <span class="metric-label">Win Rate</span><span class="metric-value">74.2%</span>
-                        <span class="metric-label">Signal</span><span class="metric-value text-dim">HEDGE</span>
+                        <span class="metric-label">Win Rate</span><span class="metric-value" id="agentWinRate-risk">—</span>
+                        <span class="metric-label">Signal</span><span class="metric-value text-dim" id="agentSignal-risk">—</span>
                     </div>
                 </div>
 
@@ -2472,8 +2472,8 @@
                     </div>
                     <div class="agent-meta">Cross-DEX · Latency arb</div>
                     <div class="agent-metrics">
-                        <span class="metric-label">Win Rate</span><span class="metric-value">83.6%</span>
-                        <span class="metric-label">Signal</span><span class="metric-value text-green">LONG</span>
+                        <span class="metric-label">Win Rate</span><span class="metric-value" id="agentWinRate-arbitrage">—</span>
+                        <span class="metric-label">Signal</span><span class="metric-value text-dim" id="agentSignal-arbitrage">—</span>
                     </div>
                 </div>
             </div>
@@ -2482,16 +2482,39 @@
             <div class="panel">
                 <div class="panel-header">
                     <span>Portfolio Overview</span>
+                    <button class="btn btn-sm" onclick="openVaultModal()" id="vaultDepositBtn" style="font-size:0.6rem;">Deposit / Withdraw</button>
                 </div>
 
                 <div class="portfolio-summary">
-                    <div class="portfolio-value">$47,823.45</div>
-                    <div class="portfolio-change positive">+$2,341.12 (+5.14%)</div>
+                    <div class="portfolio-value" id="portfolioValue">$0.00</div>
+                    <div class="portfolio-change" id="portfolioChange" style="color:var(--dim)">Connect wallet to view portfolio</div>
                     <div class="time-filters">
                         <button class="time-filter">24H</button>
                         <button class="time-filter active">7D</button>
                         <button class="time-filter">30D</button>
                         <button class="time-filter">ALL</button>
+                    </div>
+                </div>
+
+                <!-- Vault Position Card -->
+                <div id="vaultPositionCard" style="display:none;border:1px solid var(--border);margin:0 1rem 1rem 1rem;padding:0.75rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                        <span style="font-size:0.65rem;text-transform:uppercase;color:var(--dim);">Cortex Vault Position</span>
+                        <span id="vaultStateBadge" style="font-size:0.55rem;padding:2px 6px;border:1px solid var(--border);color:var(--dim);">—</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;">
+                        <div>
+                            <div style="font-size:0.55rem;color:var(--dim);margin-bottom:2px;">Your Position</div>
+                            <div id="vaultUserPosition" style="font-size:0.8rem;font-family:var(--font-mono);">—</div>
+                        </div>
+                        <div>
+                            <div style="font-size:0.55rem;color:var(--dim);margin-bottom:2px;">Your Shares</div>
+                            <div id="vaultUserShares" style="font-size:0.8rem;font-family:var(--font-mono);">—</div>
+                        </div>
+                        <div>
+                            <div style="font-size:0.55rem;color:var(--dim);margin-bottom:2px;">Vault TVL</div>
+                            <div id="vaultTVL" style="font-size:0.8rem;font-family:var(--font-mono);">—</div>
+                        </div>
                     </div>
                 </div>
 
@@ -2581,13 +2604,9 @@
                 <div class="positions-section">
                     <div class="panel-header">
                         <span>Active Positions</span>
-                        <span class="text-dim" id="posCount">10 OPEN</span>
+                        <span class="text-dim" id="posCount">0 OPEN</span>
                     </div>
                     <div class="positions-grid" id="positionsGrid"></div>
-                    <div class="positions-actions">
-                        <button class="btn btn-sm" onclick="closeRandomPosition()">Close Position</button>
-                        <button class="btn btn-sm" onclick="resetPositions()">Reset All</button>
-                    </div>
                 </div>
 
                 <!-- Guardian Risk Dashboard (Live API) -->
@@ -2673,42 +2692,47 @@
                         <span class="text-dim" id="emStatus">IDLE</span>
                     </div>
 
+                    <!-- Idle state — hidden by SSE updates when execution is active -->
+                    <div id="emIdleMessage" style="padding:1rem;text-align:center;font-size:0.65rem;color:var(--dim);font-family:var(--font-mono)">
+                        Idle — waiting for next execution
+                    </div>
+
                     <!-- Execution Pipeline Stepper -->
-                    <div class="em-pipeline" id="emPipeline">
-                        <div class="em-step done" id="emStep1">
+                    <div class="em-pipeline" id="emPipeline" style="display:none">
+                        <div class="em-step pending" id="emStep1">
                             <div class="em-step-idx">Step 1</div>
                             <div class="em-step-name">TX Simulation</div>
-                            <div class="em-step-status text-green" id="emStep1Status">✓ Passed</div>
+                            <div class="em-step-status text-dim" id="emStep1Status">—</div>
                             <div class="em-step-bar"><div class="em-step-bar-fill"></div></div>
                         </div>
-                        <div class="em-step done" id="emStep2">
+                        <div class="em-step pending" id="emStep2">
                             <div class="em-step-idx">Step 2</div>
                             <div class="em-step-name">Guardian Validation</div>
-                            <div class="em-step-status text-green" id="emStep2Status">✓ 4/4 Checks</div>
+                            <div class="em-step-status text-dim" id="emStep2Status">—</div>
                             <div class="em-step-bar"><div class="em-step-bar-fill"></div></div>
                         </div>
-                        <div class="em-step active" id="emStep3">
+                        <div class="em-step pending" id="emStep3">
                             <div class="em-step-idx">Step 3</div>
                             <div class="em-step-name">Broadcast</div>
-                            <div class="em-step-status" id="emStep3Status">Sending...</div>
-                            <div class="em-step-bar"><div class="em-step-bar-fill" style="width:60%"></div></div>
+                            <div class="em-step-status text-dim" id="emStep3Status">—</div>
+                            <div class="em-step-bar"><div class="em-step-bar-fill"></div></div>
                         </div>
                         <div class="em-step pending" id="emStep4">
                             <div class="em-step-idx">Step 4</div>
                             <div class="em-step-name">Confirmation</div>
-                            <div class="em-step-status text-dim" id="emStep4Status">Waiting</div>
+                            <div class="em-step-status text-dim" id="emStep4Status">—</div>
                             <div class="em-step-bar"><div class="em-step-bar-fill"></div></div>
                         </div>
                     </div>
 
                     <!-- Guardian Validator Checks + Simulation Result -->
-                    <div class="em-guardian">
+                    <div class="em-guardian" id="emGuardianSection" style="display:none">
                         <div class="em-guardian-checks">
                             <div style="font-size:0.6rem;font-weight:600;margin-bottom:0.4rem;text-transform:uppercase">Guardian Validator</div>
-                            <div class="em-check-row"><span class="em-check-icon pass" id="emChk1">✓</span> Transaction Simulation</div>
-                            <div class="em-check-row"><span class="em-check-icon pass" id="emChk2">✓</span> Slippage Verification</div>
-                            <div class="em-check-row"><span class="em-check-icon pass" id="emChk3">✓</span> Balance Confirmation</div>
-                            <div class="em-check-row"><span class="em-check-icon pass" id="emChk4">✓</span> Rate Limit Check</div>
+                            <div class="em-check-row"><span class="em-check-icon" id="emChk1">—</span> Transaction Simulation</div>
+                            <div class="em-check-row"><span class="em-check-icon" id="emChk2">—</span> Slippage Verification</div>
+                            <div class="em-check-row"><span class="em-check-icon" id="emChk3">—</span> Balance Confirmation</div>
+                            <div class="em-check-row"><span class="em-check-icon" id="emChk4">—</span> Rate Limit Check</div>
                         </div>
                         <div class="em-guardian-result">
                             <div style="font-size:0.6rem;font-weight:600;margin-bottom:0.4rem;text-transform:uppercase">Simulation Result</div>
@@ -2716,23 +2740,23 @@
                             <div class="em-slippage-bar">
                                 <span class="em-slip-label">Expected</span>
                                 <div class="em-slip-track">
-                                    <div class="em-slip-expected" id="emSlipExp" style="width:30%"></div>
-                                    <div class="em-slip-actual" id="emSlipAct" style="width:35%"></div>
+                                    <div class="em-slip-expected" id="emSlipExp" style="width:0%"></div>
+                                    <div class="em-slip-actual" id="emSlipAct" style="width:0%"></div>
                                 </div>
-                                <span class="em-slip-label" style="text-align:right" id="emSlipValues">0.30% / 0.35%</span>
+                                <span class="em-slip-label" style="text-align:right" id="emSlipValues">— / —</span>
                             </div>
                             <div style="font-size:0.6rem;color:var(--dim);margin-bottom:0.3rem;margin-top:0.4rem">Retry Attempts</div>
                             <div class="em-retry-timeline" id="emRetryTimeline">
-                                <div class="em-retry-dot success"></div>
                                 <div class="em-retry-dot" style="background:#e8e8e8"></div>
                                 <div class="em-retry-dot" style="background:#e8e8e8"></div>
-                                <span style="font-size:0.55rem;color:var(--dim);margin-left:4px" id="emRetryLabel">1/3 attempts</span>
+                                <div class="em-retry-dot" style="background:#e8e8e8"></div>
+                                <span style="font-size:0.55rem;color:var(--dim);margin-left:4px" id="emRetryLabel">—</span>
                             </div>
                             <div style="font-size:0.6rem;color:var(--dim);margin-bottom:0.3rem;margin-top:0.4rem">Confirmation Progress</div>
                             <div class="em-confirm-stepper" id="emConfStepper">
-                                <div class="em-conf-step done">Submitted</div>
-                                <div class="em-conf-step done">Processed</div>
-                                <div class="em-conf-step active">Confirmed</div>
+                                <div class="em-conf-step">Submitted</div>
+                                <div class="em-conf-step">Processed</div>
+                                <div class="em-conf-step">Confirmed</div>
                                 <div class="em-conf-step">Finalized</div>
                             </div>
                         </div>
@@ -2742,23 +2766,23 @@
                     <div class="em-tx-metrics">
                         <div class="em-tx-metric">
                             <div class="em-tx-label">MEV Protection</div>
-                            <div class="em-tx-value text-green" id="emMev">JITO</div>
+                            <div class="em-tx-value text-dim" id="emMev">—</div>
                             <div class="em-tx-sub">Bundle Active</div>
                         </div>
                         <div class="em-tx-metric">
                             <div class="em-tx-label">Priority Fee</div>
-                            <div class="em-tx-value" id="emPriFee">0.00042</div>
+                            <div class="em-tx-value text-dim" id="emPriFee">—</div>
                             <div class="em-tx-sub" id="emPriFeeSub">SOL · Dynamic</div>
                         </div>
                         <div class="em-tx-metric">
                             <div class="em-tx-label">Latency</div>
-                            <div class="em-tx-value" id="emLatency">412ms</div>
+                            <div class="em-tx-value text-dim" id="emLatency">—</div>
                             <div class="em-tx-sub">Broadcast → Confirm</div>
                         </div>
                         <div class="em-tx-metric">
                             <div class="em-tx-label">TX Status</div>
-                            <div class="em-tx-value text-green" id="emTxStatus">SUCCESS</div>
-                            <div class="em-tx-sub" id="emTxSig">5Kx...r2M</div>
+                            <div class="em-tx-value text-dim" id="emTxStatus">—</div>
+                            <div class="em-tx-sub" id="emTxSig">—</div>
                         </div>
                     </div>
                 </div>
@@ -2867,6 +2891,103 @@
         </div>
     </div>
     <div class="wallet-error-toast" id="walletToast"></div>
+
+    <!-- Vault Deposit / Withdraw Modal -->
+    <div class="modal-overlay" id="vaultModal">
+        <div class="modal" style="max-width: 520px;">
+            <div class="modal-header">
+                <span class="modal-title">Cortex Vault</span>
+                <button class="modal-close" onclick="closeModal('vaultModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+
+                <!-- Vault info bar -->
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-bottom:1.25rem;padding:0.75rem;background:#f9f9f9;border:1px solid var(--border);">
+                    <div>
+                        <div style="font-size:0.55rem;color:var(--dim);margin-bottom:3px;">VAULT TVL</div>
+                        <div id="vmTVL" style="font-size:0.85rem;font-family:var(--font-mono);">—</div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.55rem;color:var(--dim);margin-bottom:3px;">YOUR POSITION</div>
+                        <div id="vmPosition" style="font-size:0.85rem;font-family:var(--font-mono);">—</div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.55rem;color:var(--dim);margin-bottom:3px;">YOUR SHARES</div>
+                        <div id="vmShares" style="font-size:0.85rem;font-family:var(--font-mono);">—</div>
+                    </div>
+                </div>
+
+                <!-- State warning -->
+                <div id="vmStateWarning" style="display:none;padding:0.5rem 0.75rem;background:#fff3cd;border:1px solid #cc8800;color:#cc8800;font-size:0.65rem;margin-bottom:1rem;"></div>
+
+                <!-- Tab buttons -->
+                <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:1rem;">
+                    <button id="vmTabDeposit" class="btn btn-sm" onclick="vaultSwitchTab('deposit')"
+                        style="border:none;border-bottom:2px solid var(--fg);border-radius:0;font-size:0.65rem;padding:0.4rem 1rem;">Deposit</button>
+                    <button id="vmTabWithdraw" class="btn btn-sm" onclick="vaultSwitchTab('withdraw')"
+                        style="border:none;border-bottom:2px solid transparent;border-radius:0;font-size:0.65rem;padding:0.4rem 1rem;color:var(--dim);">Withdraw</button>
+                </div>
+
+                <!-- Deposit Panel -->
+                <div id="vmDepositPanel">
+                    <div style="margin-bottom:0.75rem;">
+                        <label style="font-size:0.6rem;color:var(--dim);display:block;margin-bottom:4px;">Token</label>
+                        <select id="vmDepositToken" style="width:100%;padding:0.4rem 0.5rem;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.7rem;background:var(--bg);color:var(--fg);">
+                            <option value="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v">USDC (Mainnet)</option>
+                            <option value="4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU">USDC (Devnet)</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom:0.5rem;">
+                        <label style="font-size:0.6rem;color:var(--dim);display:block;margin-bottom:4px;">Amount (USDC)</label>
+                        <input id="vmDepositAmount" type="number" min="0" step="0.01" placeholder="0.00"
+                            style="width:100%;padding:0.5rem;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.85rem;background:var(--bg);color:var(--fg);">
+                        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                            <span style="font-size:0.55rem;color:var(--dim);">Balance: <span id="vmDepositBalance">—</span> USDC</span>
+                            <button onclick="vaultSetMaxDeposit()" style="background:none;border:none;font-size:0.55rem;color:var(--fg);cursor:pointer;text-decoration:underline;">MAX</button>
+                        </div>
+                    </div>
+                    <div id="vmDepositPreview" style="display:none;margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:#f5f5f5;font-size:0.65rem;color:var(--dim);">
+                        You will receive: <span id="vmDepositSharesPreview" style="color:var(--fg);font-family:var(--font-mono);">—</span> shares
+                    </div>
+                    <button class="btn" onclick="executeDeposit()" id="vmDepositBtn"
+                        style="width:100%;font-size:0.7rem;padding:0.6rem;background:var(--fg);color:var(--bg);">
+                        Deposit
+                    </button>
+                </div>
+
+                <!-- Withdraw Panel -->
+                <div id="vmWithdrawPanel" style="display:none;">
+                    <div style="margin-bottom:0.75rem;">
+                        <label style="font-size:0.6rem;color:var(--dim);display:block;margin-bottom:4px;">Token</label>
+                        <select id="vmWithdrawToken" style="width:100%;padding:0.4rem 0.5rem;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.7rem;background:var(--bg);color:var(--fg);">
+                            <option value="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v">USDC (Mainnet)</option>
+                            <option value="4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU">USDC (Devnet)</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom:0.5rem;">
+                        <label style="font-size:0.6rem;color:var(--dim);display:block;margin-bottom:4px;">Shares to Withdraw</label>
+                        <input id="vmWithdrawShares" type="number" min="0" step="1" placeholder="0"
+                            style="width:100%;padding:0.5rem;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.85rem;background:var(--bg);color:var(--fg);">
+                        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                            <span style="font-size:0.55rem;color:var(--dim);">Your shares: <span id="vmWithdrawShareBalance">—</span></span>
+                            <button onclick="vaultSetMaxWithdraw()" style="background:none;border:none;font-size:0.55rem;color:var(--fg);cursor:pointer;text-decoration:underline;">ALL</button>
+                        </div>
+                    </div>
+                    <div id="vmWithdrawPreview" style="display:none;margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:#f5f5f5;font-size:0.65rem;color:var(--dim);">
+                        You will receive: <span id="vmWithdrawAssetsPreview" style="color:var(--fg);font-family:var(--font-mono);">—</span> USDC
+                    </div>
+                    <button class="btn" onclick="executeWithdraw()" id="vmWithdrawBtn"
+                        style="width:100%;font-size:0.7rem;padding:0.6rem;background:var(--fg);color:var(--bg);">
+                        Withdraw
+                    </button>
+                </div>
+
+                <!-- Status message -->
+                <div id="vmStatusMsg" style="display:none;margin-top:0.75rem;padding:0.5rem 0.75rem;font-size:0.65rem;border:1px solid var(--border);"></div>
+
+            </div>
+        </div>
+    </div>
 
     <div class="api-heatmap-tooltip" id="apiTooltip"></div>
     <div class="agent-perf-tooltip" id="agentPerfTooltip"></div>
@@ -3244,71 +3365,8 @@
         setInterval(updateTxMatrix, 150);
         setInterval(fetchLiveTxSignatures, 10000);
 
-        // Performance Graphs (light theme)
-        function initGraph(canvasId, color, speed) {
-            const canvas = document.getElementById(canvasId);
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-            let data = new Array(50).fill(0.5);
-            let time = 0;
-
-            function resize() {
-                canvas.width = canvas.parentElement.offsetWidth;
-                canvas.height = canvas.parentElement.offsetHeight;
-            }
-            window.addEventListener('resize', resize);
-            resize();
-
-            function draw() {
-                time += speed;
-                const noise = Math.sin(time * 7.3 + speed * 13.1) * 0.05;
-                const trend = Math.sin(time) * 0.3 + 0.5;
-                const newVal = Math.max(0.1, Math.min(0.9, trend + noise));
-
-                data.push(newVal);
-                data.shift();
-
-                // Light background
-                ctx.fillStyle = '#fafafa';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                // Grid line
-                ctx.strokeStyle = '#e0e0e0';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(0, canvas.height / 2);
-                ctx.lineTo(canvas.width, canvas.height / 2);
-                ctx.stroke();
-
-                // Data line (dark on light)
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                const step = canvas.width / (data.length - 1);
-
-                for (let i = 0; i < data.length; i++) {
-                    const x = i * step;
-                    const y = canvas.height - (data[i] * canvas.height);
-                    if (i === 0) ctx.moveTo(x, y);
-                    else ctx.lineTo(x, y);
-                }
-                ctx.stroke();
-
-                // End dot
-                const lastX = canvas.width;
-                const lastY = canvas.height - (data[data.length - 1] * canvas.height);
-                ctx.beginPath();
-                ctx.arc(lastX - 2, lastY, 2, 0, Math.PI * 2);
-                ctx.fillStyle = color;
-                ctx.fill();
-
-                requestAnimationFrame(draw);
-            }
-            draw();
-        }
-
-        initGraph('canvasLoss', '#080808', 0.05);
-        initGraph('canvasAcc', '#080808', 0.02);
+        // Performance Graphs: canvas animations removed — no model training data available
+        // initGraph was replaced with static empty-state divs (canvasLoss, canvasAcc)
 
         // Wave selector
         function setWave(el) {
@@ -3545,48 +3603,48 @@
         const AGENTS_DATA = {
             momentum: {
                 name: 'Momentum Agent',
-                status: 'ACTIVE', statusClass: 'text-green',
-                signal: 'LONG', signalClass: 'text-green',
-                confidence: '87%', lastUpdate: '12s ago',
-                winRate: '68.4%', totalTrades: 47, avgReturn: '+2.34%', avgReturnClass: 'text-green', sharpe: '1.82',
-                lookback: '20 candles', threshold: '1.5 std dev', maxPos: '15% portfolio', regimeAdj: 'ON', regimeAdjClass: 'text-green',
-                analysis: 'Strong momentum detected on SOL/USDC. Price broke above 20-period EMA with increasing volume. RSI at 62, not yet overbought. Regime classification supports trend-following strategies. Recommend maintaining long bias with trailing stop at $165.',
+                status: '—', statusClass: 'text-dim',
+                signal: '—', signalClass: 'text-dim',
+                confidence: '—', lastUpdate: '—',
+                winRate: '—', totalTrades: '—', avgReturn: '—', avgReturnClass: 'text-dim', sharpe: '—',
+                lookback: '20 candles', threshold: '1.5 std dev', maxPos: '15% portfolio', regimeAdj: '—', regimeAdjClass: 'text-dim',
+                analysis: 'Waiting for live analysis...',
             },
             meanrev: {
                 name: 'Mean Reversion Agent',
-                status: 'ACTIVE', statusClass: 'text-green',
-                signal: 'SHORT', signalClass: 'text-red',
-                confidence: '73%', lastUpdate: '8s ago',
-                winRate: '72.1%', totalTrades: 38, avgReturn: '+1.87%', avgReturnClass: 'text-green', sharpe: '2.14',
-                lookback: '50 candles', threshold: '2.0 std dev', maxPos: '12% portfolio', regimeAdj: 'ON', regimeAdjClass: 'text-green',
-                analysis: 'SOL/USDC trading 1.8 std dev above 50-period mean. Bollinger Band squeeze detected — expecting reversion. Z-score at 1.92 suggests overextension. Historical mean reversion probability at this level: 71%. Recommend short entry with tight stop above upper band.',
+                status: '—', statusClass: 'text-dim',
+                signal: '—', signalClass: 'text-dim',
+                confidence: '—', lastUpdate: '—',
+                winRate: '—', totalTrades: '—', avgReturn: '—', avgReturnClass: 'text-dim', sharpe: '—',
+                lookback: '50 candles', threshold: '2.0 std dev', maxPos: '12% portfolio', regimeAdj: '—', regimeAdjClass: 'text-dim',
+                analysis: 'Waiting for live analysis...',
             },
             sentiment: {
                 name: 'Sentiment Agent',
-                status: 'ACTIVE', statusClass: 'text-green',
-                signal: 'LONG', signalClass: 'text-green',
-                confidence: '64%', lastUpdate: '45s ago',
-                winRate: '61.8%', totalTrades: 52, avgReturn: '+1.42%', avgReturnClass: 'text-green', sharpe: '1.31',
-                lookback: '24h rolling', threshold: '0.6 sentiment score', maxPos: '10% portfolio', regimeAdj: 'OFF', regimeAdjClass: 'text-dim',
-                analysis: 'Social sentiment for SOL is net positive. Twitter mention volume up 34% in last 6h. Weighted sentiment score: 0.72 (bullish). Key influencer @solaboratory posted positive analysis. Caution: sentiment can reverse quickly on whale movements.',
+                status: '—', statusClass: 'text-dim',
+                signal: '—', signalClass: 'text-dim',
+                confidence: '—', lastUpdate: '—',
+                winRate: '—', totalTrades: '—', avgReturn: '—', avgReturnClass: 'text-dim', sharpe: '—',
+                lookback: '24h rolling', threshold: '0.6 sentiment score', maxPos: '10% portfolio', regimeAdj: '—', regimeAdjClass: 'text-dim',
+                analysis: 'Waiting for live analysis...',
             },
             risk: {
                 name: 'Risk Agent',
-                status: 'WARNING', statusClass: 'text-dim',
-                signal: 'HEDGE', signalClass: 'text-dim',
-                confidence: '91%', lastUpdate: '3s ago',
-                winRate: '74.2%', totalTrades: 29, avgReturn: '+0.89%', avgReturnClass: 'text-green', sharpe: '2.67',
-                lookback: 'Real-time', threshold: '5% max drawdown', maxPos: '20% portfolio', regimeAdj: 'ON', regimeAdjClass: 'text-green',
-                analysis: 'Portfolio VaR (95%) at $2,341. Current drawdown: 1.8% from peak. Correlation between SOL and RAY positions elevated at 0.82 — consider reducing correlated exposure. Liquidation distance healthy across all positions. Recommend partial hedge on SOL via put options.',
+                status: '—', statusClass: 'text-dim',
+                signal: '—', signalClass: 'text-dim',
+                confidence: '—', lastUpdate: '—',
+                winRate: '—', totalTrades: '—', avgReturn: '—', avgReturnClass: 'text-dim', sharpe: '—',
+                lookback: 'Real-time', threshold: '5% max drawdown', maxPos: '20% portfolio', regimeAdj: '—', regimeAdjClass: 'text-dim',
+                analysis: 'Waiting for live analysis...',
             },
             arbitrage: {
                 name: 'Arbitrage Agent',
-                status: 'ACTIVE', statusClass: 'text-green',
-                signal: 'LONG', signalClass: 'text-green',
-                confidence: '95%', lastUpdate: '1s ago',
-                winRate: '83.6%', totalTrades: 124, avgReturn: '+0.34%', avgReturnClass: 'text-green', sharpe: '3.41',
-                lookback: 'Real-time', threshold: '0.15% spread', maxPos: '8% portfolio', regimeAdj: 'OFF', regimeAdjClass: 'text-dim',
-                analysis: 'Cross-DEX spread on SOL/USDC: Jupiter $178.42 vs Orca $178.38 (0.02%). Below threshold — no arb opportunity. BONK/USDC showing 0.18% spread between Raydium and Jupiter — executing. Latency: 340ms avg. Gas optimization active.',
+                status: '—', statusClass: 'text-dim',
+                signal: '—', signalClass: 'text-dim',
+                confidence: '—', lastUpdate: '—',
+                winRate: '—', totalTrades: '—', avgReturn: '—', avgReturnClass: 'text-dim', sharpe: '—',
+                lookback: 'Real-time', threshold: '0.15% spread', maxPos: '8% portfolio', regimeAdj: '—', regimeAdjClass: 'text-dim',
+                analysis: 'Waiting for live analysis...',
             },
         };
 
@@ -3699,13 +3757,34 @@
             event.target.classList.add('active');
         }
 
-        // Trade mode selection
-        document.querySelectorAll('.mode-option').forEach(option => {
-            option.addEventListener('click', () => {
-                document.querySelectorAll('.mode-option').forEach(o => o.classList.remove('active'));
-                option.classList.add('active');
+        // Trade mode selection — wired to /strategies/trade-mode
+        function applyTradeMode(mode) {
+            document.querySelectorAll('.mode-option').forEach(function(o) {
+                o.classList.toggle('active', o.getAttribute('data-mode') === mode);
+            });
+        }
+
+        document.querySelectorAll('.mode-option').forEach(function(option) {
+            option.addEventListener('click', async function() {
+                var mode = option.getAttribute('data-mode');
+                if (!mode) return;
+                applyTradeMode(mode); // optimistic update
+                var result = await CortexAPI.post('/strategies/trade-mode', { mode: mode });
+                if (!result) {
+                    showToast('Backend unreachable — trade mode not persisted', 'warning');
+                } else {
+                    showToast('Trade mode set to ' + mode, 'success');
+                }
             });
         });
+
+        // Load current trade mode on page start
+        (async function loadTradeMode() {
+            var data = await CortexAPI.get('/strategies/trade-mode');
+            if (data && data.mode) {
+                applyTradeMode(data.mode);
+            }
+        })();
 
         // === STRATEGY CONTROL PANEL (live from /strategies/config) ===
         let STRATEGIES = [];
@@ -3754,13 +3833,31 @@
             el.innerHTML = html;
         }
 
-        function toggleStrategy(idx, toggleEl) {
-            STRATEGIES[idx].enabled = !STRATEGIES[idx].enabled;
-            STRATEGIES[idx].status = STRATEGIES[idx].enabled ? 'running' : 'paused';
-            toggleEl.classList.toggle('on');
+        async function toggleStrategy(idx, toggleEl) {
+            var strat = STRATEGIES[idx];
+            if (!strat) return;
+
+            // Optimistic update
+            strat.enabled = !strat.enabled;
+            strat.status = strat.enabled ? 'running' : 'paused';
+            toggleEl.classList.toggle('on', strat.enabled);
             renderStrategyPanel(idx);
-            var active = STRATEGIES.filter(s => s.enabled).length;
+            var active = STRATEGIES.filter(function(s) { return s.enabled; }).length;
             document.getElementById('stratActiveCount').textContent = active + ' ACTIVE';
+
+            // Persist to backend
+            var key = strat.key || strat.name;
+            var result = await CortexAPI.post('/strategies/' + encodeURIComponent(key) + '/toggle', {});
+            if (!result) {
+                // Revert optimistic update on failure
+                strat.enabled = !strat.enabled;
+                strat.status = strat.enabled ? 'running' : 'paused';
+                toggleEl.classList.toggle('on', strat.enabled);
+                renderStrategyPanel(idx);
+                var active2 = STRATEGIES.filter(function(s) { return s.enabled; }).length;
+                document.getElementById('stratActiveCount').textContent = active2 + ' ACTIVE';
+                showToast('Backend unreachable — strategy toggle not saved', 'warning');
+            }
         }
 
         function buildStrategyTabs(strategies) {
@@ -3788,9 +3885,10 @@
                 STRATEGIES = data.strategies;
                 document.getElementById('stratActiveCount').textContent = (data.active_count || STRATEGIES.length) + ' ACTIVE';
             } else {
-                // Fallback: keep panel empty with a message if API is down
+                // Backend unreachable or returned no strategies
                 STRATEGIES = [];
                 document.getElementById('stratActiveCount').textContent = '— OFFLINE';
+                showToast('Backend unreachable — strategy config unavailable', 'warning');
             }
             if (STRATEGIES.length > 0) {
                 buildStrategyTabs(STRATEGIES);
@@ -3975,6 +4073,35 @@
         }
 
         // --- Render wallet status ---
+        function updatePortfolioSummary(totalValue, daily) {
+            const valEl = document.getElementById('portfolioValue');
+            const chgEl = document.getElementById('portfolioChange');
+            if (!valEl || !chgEl) return;
+            valEl.textContent = fmtUsd(totalValue);
+            if (typeof daily === 'number' && totalValue > 0) {
+                const sign = daily >= 0 ? '+' : '';
+                const pct = ((daily / totalValue) * 100).toFixed(2);
+                chgEl.className = 'portfolio-change ' + (daily >= 0 ? 'positive' : 'negative');
+                chgEl.style.color = '';
+                chgEl.textContent = sign + fmtUsd(Math.abs(daily)) + ' (' + sign + pct + '%)';
+            } else {
+                chgEl.className = 'portfolio-change';
+                chgEl.style.color = 'var(--dim)';
+                chgEl.textContent = 'Wallet connected — loading P&L...';
+            }
+        }
+
+        function resetPortfolioSummary() {
+            const valEl = document.getElementById('portfolioValue');
+            const chgEl = document.getElementById('portfolioChange');
+            if (valEl) valEl.textContent = '$0.00';
+            if (chgEl) {
+                chgEl.className = 'portfolio-change';
+                chgEl.style.color = 'var(--dim)';
+                chgEl.textContent = 'Connect wallet to view portfolio';
+            }
+        }
+
         function renderWalletStatus(rows) {
             const totalValue = rows.reduce((s, r) => s + r.usdValue, 0);
             const holdingsBody = document.getElementById('wsHoldingsBody');
@@ -3983,6 +4110,8 @@
 
             liveTag.textContent = 'LIVE';
             liveTag.className = 'text-green';
+
+            updatePortfolioSummary(totalValue, null);
 
             if (rows.length === 0) {
                 pnlBanner.innerHTML = '<span class="ws-pnl-value text-dim">$0.00</span><span class="text-dim" style="font-size:0.65rem; margin-left:auto;">No holdings found</span>';
@@ -4065,6 +4194,9 @@
                 pctEl.className = 'ws-time-pct ' + cls;
                 pctEl.textContent = pnlSign(pct) + pct.toFixed(2) + '%';
             }
+
+            // Also update portfolio summary header with live daily P&L
+            if (totalValue) updatePortfolioSummary(totalValue, daily);
         }
 
         // --- Wallet status visibility ---
@@ -4075,6 +4207,7 @@
         function hideWalletStatus() {
             document.getElementById('walletStatus').style.display = 'none';
             if (walletDataInterval) { clearInterval(walletDataInterval); walletDataInterval = null; }
+            resetPortfolioSummary();
         }
 
         function resetWalletStatusUI() {
@@ -4250,39 +4383,47 @@
 
         // Ticker updates handled by fetchTickerPrices() with real CoinGecko data (30s interval)
 
-        // --- Active Positions Grid (animated removal) ---
-        const POSITION_POOL = [
-            { pair: 'SOL/USDC', logo: 'assets/logos/solana-sol-logo.png', side: 'LONG', sideClass: 'text-green', entry: 172.40 },
-            { pair: 'RAY/USDC', logo: 'assets/logos/raydium-ray-logo.svg', side: 'LONG', sideClass: 'text-green', entry: 2.84 },
-            { pair: 'JUP/USDC', logo: 'assets/logos/jupiter-ag-jup-logo.svg', side: 'LONG', sideClass: 'text-green', entry: 1.12 },
-            { pair: 'BONK/USDC', logo: 'assets/logos/bonk1-bonk-logo.svg', side: 'SHORT', sideClass: 'text-red', entry: 0.000031 },
-            { pair: 'ORCA/USDC', logo: 'assets/logos/orca-orca-logo.svg', side: 'LONG', sideClass: 'text-green', entry: 4.12 },
-            { pair: 'SOL/USDC', logo: 'assets/logos/solana-sol-logo.png', side: 'SHORT', sideClass: 'text-red', entry: 180.20 },
-            { pair: 'RAY/USDC', logo: 'assets/logos/raydium-ray-logo.svg', side: 'SHORT', sideClass: 'text-red', entry: 3.10 },
-            { pair: 'JUP/USDC', logo: 'assets/logos/jupiter-ag-jup-logo.svg', side: 'SHORT', sideClass: 'text-red', entry: 1.28 },
-            { pair: 'ORCA/USDC', logo: 'assets/logos/orca-orca-logo.svg', side: 'SHORT', sideClass: 'text-red', entry: 4.50 },
-            { pair: 'SOL/USDC', logo: 'assets/logos/solana-sol-logo.png', side: 'LONG', sideClass: 'text-green', entry: 168.90 },
-        ];
+        // --- Auto-open wallet modal if ?connect=1 is in the URL ---
+        (function checkConnectParam() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('connect') !== '1') return;
+            // Delay to let restoreWallet() finish its async reconnect attempt first
+            setTimeout(function() {
+                if (!walletState) {
+                    renderWalletGrid();
+                    document.getElementById('walletModal').classList.add('active');
+                }
+            }, 500);
+        })();
 
+        // --- Active Positions Grid (real API data) ---
         let activePositions = [];
 
         function buildPosCard(pos, idx) {
+            const sideClass = pos.side === 'LONG' ? 'text-green' : 'text-red';
             const currentPrice = (window._latestTickerPrices && window._latestTickerPrices[pos.pair]) || pos.entry;
             const rawPnl = pos.side === 'LONG'
                 ? ((currentPrice - pos.entry) / pos.entry) * 100
                 : ((pos.entry - currentPrice) / pos.entry) * 100;
             const pnl = rawPnl.toFixed(2);
             const isUp = rawPnl >= 0;
+            const logoHtml = pos.logo ? '<img src="' + pos.logo + '" alt="">' : '';
             return '<div class="pos-card" data-pos-idx="' + idx + '">' +
                 '<button class="pos-card-close" onclick="closePosition(' + idx + ')">&times;</button>' +
-                '<div class="pos-card-pair"><img src="' + pos.logo + '" alt="">' + pos.pair + '</div>' +
-                '<div class="pos-card-meta"><span class="' + pos.sideClass + '">' + pos.side + '</span> · $' + pos.entry + '</div>' +
+                '<div class="pos-card-pair">' + logoHtml + pos.pair + '</div>' +
+                '<div class="pos-card-meta"><span class="' + sideClass + '">' + pos.side + '</span> · $' + pos.entry + '</div>' +
                 '<div class="pos-card-pnl ' + (isUp ? 'text-green' : 'text-red') + '">' + (isUp ? '+' : '') + pnl + '%</div>' +
             '</div>';
         }
 
         function renderPositions() {
             const grid = document.getElementById('positionsGrid');
+            if (!grid) return;
+            if (activePositions.length === 0) {
+                grid.innerHTML = '<div style="padding:1.5rem;color:var(--dim);font-size:0.75rem;text-align:center;grid-column:1/-1;">No active positions — system idle</div>';
+                document.getElementById('posCount').textContent = '0 OPEN';
+                return;
+            }
             grid.innerHTML = activePositions.map((p, i) => buildPosCard(p, i)).join('');
             document.getElementById('posCount').textContent = activePositions.length + ' OPEN';
         }
@@ -4297,17 +4438,19 @@
             }, { once: true });
         }
 
-        function closeRandomPosition() {
-            if (activePositions.length === 0) return;
-            closePosition(0);
-        }
-
-        function resetPositions() {
-            activePositions = POSITION_POOL.map(p => ({ ...p }));
+        async function loadPositions() {
+            try {
+                const res = await fetch('/api/v1/portfolio/positions');
+                if (!res.ok) throw new Error('API error ' + res.status);
+                const data = await res.json();
+                activePositions = Array.isArray(data) ? data : (data.positions || []);
+            } catch (_) {
+                activePositions = [];
+            }
             renderPositions();
         }
 
-        resetPositions();
+        loadPositions();
 
         // --- TradingView Lightweight Charts ---
         const TV_DEFAULT_POOL = '7qbRF6YsyGuLUVs6Y1q64bdVrfe4ZcUUz1JRdoVNUJnm';
@@ -5066,85 +5209,21 @@
     </script>
 
     <script>
-    // === AGENT SIGNAL CLUSTERING — ecStat K-Means ===
+    // === AGENT SIGNAL CLUSTERING — empty state until live data available ===
     (function () {
-        const el = document.getElementById('agentClusterChart');
-        if (!el || typeof echarts === 'undefined' || typeof ecStat === 'undefined') return;
-        echarts.registerTransform(ecStat.transform.clustering);
-
-        const data = [
-            [3.275,2.958],[-3.344,2.604],[0.355,-3.377],[1.852,3.547],[-2.079,2.552],
-            [-0.994,-0.884],[2.682,4.008],[-3.088,2.879],[-1.566,-1.257],[2.442,0.445],
-            [-0.659,3.111],[-0.460,-2.618],[2.178,2.388],[-2.921,2.917],[-0.029,-4.168],
-            [3.626,2.119],[-3.912,1.325],[-0.552,-2.814],[2.856,3.483],[-3.594,2.857],
-            [0.422,-2.373],[1.651,3.408],[-2.083,3.384],[-0.719,-2.493],[4.514,3.841],
-            [-4.822,4.607],[-0.656,-1.450],[1.920,4.439],[-3.288,3.919],[-1.577,-2.978],
-            [3.598,1.976],[-3.977,4.901],[-1.791,-2.185],[3.915,3.559],[-1.910,4.167],
-            [-1.227,-3.318],[1.149,3.345],[-2.114,3.548],[0.846,-3.590],[2.629,3.536],
-            [-1.641,2.991],[-1.881,-2.485],[4.607,3.510],[-4.366,4.023],[0.765,-3.001],
-            [3.122,2.174],[-4.025,4.652],[-0.560,-3.841],[4.377,4.864],[-1.874,4.032],
-            [-0.089,-3.027],[3.998,2.519],[-3.083,2.885],[0.845,-3.454],[1.327,3.359],
-            [-2.890,3.596],[-0.966,-2.840],[2.961,3.080],[-3.276,1.577],[0.639,-3.413]
-        ];
-
-        const CLUSTER_COUNT = 6;
-        const DIM_CLUSTER = 2;
-        const PASTEL = ['#a8d8ea','#f6c6a8','#c3b1e1','#b5e6b5','#f9d5e5','#ffe0ac'];
-        const LABELS = ['Momentum','Mean Rev','Sentiment','Risk','Arbitrage','Execution'];
-
-        const pieces = LABELS.map(function (name, i) {
-            return { value: i, label: name, color: PASTEL[i] };
-        });
-
-        const fontFamily = getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim() || 'sans-serif';
-
-        const chart = echarts.init(el);
-        chart.setOption({
-            dataset: [
-                { source: data },
-                {
-                    transform: {
-                        type: 'ecStat:clustering',
-                        config: { clusterCount: CLUSTER_COUNT, outputType: 'single', outputClusterIndexDimension: DIM_CLUSTER }
-                    }
-                }
-            ],
-            backgroundColor: 'transparent',
-            textStyle: { fontFamily },
-            tooltip: {
-                trigger: 'item',
-                backgroundColor: '#080808',
-                borderColor: '#080808',
-                textStyle: { color: '#fff', fontFamily, fontSize: 11 },
-                formatter: function (p) {
-                    var ci = p.value[DIM_CLUSTER];
-                    return (LABELS[ci] || 'Cluster ' + ci) + '<br>Confidence: ' + p.value[0].toFixed(2) + '<br>Signal Strength: ' + p.value[1].toFixed(2);
-                }
-            },
-            visualMap: {
-                type: 'piecewise',
-                top: 'middle',
-                min: 0,
-                max: CLUSTER_COUNT,
-                left: 10,
-                splitNumber: CLUSTER_COUNT,
-                dimension: DIM_CLUSTER,
-                pieces: pieces,
-                textStyle: { fontFamily, fontSize: 10, color: '#222' }
-            },
-            grid: { left: 120, right: 20, top: 20, bottom: 30 },
-            xAxis: { name: 'Confidence', nameTextStyle: { fontFamily, fontSize: 10, color: '#222' }, axisLine: { lineStyle: { color: '#000' } }, splitLine: { lineStyle: { color: '#eee' } }, axisLabel: { fontSize: 10, color: '#222' } },
-            yAxis: { name: 'Signal Strength', nameTextStyle: { fontFamily, fontSize: 10, color: '#222' }, axisLine: { lineStyle: { color: '#000' } }, splitLine: { lineStyle: { color: '#eee' } }, axisLabel: { fontSize: 10, color: '#222' } },
-            series: {
-                type: 'scatter',
-                encode: { tooltip: [0, 1] },
-                symbolSize: 10,
-                itemStyle: { borderColor: '#ccc', borderWidth: 1 },
-                datasetIndex: 1
-            }
-        });
-
-        window.addEventListener('resize', function () { chart.resize(); });
+        var el = document.getElementById('agentClusterChart');
+        if (!el) return;
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'center';
+        var msg = document.createElement('div');
+        msg.style.fontSize = '0.6rem';
+        msg.style.color = 'var(--dim)';
+        msg.style.fontFamily = 'var(--font-mono)';
+        msg.style.textAlign = 'center';
+        msg.textContent = 'No agent signal data available';
+        el.appendChild(msg);
+        /* hardcoded data array and chart removed — will be populated from live API */
     })();
     </script>
     <script src="js/toast.js"></script>
