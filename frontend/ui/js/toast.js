@@ -119,26 +119,7 @@
 
     window.getAlertHistory = function () { return alertHistory; };
 
-    // Demo alerts on page load
+    // System ready toast on page load
     setTimeout(function () { showToast('System initialized — all monitors active', 'success'); }, 2000);
-    setTimeout(function () { showToast('Daily drawdown at 1.2% — within normal range', 'info'); }, 5000);
-
-    // Periodic simulated alerts
-    setInterval(function () {
-        var r = Math.random();
-        if (r < 0.03) {
-            showDrawdownAlert(3 + Math.random() * 3, 3 + Math.random() * 4);
-        } else if (r < 0.06) {
-            var strats = ['LP Rebalancing', 'Arbitrage', 'Perpetuals'];
-            var triggers = ['IL exit detected', 'Failed execution', 'Stop-loss hit'];
-            var idx = Math.floor(Math.random() * 3);
-            showCircuitBreakerAlert(strats[idx], triggers[idx], Math.random() < 0.3 ? 'TRIPPED' : 'WARNING');
-        } else if (r < 0.08) {
-            var sources = ['Pyth', 'Switchboard', 'Birdeye'];
-            showOracleAlert(sources[Math.floor(Math.random() * 3)], 20 + Math.floor(Math.random() * 20));
-        } else if (r < 0.10) {
-            showExecutionAlert(7 + Math.random() * 6);
-        }
-    }, 15000);
 })();
 

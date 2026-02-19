@@ -3261,7 +3261,7 @@
 
             function draw() {
                 time += speed;
-                const noise = (Math.random() - 0.5) * 0.1;
+                const noise = Math.sin(time * 7.3 + speed * 13.1) * 0.05;
                 const trend = Math.sin(time) * 0.3 + 0.5;
                 const newVal = Math.max(0.1, Math.min(0.9, trend + noise));
 
@@ -3436,21 +3436,6 @@
             });
         }
 
-        function mockActiveTrades() {
-            var pairs = ['SOL','RAY','JUP','BONK','ORCA','DRIFT'];
-            var strats = ['spot','lp','arb','perp'];
-            var statuses = ['executed','simulated','executed','executed','simulated','executed'];
-            return pairs.map(function (sym, i) {
-                return {
-                    token: sym, token_mint: '', direction: i % 3 === 0 ? 'sell' : 'buy',
-                    trade_size_usd: +(500 + Math.random() * 5000).toFixed(2),
-                    amount: +(1 + Math.random() * 100).toFixed(4),
-                    strategy: strats[i % strats.length], status: statuses[i],
-                    timestamp: (Date.now() / 1000) - i * 3600,
-                };
-            });
-        }
-
         async function loadActiveTrades() {
             var entries = null;
             try {
@@ -3461,7 +3446,11 @@
             } catch (e) {
                 console.warn('[TRADES] API fetch failed:', e.message);
             }
-            if (!entries) entries = mockActiveTrades();
+            if (!entries) {
+                var container = document.getElementById('tradeTableBody') || document.querySelector('.trade-table-body');
+                if (container) container.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--dim);font-size:0.6rem;font-family:var(--font-mono)">No active trades — waiting for API</div>';
+                return;
+            }
             renderTradeRows(entries);
         }
 
@@ -4310,8 +4299,7 @@
 
         function closeRandomPosition() {
             if (activePositions.length === 0) return;
-            const idx = Math.floor(Math.random() * activePositions.length);
-            closePosition(idx);
+            closePosition(0);
         }
 
         function resetPositions() {
@@ -4780,7 +4768,7 @@
                 const row = { agent };
                 timeframes.forEach(tf => {
                     const base = baseRates[agent] + tfAdj[tf];
-                    row[tf] = Math.round(Math.max(50, Math.min(85, base + (Math.random() * 8 - 4))) * 10) / 10;
+                    row[tf] = Math.round(Math.max(50, Math.min(85, base)) * 10) / 10;
                 });
                 return row;
             });

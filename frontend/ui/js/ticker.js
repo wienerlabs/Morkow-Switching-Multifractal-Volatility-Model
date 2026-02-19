@@ -39,15 +39,11 @@
         el.innerHTML = items + items; // eslint-disable-line no-unsanitized/property
     }
 
-    // Static fallback when all sources fail
-    var FALLBACK = {
-        SOL: { price: 148.50, change: 0 },
-        BTC: { price: 97200, change: 0 },
-        ETH: { price: 2680, change: 0 },
-        RAY: { price: 3.42, change: 0 },
-        JUP: { price: 0.92, change: 0 },
-        DRIFT: { price: 1.18, change: 0 },
-    };
+    function renderError() {
+        var el = document.getElementById('tickerContent');
+        if (!el) return;
+        el.innerHTML = '<span class="ticker-item" style="color:var(--dim)">Price data unavailable — retrying…</span>';
+    }
 
     async function fetchFromBackend() {
         if (typeof CortexAPI === 'undefined') return null;
@@ -94,8 +90,7 @@
         } catch (e) {
             console.warn('[TICKER] CoinGecko error:', e.message);
         }
-        // Static fallback
-        renderPrices(FALLBACK);
+        renderError();
     }
 
     if (document.getElementById('tickerContent')) {

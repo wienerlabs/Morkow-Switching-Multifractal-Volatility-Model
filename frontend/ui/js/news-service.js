@@ -103,7 +103,7 @@ function makeItem(id, source, title, sent, ts, body, imp, assets, link, api) {
         assets: assets.length ? assets.slice(0, 4) : ['CRYPTO'],
         action: sent.cls === 'bullish' ? 'Consider ' + coin0 + ' long' : sent.cls === 'bearish' ? 'Tighten ' + coin0 + ' stops' : 'Monitor ' + coin0,
         actionClass: sent.cls === 'bullish' ? 'text-green' : sent.cls === 'bearish' ? 'text-red' : 'text-dim',
-        signal: { pair: coin0 + '/USDT', type: 'News Signal', dir, conf: sent.cls === 'neutral' ? '55%' : (60 + Math.floor(Math.random() * 25)) + '%' },
+        signal: { pair: coin0 + '/USDT', type: 'News Signal', dir, conf: sent.cls === 'neutral' ? '55%' : Math.round(imp * 10) + '%' },
         link: link || '#',
         agentHint: agentHint(sent, assets),
         apiSource: api
@@ -487,11 +487,9 @@ function renderSparkline() {
     const el = document.getElementById('miSparkline');
     if (!el || typeof d3 === 'undefined') return;
     if (sentimentHistory.length < 2) {
-        // Seed with some initial data points
-        const now = Date.now();
-        for (let i = 20; i >= 1; i--) {
-            sentimentHistory.push({ ts: now - i * 60000, pct: 45 + Math.floor(Math.random() * 20) });
-        }
+        // Not enough data yet — sparkline will render once real data accumulates
+        el.innerHTML = '<span style="font-size:7px;color:var(--dim);font-family:var(--font-mono)">Collecting data…</span>';
+        return;
     }
 
     el.innerHTML = '';

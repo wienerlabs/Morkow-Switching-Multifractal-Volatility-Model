@@ -1,5 +1,4 @@
 // Agent Status Service — polls /agents/status and merges live data into AGENTS_DATA.
-// Falls back gracefully when the API is unavailable (keeps hardcoded defaults).
 
 const AGENT_POLL_MS = 15000;
 const AGENT_RETRY_MS = 5000;

@@ -261,25 +261,9 @@
         var timeWeek = d3.utcMonday;
         var countDay = function(i) { return (i + 6) % 7; };
 
-        // Fallback: generate synthetic PnL when API has no data
-        function generatePnlDataFallback() {
-            var data = [];
-            var now = new Date();
-            var startYear = now.getFullYear() - 1;
-            var cumPnl = 10000;
-            for (var y = startYear; y <= now.getFullYear(); y++) {
-                var start = new Date(y, 0, 1);
-                var end = y === now.getFullYear() ? now : new Date(y, 11, 31);
-                for (var d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                    if (d.getDay() === 0 || d.getDay() === 6) continue;
-                    var volatility = 0.02 + Math.random() * 0.03;
-                    var drift = 0.001;
-                    var change = drift + volatility * (Math.random() * 2 - 1);
-                    cumPnl *= (1 + change);
-                    data.push({ Date: d3.utcFormat('%Y-%m-%d')(d), Close: cumPnl, Change: change });
-                }
-            }
-            return data;
+        function renderEmptyCalendar() {
+            var el = document.getElementById('calendarChart');
+            if (el) el.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--dim);font-size:0.65rem;font-family:var(--font-mono)">No PnL data available — connect API to populate calendar</div>';
         }
 
         function initCalendar(rawData) {
@@ -395,7 +379,7 @@
             if (dailyPnl && dailyPnl.length > 0) {
                 initCalendar(dailyPnl);
             } else {
-                initCalendar(generatePnlDataFallback());
+                renderEmptyCalendar();
             }
         })();
     })();
@@ -432,14 +416,9 @@
             });
         }
 
-        // Fallback monthly data generator
-        function generateMonthlyFallback() {
-            var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            var now = new Date();
-            var active = months.slice(0, now.getMonth() + 1);
-            return active.map(function(m) {
-                return { month: m, lp: +(Math.random() * 1200 - 200).toFixed(0), arb: +(Math.random() * 800 - 100).toFixed(0), perp: +(Math.random() * 600 - 400).toFixed(0) };
-            });
+        function renderEmptyMonthlyChart() {
+            var el = document.getElementById('strategyChart');
+            if (el) el.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--dim);font-size:0.65rem;font-family:var(--font-mono)">No monthly strategy data — connect API to populate chart</div>';
         }
 
         function renderMonthlyChart(monthlyData) {
@@ -501,7 +480,7 @@
             var breakdown = entries ? HistoryService.computeStrategyBreakdown(entries, stratConfig) : null;
             var monthly = entries ? HistoryService.computeMonthlyStrategy(entries) : null;
             renderStrategyCards(breakdown || fallbackStrategies);
-            renderMonthlyChart(monthly || generateMonthlyFallback());
+            if (monthly) { renderMonthlyChart(monthly); } else { renderEmptyMonthlyChart(); }
         })();
     })();
     </script>
@@ -550,7 +529,7 @@
             renderAgentTable(attribution || fallbackAgents);
         })();
 
-        // Trade Decision Log — fetched from /execution/log, fallback to mock
+        // Trade Decision Log — fetched from /execution/log
         const tierLabels = { hot: 'HOT', warm: 'WARM', cold: 'COLD' };
         const tradeLog = document.getElementById('tradeLog');
         const stratNames = { arbitrage: 'Arbitrage', lp_rebalancing: 'LP Rebalancing', perpetuals: 'Perpetuals' };
@@ -558,7 +537,7 @@
         function renderTradeLog(entries) {
             tradeLog.textContent = '';
             entries.forEach(function(e) {
-                var pnl = e.pnl != null ? e.pnl : (Math.random() * 800 - 300);
+                var pnl = e.pnl != null ? e.pnl : 0;
                 var pnlClass = pnl >= 0 ? 'text-green' : 'text-red';
                 var pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
                 var ts = new Date(e.timestamp);
@@ -568,7 +547,7 @@
                 var side = (e.direction === 'buy' ? 'LONG' : 'SHORT');
                 var pair = e.token || 'SOL/USDC';
                 var strat = stratNames[e.strategy] || e.strategy || 'Spot';
-                var confidence = e.confidence || (50 + Math.random() * 45).toFixed(1);
+                var confidence = e.confidence || '—';
 
                 var entry = document.createElement('div');
                 entry.className = 'trade-entry';
@@ -617,14 +596,14 @@
             if (entries && entries.length > 0) {
                 renderTradeLog(entries);
             } else {
-                renderTradeLog(HistoryService._mockExecutionLog(15));
+                tradeLog.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--dim);font-size:0.6rem;font-family:var(--font-mono)">No trade history available</div>';
             }
         })();
     })();
     </script>
     <script>
     (function() {
-        // Analyst Report Archive — fetched from /narrator/briefing, fallback to mock
+        // Analyst Report Archive — fetched from /narrator/briefing
         var reportList = document.getElementById('reportList');
 
         function renderReports(reports) {
@@ -656,10 +635,10 @@
                 });
                 if (reports.length > 0) { renderReports(reports); return; }
             }
-            renderReports(HistoryService._mockAnalystReports(12));
+            reportList.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--dim);font-size:0.6rem;font-family:var(--font-mono)">No analyst reports available</div>';
         })();
 
-        // Debate Transcript Archive — fetched from /guardian/debates/recent, fallback to mock
+        // Debate Transcript Archive — fetched from /guardian/debates/recent
         var debateList = document.getElementById('debateList');
 
         function renderDebates(debates) {
@@ -724,7 +703,7 @@
             if (transcripts && transcripts.length > 0) {
                 renderDebates(transcripts);
             } else {
-                renderDebates(HistoryService._mockDebates(6));
+                debateList.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--dim);font-size:0.6rem;font-family:var(--font-mono)">No debate transcripts available</div>';
             }
         })();
     })();
