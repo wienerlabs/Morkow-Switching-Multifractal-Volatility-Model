@@ -591,6 +591,7 @@
 .ds-dot.online { background: var(--green); }
 .ds-dot.degraded { background: var(--yellow); }
 .ds-dot.offline { background: var(--red); }
+.ds-dot.unknown { background: var(--dim); }
 .ds-meta { font-size: 0.5rem; color: var(--dim); line-height: 1.5; }
 .ds-latency { font-size: 0.55rem; font-weight: 600; }
 .ds-freshness { font-size: 0.45rem; padding: 1px 4px; border: 1px solid; display: inline-block; margin-top: 2px; }

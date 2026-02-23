@@ -259,6 +259,28 @@ class RegimeStatisticsResponse(BaseModel):
     timestamp: datetime
 
 
+class RegimeEmissionParams(BaseModel):
+    mean: list[list[float]] = Field(..., description="Per-state emission means [return, vol, vol_ratio]")
+    std: list[list[float]] = Field(..., description="Per-state emission stds [return, vol, vol_ratio]")
+
+
+class RegimeCalibrationSummary(BaseModel):
+    sigma_low: float
+    sigma_high: float
+    p_stay: float | list[float]
+    leverage_gamma: float
+
+
+class RegimeParamsResponse(BaseModel):
+    token: str
+    num_states: int
+    transition_matrix: list[list[float]]
+    sigma_states: list[float]
+    emission_params: RegimeEmissionParams
+    calibration: RegimeCalibrationSummary
+    timestamp: datetime
+
+
 # ── Model Comparison Models ──
 
 

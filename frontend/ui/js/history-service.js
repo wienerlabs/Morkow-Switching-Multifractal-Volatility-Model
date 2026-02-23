@@ -67,7 +67,7 @@ const HistoryService = (function () {
 
     // ── Derived data: daily PnL from execution log ────────────────────
 
-    function computeDailyPnl(entries) {
+    function computeDailyPnl(entries, startingBalance) {
         if (!entries || !entries.length) return null;
         var byDate = {};
         entries.forEach(function (e) {
@@ -80,9 +80,9 @@ const HistoryService = (function () {
         });
         var keys = Object.keys(byDate).sort();
         if (!keys.length) return null;
-        var cumPnl = 10000;
+        var cumPnl = (typeof startingBalance === 'number' && startingBalance > 0) ? startingBalance : 0;
         return keys.map(function (k) {
-            var change = byDate[k].pnl / cumPnl;
+            var change = cumPnl > 0 ? byDate[k].pnl / cumPnl : 0;
             cumPnl += byDate[k].pnl;
             return { Date: k, Close: cumPnl, Change: change };
         });
@@ -90,7 +90,7 @@ const HistoryService = (function () {
 
     // ── Derived data: strategy breakdown from execution log ───────────
 
-    function computeStrategyBreakdown(entries, strategyConfig) {
+    function computeStrategyBreakdown(entries, strategyConfig, dailyPnl) {
         if (!entries || !entries.length) return null;
         var stratMap = { lp: 'LP Rebalancing', arb: 'Arbitrage', perp: 'Perpetuals' };
         var nameMap = {};
@@ -111,10 +111,15 @@ const HistoryService = (function () {
             strategyConfig.strategies.forEach(function (s) { configs[s.key] = s; });
         }
 
+        var computedMaxPnl = 0;
+        if (dailyPnl && dailyPnl.length) {
+            computedMaxPnl = Math.max.apply(null, dailyPnl.map(function (d) { return d.Close; }));
+        }
+
         return ['lp', 'arb', 'perp'].map(function (key) {
             var s = stats[key] || { trades: 0, wins: 0, pnl: 0 };
             var cfg = configs[key] || {};
-            var alloc = cfg.allocation ? cfg.allocation + '%' : (key === 'lp' ? '40%' : '30%');
+            var alloc = cfg.allocation ? cfg.allocation + '%' : '—';
             var params = (cfg.params || []).map(function (p) { return p.key + ': ' + p.val; }).join(' · ');
             return {
                 name: stratMap[key] || key,
@@ -122,7 +127,7 @@ const HistoryService = (function () {
                 pnl: +s.pnl.toFixed(2),
                 trades: s.trades,
                 winRate: s.trades > 0 ? +(s.wins / s.trades * 100).toFixed(1) : 0,
-                maxPnl: 12000,
+                maxPnl: computedMaxPnl,
                 color: s.pnl >= 0 ? 'var(--green)' : 'var(--red)',
                 params: params || 'No config available',
             };
@@ -202,20 +207,42 @@ const HistoryService = (function () {
             ]);
 
         var entries = execLog.status === 'fulfilled' ? execLog.value : null;
+        var eStats = execStats.status === 'fulfilled' ? execStats.value : null;
         var sCfg = stratConfig.status === 'fulfilled' ? stratConfig.value : null;
         var aSt = agentSt.status === 'fulfilled' ? agentSt.value : null;
 
+        // Extract starting balance: API field > first entry portfolio_value > 0
+        var startingBalance = 0;
+        if (eStats && typeof eStats.initial_balance === 'number') {
+            startingBalance = eStats.initial_balance;
+        } else if (eStats && typeof eStats.starting_balance === 'number') {
+            startingBalance = eStats.starting_balance;
+        } else if (eStats && typeof eStats.total_volume_usd === 'number' && eStats.total_volume_usd > 0) {
+            startingBalance = 0;
+        }
+        if (startingBalance === 0 && entries && entries.length) {
+            var firstEntry = entries[0];
+            if (typeof firstEntry.portfolio_value === 'number' && firstEntry.portfolio_value > 0) {
+                startingBalance = firstEntry.portfolio_value;
+            }
+        }
+        if (startingBalance === 0) {
+            console.warn('[HistoryService] No starting balance available — using 0');
+        }
+
+        var pnl = computeDailyPnl(entries, startingBalance);
+
         return {
             executionLog: entries,
-            executionStats: execStats.status === 'fulfilled' ? execStats.value : null,
+            executionStats: eStats,
             kellyStats: kelly.status === 'fulfilled' ? kelly.value : null,
             debates: debates.status === 'fulfilled' ? debates.value : null,
             debateStats: debateStats.status === 'fulfilled' ? debateStats.value : null,
             circuitBreakers: circuitBreakers.status === 'fulfilled' ? circuitBreakers.value : null,
             strategyConfig: sCfg,
             agentStatus: aSt,
-            dailyPnl: computeDailyPnl(entries),
-            strategyBreakdown: computeStrategyBreakdown(entries, sCfg),
+            dailyPnl: pnl,
+            strategyBreakdown: computeStrategyBreakdown(entries, sCfg, pnl),
             monthlyStrategy: computeMonthlyStrategy(entries),
             agentAttribution: buildAgentAttribution(aSt),
         };

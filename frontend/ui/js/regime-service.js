@@ -11,7 +11,7 @@ let regimeTimer = null;
 // Transition matrix (5x5) — Wyckoff cycle encoded
 // Rows = from state, Cols = to state
 // [ACCUM, MARKUP, DISTRIB, MARKDOWN, CRISIS]
-const TRANSITION = [
+let TRANSITION = [
     [0.50, 0.30, 0.05, 0.10, 0.05], // from ACCUMULATION
     [0.05, 0.55, 0.30, 0.05, 0.05], // from MARKUP
     [0.05, 0.10, 0.45, 0.30, 0.10], // from DISTRIBUTION
@@ -21,7 +21,7 @@ const TRANSITION = [
 
 // Emission parameters: [mean, std] for each feature per state
 // Features: [daily_return, volatility, volume_ratio]
-const EMISSION = {
+let EMISSION = {
     mean: [
         [0.000, 0.015, 0.90],  // ACCUMULATION: flat, low vol, low volume
         [0.025, 0.020, 1.30],  // MARKUP: positive return, moderate vol, high volume
@@ -37,6 +37,26 @@ const EMISSION = {
         [0.035, 0.020, 0.50],
     ],
 };
+
+let _regimeParamsLoaded = false;
+
+async function loadRegimeParams() {
+    if (_regimeParamsLoaded) return;
+    try {
+        if (typeof CortexAPI === 'undefined') throw new Error('CortexAPI not loaded');
+        const params = await CortexAPI.get('/regime/params?token=SOL');
+        if (params && params.transition_matrix && params.emission_params) {
+            TRANSITION = params.transition_matrix;
+            EMISSION = params.emission_params;
+            _regimeParamsLoaded = true;
+            console.log('[REGIME] Using backend params (' + params.num_states + ' states)');
+            return;
+        }
+    } catch (e) {
+        console.debug('[REGIME] /regime/params unavailable, using defaults:', e.message);
+    }
+    console.log('[REGIME] Using default params');
+}
 
 function gaussianPdf(x, mean, std) {
     const z = (x - mean) / std;
@@ -432,8 +452,9 @@ function refreshAgentCards() {
     }
 }
 
-function startRegimeDetection() {
+async function startRegimeDetection() {
     console.log('[REGIME] Starting Markov Regime Detection — interval: ' + (REGIME_REFRESH_MS / 1000) + 's');
+    await loadRegimeParams();
     detectRegime();
     if (regimeTimer) clearInterval(regimeTimer);
     regimeTimer = setInterval(detectRegime, REGIME_REFRESH_MS);
