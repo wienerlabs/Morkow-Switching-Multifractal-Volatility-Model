@@ -529,6 +529,30 @@ HUMAN_OVERRIDE_ENABLED = os.environ.get("HUMAN_OVERRIDE_ENABLED", "true").lower(
 HUMAN_OVERRIDE_DEFAULT_TTL = float(os.environ.get("HUMAN_OVERRIDE_DEFAULT_TTL", "3600"))  # 1 hour
 HUMAN_OVERRIDE_MAX_TTL = float(os.environ.get("HUMAN_OVERRIDE_MAX_TTL", "86400"))  # 24 hours max
 
+# ── OpenAlice-Inspired Features ──
+
+# Cognitive State Machine (dynamic Fear/Greed → agent emotion)
+COGNITIVE_STATE_ENABLED = os.environ.get("COGNITIVE_STATE_ENABLED", "true").lower() == "true"
+COGNITIVE_STATE_SMOOTHING = float(os.environ.get("COGNITIVE_STATE_SMOOTHING", "0.3"))
+
+# Trade Audit Chain (git-like ledger)
+TRADE_LEDGER_ENABLED = os.environ.get("TRADE_LEDGER_ENABLED", "true").lower() == "true"
+TRADE_LEDGER_MAX_ENTRIES = int(os.environ.get("TRADE_LEDGER_MAX_ENTRIES", "1000"))
+
+# Three-Stage Execution Pipeline
+EXECUTION_PIPELINE_ENABLED = os.environ.get("EXECUTION_PIPELINE_ENABLED", "true").lower() == "true"
+EXECUTION_PIPELINE_VALIDATE_TIMEOUT = float(os.environ.get("EXECUTION_PIPELINE_VALIDATE_TIMEOUT", "10.0"))
+
+# Heartbeat Self-Check Pipeline
+HEARTBEAT_ENABLED = os.environ.get("HEARTBEAT_ENABLED", "true").lower() == "true"
+HEARTBEAT_INTERVAL_SECONDS = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "60"))
+HEARTBEAT_DRAWDOWN_WARN_PCT = float(os.environ.get("HEARTBEAT_DRAWDOWN_WARN_PCT", "3.0"))
+HEARTBEAT_CB_PROXIMITY_PCT = float(os.environ.get("HEARTBEAT_CB_PROXIMITY_PCT", "80.0"))
+
+# Runtime Config Hot-Reload
+HOT_CONFIG_ENABLED = os.environ.get("HOT_CONFIG_ENABLED", "false").lower() == "true"
+HOT_CONFIG_POLL_INTERVAL = float(os.environ.get("HOT_CONFIG_POLL_INTERVAL", "10.0"))
+
 # ── Background News Collector ──
 NEWS_COLLECTOR_INTERVAL_SECONDS = int(os.environ.get("NEWS_COLLECTOR_INTERVAL_SECONDS", "30"))
 NEWS_BUFFER_MAX_ITEMS = int(os.environ.get("NEWS_BUFFER_MAX_ITEMS", "100"))
