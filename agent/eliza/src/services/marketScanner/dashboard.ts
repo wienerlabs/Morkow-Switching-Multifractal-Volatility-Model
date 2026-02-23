@@ -52,6 +52,16 @@ export function renderDashboard(snapshot: MarketSnapshot): void {
   console.log(`\n${c.bgBlue}${c.white}${c.bright} CORTEX MARKET SCANNER ${c.reset} - ${c.dim}${timestamp}${c.reset}\n`);
   console.log('━'.repeat(60));
 
+  // Global Market Data (from CryptoRank)
+  if (snapshot.globalData) {
+    const g = snapshot.globalData;
+    const fgLabel = g.fearGreed <= 25 ? 'Extreme Fear' : g.fearGreed <= 45 ? 'Fear' : g.fearGreed <= 55 ? 'Neutral' : g.fearGreed <= 75 ? 'Greed' : 'Extreme Greed';
+    console.log(`\n${c.blue}${c.bright}🌐 GLOBAL MARKET${c.reset}\n`);
+    console.log(`   MCap $${(g.totalMarketCap / 1e12).toFixed(2)}T (${formatPct(g.totalMarketCapChange)}) | Vol24h $${formatNumber(g.totalVolume24h)} (${formatPct(g.totalVolume24hChange)})`);
+    console.log(`   BTC Dom ${g.btcDominance.toFixed(1)}% (${formatPct(g.btcDominanceChange)}) | ETH Dom ${g.ethDominance.toFixed(1)}% (${formatPct(g.ethDominanceChange)})`);
+    console.log(`   Fear/Greed: ${g.fearGreed} (${fgLabel}) | Altcoin Index: ${g.altcoinIndex}`);
+  }
+
   // Price Comparison Section
   console.log(`\n${c.blue}${c.bright}📊 PRICE COMPARISON${c.reset}\n`);
 

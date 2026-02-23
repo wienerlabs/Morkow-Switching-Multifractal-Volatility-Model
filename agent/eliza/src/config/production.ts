@@ -23,6 +23,7 @@ export interface CortexConfig {
   birdeyeApiKey: string;
   jupiterApiKey?: string;
   heliusApiKey?: string;
+  cryptorankApiKey?: string;
   
   // Wallet (only in production)
   walletPrivateKey?: string;
@@ -93,6 +94,7 @@ export function loadConfig(): CortexConfig {
     birdeyeApiKey: process.env.BIRDEYE_API_KEY || '',
     jupiterApiKey: process.env.JUPITER_API_KEY,
     heliusApiKey: process.env.HELIUS_API_KEY,
+    cryptorankApiKey: process.env.CRYPTORANK_API_KEY,
     
     // Wallet - only load in production mode
     walletPrivateKey: simulationMode ? undefined : process.env.SOLANA_PRIVATE_KEY,
@@ -172,6 +174,7 @@ export function printConfigSummary(config: CortexConfig): void {
   logger.info(`  Mode: ${config.simulationMode ? '🎮 SIMULATION' : '🚀 PRODUCTION'}`);
   logger.info(`  RPC: ${config.solanaRpcUrl.slice(0, 30)}...`);
   logger.info(`  Birdeye API: ${config.birdeyeApiKey ? '✅' : '❌'}`);
+  logger.info(`  CryptoRank API: ${config.cryptorankApiKey ? '✅' : '❌'}`);
   logger.info(`  Wallet: ${config.walletPrivateKey ? '✅ Configured' : '❌ Not set'}`);
   logger.info(`  Monitoring: ${config.monitoringEnabled ? '✅ Enabled' : '❌ Disabled'}`);
   logger.info(`  Auto-Rebalance: ${config.autoRebalanceEnabled ? '✅ Enabled' : '❌ Disabled'}`);

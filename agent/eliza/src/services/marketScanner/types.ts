@@ -41,6 +41,7 @@ export interface MultiSourcePrice {
     dexscreener?: number;
   };
   coingecko?: number;
+  cryptorank?: number;
   avgPrice: number;
   maxSpread: number;
   timestamp: number;
@@ -153,6 +154,22 @@ export interface FundingArbitrageOpportunity {
   confidence: 'high' | 'medium' | 'low';
 }
 
+export interface GlobalMarketData {
+  totalMarketCap: number;
+  totalMarketCapChange: number;
+  totalVolume24h: number;
+  totalVolume24hChange: number;
+  btcDominance: number;
+  btcDominanceChange: number;
+  ethDominance: number;
+  ethDominanceChange: number;
+  fearGreed: number;
+  fearGreedChange: number;
+  altcoinIndex: number;
+  altcoinIndexChange: number;
+  activeCurrencies: number;
+}
+
 export interface MarketSnapshot {
   timestamp: number;
   cexPrices: CEXPrice[];
@@ -164,6 +181,8 @@ export interface MarketSnapshot {
   fundingArbitrage: FundingArbitrageOpportunity[];  // Cross-venue funding arb
   lendingMarkets: LendingMarketData[];              // Lending opportunities
   spotTokens: any[];                                 // Spot trading tokens (from Birdeye)
+  cryptorankPrices: TokenPrice[];                    // CryptoRank price verification
+  globalData: GlobalMarketData | null;               // Global market sentiment
   bestStrategy: {
     type: 'arbitrage' | 'lp' | 'token' | 'perps' | 'funding_arb' | 'lending' | 'spot';
     name: string;
