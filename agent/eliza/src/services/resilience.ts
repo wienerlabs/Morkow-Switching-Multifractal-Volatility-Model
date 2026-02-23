@@ -40,6 +40,8 @@ export const Queues: Record<string, () => PQueue> = {
   helius: () => getQueue('helius', { concurrency: 2 }),
   /** Jupiter price API */
   jupiter: () => getQueue('jupiter', { concurrency: 2 }),
+  /** CryptoRank: conservative rate limiting */
+  cryptorank: () => getQueue('cryptorank', { concurrency: 2 }),
 };
 
 // ============= RETRY WRAPPER =============

@@ -89,6 +89,48 @@
         <div class="section-header"><span>Vesting Timeline</span><span class="text-dim">48-Month Overview · TGE &rarr; Full Unlock</span></div>
         <div class="tk-gantt" id="vestingGantt"></div>
 
+        <!-- Vesting Claim Section (visible after wallet connect) -->
+        <div id="vestingClaimSection" style="display:none;">
+            <div class="section-header"><span>Your Vesting</span><span class="text-dim">Claim Available Tokens</span></div>
+            <div id="vestingNoSchedule" style="display:none;padding:1.5rem;text-align:center;color:var(--dim);font-size:0.7rem;border:1px solid var(--border);margin-bottom:1.5rem;">
+                No vesting schedule found for your wallet. Connect with the wallet that was allocated tokens.
+            </div>
+            <div style="border:1px solid var(--border);margin-bottom:1.5rem;">
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--border);">
+                    <div style="padding:0.75rem;border-right:1px solid var(--border);">
+                        <div style="font-size:0.55rem;color:var(--dim);margin-bottom:4px;">CATEGORY</div>
+                        <div id="vestingCategory" style="font-size:0.8rem;font-family:var(--font-mono);">--</div>
+                    </div>
+                    <div style="padding:0.75rem;border-right:1px solid var(--border);">
+                        <div style="font-size:0.55rem;color:var(--dim);margin-bottom:4px;">TOTAL ALLOCATION</div>
+                        <div id="vestingTotal" style="font-size:0.8rem;font-family:var(--font-mono);">--</div>
+                    </div>
+                    <div style="padding:0.75rem;border-right:1px solid var(--border);">
+                        <div style="font-size:0.55rem;color:var(--dim);margin-bottom:4px;">CLAIMED</div>
+                        <div id="vestingClaimed" style="font-size:0.8rem;font-family:var(--font-mono);">--</div>
+                    </div>
+                    <div style="padding:0.75rem;">
+                        <div style="font-size:0.55rem;color:var(--dim);margin-bottom:4px;">AVAILABLE TO CLAIM</div>
+                        <div id="vestingClaimable" style="font-size:0.8rem;font-family:var(--font-mono);color:var(--green);">--</div>
+                    </div>
+                </div>
+                <div style="padding:0.75rem;">
+                    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
+                        <div style="font-size:0.55rem;color:var(--dim);min-width:5rem;" id="vestingStatusText">--</div>
+                        <div style="flex:1;height:6px;background:var(--border);position:relative;">
+                            <div id="vestingProgressBar" style="position:absolute;top:0;left:0;height:100%;background:var(--green);width:0%;transition:width 0.3s;"></div>
+                        </div>
+                        <div style="font-size:0.55rem;font-family:var(--font-mono);min-width:2.5rem;text-align:right;" id="vestingProgressPct">0%</div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div style="font-size:0.6rem;color:var(--dim);">Claimable: <span id="vestingRewardAmount" style="color:var(--fg);font-family:var(--font-mono);">--</span></div>
+                        <button class="btn" onclick="executeVestingClaim()" id="vestingClaimBtn" style="display:none;font-size:0.65rem;padding:0.4rem 1.5rem;background:var(--fg);color:var(--bg);">Claim Tokens</button>
+                    </div>
+                </div>
+                <div id="vestingStatusMsg" style="display:none;margin:0 0.75rem 0.75rem;padding:0.5rem 0.75rem;font-size:0.65rem;border:1px solid var(--border);"></div>
+            </div>
+        </div>
+
         <!-- Token Utility -->
         <div class="section-header"><span>Token Utility</span><span class="text-dim">4 Core Functions</span></div>
         <div class="tk-utility-grid">
@@ -186,5 +228,8 @@
     <script src="js/ticker.js"></script>
     <script src="js/wallet.js"></script>
     <script src="js/toast.js"></script>
+    <script src="https://unpkg.com/@solana/web3.js@1.95.8/lib/index.iife.min.js"></script>
+    <script src="js/vesting-sdk.js"></script>
+    <script src="js/vesting-ui.js"></script>
 </body>
 </html>

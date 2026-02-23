@@ -204,6 +204,46 @@
                     </div>
                 </div>
 
+                <!-- Staking Card -->
+                <div class="vu-vault" id="stakingCard">
+                    <div class="vu-vault-head">
+                        <div class="vu-vault-title">
+                            <span>CRTX Staking</span>
+                            <span class="vu-vault-badge" id="stakingStatus">--</span>
+                        </div>
+                    </div>
+                    <div class="vu-vault-body">
+                        <div class="vu-vault-metrics">
+                            <div class="vu-vm">
+                                <div class="vu-vm-label">Your Stake</div>
+                                <div class="vu-vm-val" id="stakingUserStaked">0.00 CRTX</div>
+                            </div>
+                            <div class="vu-vm">
+                                <div class="vu-vm-label">Your Tier</div>
+                                <div class="vu-vm-val" id="stakingUserTier">Bronze</div>
+                            </div>
+                            <div class="vu-vm">
+                                <div class="vu-vm-label">Pending Rewards</div>
+                                <div class="vu-vm-val" id="stakingUserRewards">0.00 CRTX</div>
+                            </div>
+                            <div class="vu-vm">
+                                <div class="vu-vm-label">Pool Total</div>
+                                <div class="vu-vm-val" id="stakingPoolTotal">--</div>
+                            </div>
+                        </div>
+                        <div class="vu-vault-actions">
+                            <button class="vu-btn-deposit" onclick="openStakingModal()" id="stakingActionBtn">
+                                <span class="vu-btn-icon">&#9733;</span> Stake CRTX
+                            </button>
+                        </div>
+                        <div class="vu-vault-info">
+                            <div class="vu-info-item"><span class="vu-info-dot online"></span> 6 lock periods (0.5x&#8211;6x multiplier)</div>
+                            <div class="vu-info-item"><span class="vu-info-dot online"></span> 3-day cooldown before unstake</div>
+                            <div class="vu-info-item"><span class="vu-info-dot online"></span> Earn CRTX rewards + tier benefits</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Holdings Card -->
                 <div class="vu-holdings">
                     <div class="vu-holdings-head">
@@ -587,6 +627,80 @@
         </div>
     </div>
 
+    <!-- Staking Modal -->
+    <div class="modal-overlay" id="stakingModal">
+        <div class="modal" style="max-width: 540px;">
+            <div class="modal-header"><span class="modal-title">CRTX Staking</span><button class="modal-close" onclick="closeModal('stakingModal')">&#xD7;</button></div>
+            <div class="modal-body">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-bottom:1.25rem;padding:0.75rem;background:#f9f9f9;border:1px solid var(--border);">
+                    <div><div style="font-size:0.55rem;color:var(--dim);margin-bottom:3px;">POOL TOTAL</div><div id="smPoolTotal" style="font-size:0.85rem;font-family:var(--font-mono);">--</div></div>
+                    <div><div style="font-size:0.55rem;color:var(--dim);margin-bottom:3px;">YOUR STAKE</div><div id="smUserStaked" style="font-size:0.85rem;font-family:var(--font-mono);">--</div></div>
+                    <div><div style="font-size:0.55rem;color:var(--dim);margin-bottom:3px;">PENDING REWARDS</div><div id="smUserRewards" style="font-size:0.85rem;font-family:var(--font-mono);">--</div></div>
+                </div>
+                <div id="smStateWarning" style="display:none;padding:0.5rem 0.75rem;background:#fff3cd;border:1px solid #cc8800;color:#cc8800;font-size:0.65rem;margin-bottom:1rem;"></div>
+                <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:1rem;">
+                    <button id="smTabStake" class="btn btn-sm" onclick="stakingSwitchTab('stake')" style="border:none;border-bottom:2px solid var(--fg);border-radius:0;font-size:0.65rem;padding:0.4rem 1rem;">Stake</button>
+                    <button id="smTabUnstake" class="btn btn-sm" onclick="stakingSwitchTab('unstake')" style="border:none;border-bottom:2px solid transparent;border-radius:0;font-size:0.65rem;padding:0.4rem 1rem;color:var(--dim);">Unstake</button>
+                    <button id="smTabRewards" class="btn btn-sm" onclick="stakingSwitchTab('rewards')" style="border:none;border-bottom:2px solid transparent;border-radius:0;font-size:0.65rem;padding:0.4rem 1rem;color:var(--dim);">Rewards</button>
+                </div>
+
+                <!-- Stake Panel -->
+                <div id="smStakePanel">
+                    <div style="margin-bottom:0.75rem;">
+                        <label style="font-size:0.6rem;color:var(--dim);display:block;margin-bottom:4px;">Lock Period</label>
+                        <select id="smLockType" style="width:100%;padding:0.4rem 0.5rem;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.7rem;background:var(--bg);color:var(--fg);">
+                            <option value="0">Flexible (0.5x multiplier)</option>
+                            <option value="1">14 Days (1x multiplier)</option>
+                            <option value="2" selected>30 Days (1.5x multiplier)</option>
+                            <option value="3">90 Days (2.5x multiplier)</option>
+                            <option value="4">180 Days (4x multiplier)</option>
+                            <option value="5">365 Days (6x multiplier)</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom:0.5rem;">
+                        <label style="font-size:0.6rem;color:var(--dim);display:block;margin-bottom:4px;">Amount (CRTX)</label>
+                        <input id="smStakeAmount" type="number" min="1" step="1" placeholder="0.00" style="width:100%;padding:0.5rem;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.85rem;background:var(--bg);color:var(--fg);">
+                        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                            <span style="font-size:0.55rem;color:var(--dim);">Balance: <span id="smStakeBalance">--</span> CRTX</span>
+                            <button onclick="stakingSetMaxStake()" style="background:none;border:none;font-size:0.55rem;color:var(--fg);cursor:pointer;text-decoration:underline;">MAX</button>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:#f5f5f5;font-size:0.6rem;color:var(--dim);">
+                        Minimum stake: 1 CRTX &#xB7; Max: 100M CRTX
+                    </div>
+                    <button class="btn" onclick="executeStake()" id="smStakeBtn" style="width:100%;font-size:0.7rem;padding:0.6rem;background:var(--fg);color:var(--bg);">Stake CRTX</button>
+                </div>
+
+                <!-- Unstake Panel -->
+                <div id="smUnstakePanel" style="display:none;">
+                    <div id="smUnstakeStatusMsg" style="display:none;margin-bottom:0.75rem;padding:0.5rem 0.75rem;font-size:0.65rem;border:1px solid var(--border);color:var(--dim);"></div>
+                    <div style="margin-bottom:0.5rem;">
+                        <label style="font-size:0.6rem;color:var(--dim);display:block;margin-bottom:4px;">Amount to Unstake (CRTX)</label>
+                        <input id="smUnstakeAmount" type="number" min="0" step="1" placeholder="0.00" style="width:100%;padding:0.5rem;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.85rem;background:var(--bg);color:var(--fg);">
+                        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+                            <span style="font-size:0.55rem;color:var(--dim);">Staked: <span id="smUnstakeBalance">--</span> CRTX</span>
+                            <button onclick="stakingSetMaxUnstake()" style="background:none;border:none;font-size:0.55rem;color:var(--fg);cursor:pointer;text-decoration:underline;">ALL</button>
+                        </div>
+                    </div>
+                    <button class="btn" onclick="executeInitiateCooldown()" id="smCooldownBtn" style="display:none;width:100%;font-size:0.7rem;padding:0.6rem;background:#cc8800;color:#fff;margin-bottom:0.5rem;">Start Cooldown (3 days)</button>
+                    <button class="btn" onclick="executeUnstake()" id="smUnstakeBtn" style="display:none;width:100%;font-size:0.7rem;padding:0.6rem;background:var(--fg);color:var(--bg);">Unstake CRTX</button>
+                </div>
+
+                <!-- Rewards Panel -->
+                <div id="smRewardsPanel" style="display:none;">
+                    <div style="text-align:center;padding:1.5rem 0;">
+                        <div style="font-size:0.6rem;color:var(--dim);margin-bottom:0.5rem;">PENDING REWARDS</div>
+                        <div id="smRewardAmount" style="font-size:1.5rem;font-family:var(--font-mono);margin-bottom:1rem;">0.00 CRTX</div>
+                        <button class="btn" onclick="executeClaimRewards()" id="smClaimBtn" style="display:none;font-size:0.7rem;padding:0.6rem 2rem;background:var(--fg);color:var(--bg);">Claim Rewards</button>
+                        <div style="font-size:0.55rem;color:var(--dim);margin-top:0.75rem;">Rewards are earned based on your staking weight (amount &#xD7; lock multiplier)</div>
+                    </div>
+                </div>
+
+                <div id="smStatusMsg" style="display:none;margin-top:0.75rem;padding:0.5rem 0.75rem;font-size:0.65rem;border:1px solid var(--border);"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="api-heatmap-tooltip" id="apiTooltip"></div>
     <div class="agent-perf-tooltip" id="agentPerfTooltip"></div>
 
@@ -603,6 +717,8 @@
     <script src="https://unpkg.com/@solana/web3.js@1.95.8/lib/index.iife.min.js"></script>
     <script src="js/vault-sdk.js"></script>
     <script src="js/vault-ui.js"></script>
+    <script src="js/staking-sdk.js"></script>
+    <script src="js/staking-ui.js"></script>
 
     <!-- UI State Manager -->
     <script>

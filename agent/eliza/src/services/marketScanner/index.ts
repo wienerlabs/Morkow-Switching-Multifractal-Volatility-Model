@@ -10,6 +10,7 @@ import type { MarketSnapshot, ScannerConfig } from './types.js';
 import { fetchAllCEXPrices } from './cexFetcher.js';
 import { fetchBirdeyePrices, fetchTopLPPools, fetchNewTokens, fetchTrendingTokens } from './dexFetcher.js';
 import { fetchCoinGeckoPrices } from './coingeckoFetcher.js';
+import { fetchCryptoRankPrices, fetchCryptoRankGlobal } from './cryptorankFetcher.js';
 import { detectArbitrage } from './arbitrageDetector.js';
 import { selectBestStrategy } from './strategySelector.js';
 import { renderDashboard } from './dashboard.js';
@@ -22,6 +23,7 @@ export * from './types.js';
 export { fetchAllCEXPrices } from './cexFetcher.js';
 export { fetchBirdeyePrices, fetchTopLPPools, fetchNewTokens, fetchAllDEXPrices, fetchTrendingTokens } from './dexFetcher.js';
 export { fetchCoinGeckoPrices } from './coingeckoFetcher.js';
+export { fetchCryptoRankPrices, fetchCryptoRankBulkPrices, fetchCryptoRankGlobal } from './cryptorankFetcher.js';
 export { detectArbitrage } from './arbitrageDetector.js';
 export { selectBestStrategy } from './strategySelector.js';
 export { renderDashboard } from './dashboard.js';
@@ -67,16 +69,18 @@ export async function scanMarkets(config: Partial<ScannerConfig> = {}): Promise<
   logger.info(`[Scanner] Tokens: ${allTokens.join(', ')}`);
   logger.info('[Scanner] CEX: Binance ✅, Coinbase ✅, Kraken ✅');
   logger.info('[Scanner] DEX: DexScreener ✅ (Birdeye ❌ suspended, Jupiter ❌ requires paid API)');
-  logger.info('[Scanner] Verification: CoinGecko ✅');
+  logger.info('[Scanner] Verification: CoinGecko ✅, CryptoRank ✅');
 
   // Initialize perps scanner (will use cached clients if available)
   const perpsScanner = getPerpsScanner();
 
-  // Fetch all data in parallel - ALL SOURCES including perps, lending, and spot
-  const [cexPrices, dexPrices, coingeckoPrices, lpPools, newTokens, perpsData, lendingMarkets, spotTokens] = await Promise.all([
+  // Fetch all data in parallel - ALL SOURCES including perps, lending, spot, and CryptoRank
+  const [cexPrices, dexPrices, coingeckoPrices, cryptorankPrices, globalData, lpPools, newTokens, perpsData, lendingMarkets, spotTokens] = await Promise.all([
     fetchAllCEXPrices(allTokens),
     fetchBirdeyePrices(allTokens),  // Falls back to DexScreener when Birdeye/Jupiter fail
     fetchCoinGeckoPrices(allTokens),
+    fetchCryptoRankPrices(allTokens).catch(() => []),
+    fetchCryptoRankGlobal().catch(() => null),
     fetchTopLPPools(),
     fetchNewTokens(cfg.minLiquidity),
     perpsScanner.scan().catch(() => ({ perpsOpportunities: [], fundingArbitrage: [] })),
@@ -85,10 +89,13 @@ export async function scanMarkets(config: Partial<ScannerConfig> = {}): Promise<
   ]);
 
   // Log results
-  logger.info(`[Scanner] Results: CEX ${cexPrices.length} | DEX ${dexPrices.length} | CoinGecko ${coingeckoPrices.length} | Pools ${lpPools.length}`);
+  logger.info(`[Scanner] Results: CEX ${cexPrices.length} | DEX ${dexPrices.length} | CoinGecko ${coingeckoPrices.length} | CryptoRank ${cryptorankPrices.length} | Pools ${lpPools.length}`);
   logger.info(`[Scanner] Perps: ${perpsData.perpsOpportunities.length} opportunities | ${perpsData.fundingArbitrage.length} funding arb`);
   logger.info(`[Scanner] Lending: ${lendingMarkets.length} markets`);
   logger.info(`[Scanner] Spot: ${spotTokens.length} tokens`);
+  if (globalData) {
+    logger.info(`[Scanner] Global: BTC dom ${globalData.btcDominance.toFixed(1)}% | Fear/Greed ${globalData.fearGreed} | MCap $${(globalData.totalMarketCap / 1e12).toFixed(2)}T`);
+  }
 
   // Detect arbitrage opportunities
   const arbitrage = detectArbitrage(cexPrices, dexPrices, cfg.minArbitrageSpread);
@@ -118,6 +125,8 @@ export async function scanMarkets(config: Partial<ScannerConfig> = {}): Promise<
     fundingArbitrage: perpsData.fundingArbitrage,
     lendingMarkets,
     spotTokens,
+    cryptorankPrices,
+    globalData,
     bestStrategy,
   };
 }
