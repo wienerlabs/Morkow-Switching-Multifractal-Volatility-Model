@@ -64,6 +64,8 @@ from cortex.config import (
     AGENT_CONFIDENCE_VETO_THRESHOLD,
     # P2-E: Debate Auto-Escalation
     GUARDIAN_AUTO_DEBATE_THRESHOLD,
+    # OpenAlice: Cognitive State Machine
+    COGNITIVE_STATE_ENABLED,
     # DX-Research Task 1: Prospect Theory News
     PROSPECT_THEORY_NEWS_ENABLED,
     PROSPECT_THEORY_LOSS_AVERSION,
@@ -622,6 +624,48 @@ def assess_trade(
         except Exception:
             logger.debug("Regime threshold scaling failed", exc_info=True)
 
+    # ── OpenAlice: Cognitive State Machine ──
+    cognitive_adjustments = None
+    if COGNITIVE_STATE_ENABLED:
+        try:
+            from cortex.cognitive_state import get_cognitive_state
+            csm = get_cognitive_state()
+
+            # Feed signals from current assessment
+            fg_value = None
+            news_ewma_val = None
+            hawkes_contagion_val = None
+
+            # Extract Fear/Greed from macro data if available (caller can pass via kwargs)
+            # The API route will feed this from get_macro_indicators()
+
+            # Extract from scored components
+            for sc in scores:
+                if sc["component"] == "hawkes":
+                    hawkes_contagion_val = sc["details"].get("contagion_risk_score")
+                elif sc["component"] == "news":
+                    news_ewma_val = sc["details"].get("sentiment_ewma")
+
+            csm.update(
+                fear_greed_value=fg_value,
+                regime=current_regime,
+                num_states=num_states,
+                crisis_prob=float(
+                    next((s["details"].get("crisis_probability", 0.0) for s in scores if s["component"] == "regime"), 0.0)
+                ),
+                hawkes_contagion=hawkes_contagion_val,
+                news_ewma=news_ewma_val,
+            )
+
+            cognitive_adjustments = csm.get_adjustments()
+
+            # Apply cognitive threshold adjustment
+            effective_threshold = max(50.0, min(95.0,
+                effective_threshold + csm.get_threshold_adjustment()
+            ))
+        except Exception:
+            logger.debug("Cognitive state machine unavailable", exc_info=True)
+
     # ── Circuit breaker check ──
     from cortex.circuit_breaker import is_blocked, record_score
 
@@ -692,6 +736,10 @@ def assess_trade(
     recommended_size = _recommend_size(
         trade_size_usd, risk_score, current_regime, num_states
     )
+
+    # Apply cognitive state size multiplier
+    if cognitive_adjustments:
+        recommended_size = round(recommended_size * cognitive_adjustments["size_multiplier"], 2)
     expires_at = datetime.fromtimestamp(
         now + DECISION_VALIDITY_SECONDS, tz=timezone.utc
     )
@@ -775,6 +823,7 @@ def assess_trade(
         "portfolio_limits": limits,
         "debate": debate_result,
         "human_override": override_result,
+        "cognitive_state": cognitive_adjustments,
         "from_cache": False,
         "request_id": request_id,
     }
