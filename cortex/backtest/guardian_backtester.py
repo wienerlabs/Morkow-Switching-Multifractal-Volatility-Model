@@ -249,7 +249,7 @@ class GuardianBacktester:
 
         # Close any open position at end
         if self.position is not None:
-            pnl = self._close_position(df.iloc[-1])
+            pnl = self._close_position(df.iloc[-1], exit_reason="end_of_data")
             self.equity += pnl
             self.equity_curve[-1] = (df.index[-1], self.equity)
 
