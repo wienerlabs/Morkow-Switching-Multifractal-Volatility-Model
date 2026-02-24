@@ -137,7 +137,6 @@ def get_regime_name(state_idx: int, num_states: int) -> str:
     return f"State {state_idx}/{num_states}"
 
 
-
 # ── News Intelligence Models ──
 
 class NewsSentimentModel(BaseModel):
@@ -1048,7 +1047,6 @@ class MarketImpactResponse(BaseModel):
     timestamp: datetime
 
 
-
 # ── Oracle (Pyth) models ──
 
 
@@ -1183,7 +1181,6 @@ class MacroIndicatorsResponse(BaseModel):
     risk_level: str
     avg_gas_sol: float | None = None
     timestamp: float
-
 
 
 # ── Kelly Criterion models ──
