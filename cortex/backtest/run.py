@@ -35,10 +35,10 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
     )
     parser.add_argument("--capital", type=float, default=10000.0, help="Initial capital in USD")
     parser.add_argument(
-        "--trade-size-pct", type=float, default=0.05,
-        help="Trade size as fraction of portfolio (default: 0.05)",
+        "--trade-size-pct", type=float, default=0.10,
+        help="Trade size as fraction of portfolio (default: 0.10)",
     )
-    parser.add_argument("--threshold", type=float, default=75.0, help="Guardian approval threshold (default: 75)")
+    parser.add_argument("--threshold", type=float, default=60.0, help="Guardian approval threshold (default: 60)")
     parser.add_argument("--recalibrate", type=int, default=24, help="Recalibration interval in bars (default: 24)")
     parser.add_argument(
         "--strategy", default="regime",
@@ -46,6 +46,10 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
         help="Signal strategy",
     )
     parser.add_argument("--output", default=None, help="Output JSON file path (optional)")
+    parser.add_argument("--stop-loss", type=float, default=0.02, help="Stop-loss percentage (default: 0.02 = 2%%)")
+    parser.add_argument("--take-profit", type=float, default=0.05, help="Take-profit percentage (default: 0.05 = 5%%)")
+    parser.add_argument("--trailing-stop", type=float, default=0.015, help="Trailing stop percentage (default: 0.015 = 1.5%%)")
+    parser.add_argument("--no-trailing", action="store_true", help="Disable trailing stop")
 
     args = parser.parse_args(argv)
 
@@ -59,6 +63,10 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
         approval_threshold=args.threshold,
         recalibration_interval=args.recalibrate,
         signal_strategy=args.strategy,
+        stop_loss_pct=args.stop_loss,
+        take_profit_pct=args.take_profit,
+        trailing_stop_pct=args.trailing_stop,
+        use_trailing_stop=not args.no_trailing,
     )
     return config, args.output
 
