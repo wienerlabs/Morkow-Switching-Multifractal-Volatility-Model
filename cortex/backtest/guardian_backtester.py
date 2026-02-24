@@ -40,6 +40,10 @@ class BacktestConfig:
     signal_strategy: str = "regime"
     position_hold_bars: int = 24
     mean_revert_threshold: float = 2.0
+    stop_loss_pct: float = 0.02
+    take_profit_pct: float = 0.05
+    trailing_stop_pct: float = 0.015
+    use_trailing_stop: bool = True
 
 
 @dataclass
