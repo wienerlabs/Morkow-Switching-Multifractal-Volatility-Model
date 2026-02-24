@@ -1977,3 +1977,35 @@ class StakingUserResponse(BaseModel):
 
 class StakingTiersResponse(BaseModel):
     tiers: list[StakingTier]
+
+
+# ── Webacy Token Safety ─────────────────────────────────────────
+
+
+class WebacyTokenSafetyResponse(BaseModel):
+    safe: bool
+    risk_score: int
+    mintable: bool
+    freezable: bool
+    sniper_pct: float
+    bundler_pct: float
+    holder_count: int
+    flags: list[str]
+    source: str
+    mint_address: str
+    fallback: bool
+
+
+class WebacyWalletRiskResponse(BaseModel):
+    risk_score: int
+    threat_categories: list[str]
+    is_high_risk: bool
+
+
+class WebacySanctionsResponse(BaseModel):
+    sanctioned: bool
+    source: str | None
+
+
+class WebacyStatusResponse(BaseModel):
+    enabled: bool

@@ -1,9 +1,10 @@
 """
 Guardian Integration Layer — Unified risk veto endpoint for Cortex autonomous trading.
 
-Consolidates A-LAMS (25%), EVT (20%), SVJ (15%), Hawkes (15%), Regime (15%),
-and News (10%) risk assessments into a single composite score with circuit
-breaker logic, Kelly-criterion sizing, and adversarial debate validation.
+Consolidates EVT (18%), Hawkes (15%), Regime (15%), A-LAMS (14%), SVJ (13%),
+Webacy (10%), News (10%), and Agent Confidence (5%) risk assessments into a
+single composite score with circuit breaker logic, Kelly-criterion sizing,
+Webacy token safety hard-veto, and adversarial debate validation.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ __all__ = [
     "restore_kelly_state",
 ]
 
+import asyncio
 import logging
 import time
 from collections import deque
@@ -71,6 +73,10 @@ from cortex.config import (
     PROSPECT_THEORY_LOSS_AVERSION,
     # DX-Research Task 8: Human Override
     HUMAN_OVERRIDE_ENABLED,
+    # Webacy Token Safety
+    WEBACY_ENABLED,
+    WEBACY_API_KEY,
+    WEBACY_HARD_VETO_SCORE,
 )
 
 logger = logging.getLogger(__name__)
@@ -382,6 +388,22 @@ def _score_agent_confidence(agent_confidence: float) -> dict:
     }
 
 
+def _score_webacy(safety_data: dict) -> dict:
+    """Convert Webacy token safety check into a 0-100 risk score for Guardian composite."""
+    risk_score = min(100.0, max(0.0, safety_data.get("risk_score", 0.0)))
+    return {
+        "component": "webacy",
+        "score": round(risk_score, 2),
+        "details": {
+            "safe": safety_data.get("safe", True),
+            "risk_score": round(risk_score, 2),
+            "mintable": safety_data.get("mintable", False),
+            "freezable": safety_data.get("freezable", False),
+            "flags": safety_data.get("flags", []),
+        },
+    }
+
+
 def record_trade_outcome(
     pnl: float,
     size: float,
@@ -516,6 +538,46 @@ def assess_trade(
         cached["from_cache"] = True
         return cached
 
+    # ── Webacy hard veto (before scoring — instant rejection for unsafe tokens) ──
+    webacy_safety: dict | None = None
+    if WEBACY_ENABLED and WEBACY_API_KEY:
+        try:
+            from cortex.webacy import check_token_safety
+            webacy_safety = asyncio.run(check_token_safety(token))
+            if webacy_safety.get("risk_score", 0) >= WEBACY_HARD_VETO_SCORE:
+                request_id = structlog.contextvars.get_contextvars().get("request_id")
+                logger.warning(
+                    "WEBACY HARD VETO token=%s risk_score=%.1f flags=%s",
+                    token, webacy_safety["risk_score"], webacy_safety.get("flags", []),
+                )
+                result = {
+                    "approved": False,
+                    "risk_score": webacy_safety["risk_score"],
+                    "veto_reasons": ["webacy_unsafe_token"],
+                    "recommended_size": 0.0,
+                    "regime_state": 1,
+                    "confidence": 1.0,
+                    "calibrated_confidence": None,
+                    "effective_threshold": APPROVAL_THRESHOLD,
+                    "hawkes_deferred": False,
+                    "copula_gate_triggered": False,
+                    "expires_at": datetime.fromtimestamp(
+                        now + DECISION_VALIDITY_SECONDS, tz=timezone.utc
+                    ).isoformat(),
+                    "component_scores": [_score_webacy(webacy_safety)],
+                    "circuit_breaker": None,
+                    "portfolio_limits": None,
+                    "debate": None,
+                    "human_override": None,
+                    "cognitive_state": None,
+                    "from_cache": False,
+                    "request_id": request_id,
+                }
+                _cache.set(cache_key, result)
+                return result
+        except Exception:
+            logger.debug("Webacy safety check failed, proceeding without", exc_info=True)
+
     scores: list[dict] = []
     veto_reasons: list[str] = []
     available_weights = 0.0
@@ -587,6 +649,12 @@ def assess_trade(
         available_weights += WEIGHTS.get("agent_confidence", 0.10)
         if agent_confidence < AGENT_CONFIDENCE_VETO_THRESHOLD:
             veto_reasons.append("agent_low_confidence")
+
+    # ── Webacy soft scoring component (10%) ──
+    if WEBACY_ENABLED and webacy_safety is not None:
+        webacy_score = _score_webacy(webacy_safety)
+        scores.append(webacy_score)
+        available_weights += WEIGHTS.get("webacy", 0.10)
 
     # ── Task 3: Use adaptive weights if enabled ──
     active_weights = WEIGHTS

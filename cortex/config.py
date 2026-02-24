@@ -103,6 +103,13 @@ __all__ = [
     "HUMAN_OVERRIDE_ENABLED",
     "HUMAN_OVERRIDE_DEFAULT_TTL",
     "HUMAN_OVERRIDE_MAX_TTL",
+    # Webacy Token Safety
+    "WEBACY_ENABLED",
+    "WEBACY_API_KEY",
+    "WEBACY_BASE_URL",
+    "WEBACY_TIMEOUT",
+    "WEBACY_CACHE_TTL",
+    "WEBACY_HARD_VETO_SCORE",
 ]
 
 import json
@@ -114,7 +121,7 @@ import os
 GUARDIAN_WEIGHTS: dict[str, float] = json.loads(
     os.environ.get(
         "GUARDIAN_WEIGHTS",
-        json.dumps({"evt": 0.20, "svj": 0.15, "hawkes": 0.15, "regime": 0.15, "news": 0.10, "alams": 0.15, "agent_confidence": 0.10}),
+        json.dumps({"evt": 0.18, "svj": 0.13, "hawkes": 0.15, "regime": 0.15, "news": 0.10, "alams": 0.14, "agent_confidence": 0.05, "webacy": 0.10}),
     )
 )
 CIRCUIT_BREAKER_THRESHOLD = float(os.environ.get("CIRCUIT_BREAKER_THRESHOLD", "90"))
@@ -553,6 +560,15 @@ HEARTBEAT_CB_PROXIMITY_PCT = float(os.environ.get("HEARTBEAT_CB_PROXIMITY_PCT", 
 HOT_CONFIG_ENABLED = os.environ.get("HOT_CONFIG_ENABLED", "false").lower() == "true"
 HOT_CONFIG_POLL_INTERVAL = float(os.environ.get("HOT_CONFIG_POLL_INTERVAL", "10.0"))
 
+# ── Webacy Token Safety API ──
+
+WEBACY_ENABLED = os.environ.get("WEBACY_ENABLED", "true").lower() == "true"
+WEBACY_API_KEY = os.environ.get("WEBACY_API_KEY", "")
+WEBACY_BASE_URL = os.environ.get("WEBACY_BASE_URL", "https://api.webacy.com")
+WEBACY_TIMEOUT = int(os.environ.get("WEBACY_TIMEOUT", "5"))
+WEBACY_CACHE_TTL = int(os.environ.get("WEBACY_CACHE_TTL", "60"))
+WEBACY_HARD_VETO_SCORE = int(os.environ.get("WEBACY_HARD_VETO_SCORE", "85"))
+
 # ── Background News Collector ──
 NEWS_COLLECTOR_INTERVAL_SECONDS = int(os.environ.get("NEWS_COLLECTOR_INTERVAL_SECONDS", "30"))
 NEWS_BUFFER_MAX_ITEMS = int(os.environ.get("NEWS_BUFFER_MAX_ITEMS", "100"))
@@ -601,6 +617,7 @@ _POSITIVE_FLOATS = [
     ("PYTH_SSE_TIMEOUT", PYTH_SSE_TIMEOUT),
     ("ONCHAIN_HTTP_TIMEOUT", ONCHAIN_HTTP_TIMEOUT),
     ("CB_COOLDOWN_SECONDS", CB_COOLDOWN_SECONDS),
+    ("WEBACY_TIMEOUT", WEBACY_TIMEOUT),
 ]
 
 _POSITIVE_INTS = [
@@ -620,6 +637,7 @@ _BOUNDED_0_100 = [
     ("CB_THRESHOLD", CB_THRESHOLD),
     ("SVJ_BASE_CAP", SVJ_BASE_CAP),
     ("REGIME_BASE_MAX", REGIME_BASE_MAX),
+    ("WEBACY_HARD_VETO_SCORE", WEBACY_HARD_VETO_SCORE),
 ]
 
 _VALID_ENGINES = {
@@ -659,6 +677,9 @@ def validate_config() -> list[str]:
 
     if NARRATOR_ENABLED and not NARRATOR_BASE_URL:
         warnings.append("NARRATOR_ENABLED=true but NARRATOR_BASE_URL is empty")
+
+    if WEBACY_ENABLED and not WEBACY_API_KEY:
+        warnings.append("WEBACY_ENABLED=true but WEBACY_API_KEY is empty — Webacy checks will be skipped")
 
     if warnings:
         import logging
