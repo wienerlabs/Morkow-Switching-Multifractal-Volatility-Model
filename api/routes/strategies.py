@@ -102,7 +102,7 @@ class TradeModeUpdate(BaseModel):
 
 
 @router.get("/strategies/config", summary="Get strategy configuration")
-def get_strategy_config() -> dict:
+def get_strategy_config():
     """Return strategy definitions enriched with live circuit breaker state.
 
     The base config comes from cortex.config.STRATEGY_CONFIG (env-overridable).
@@ -141,6 +141,8 @@ def get_strategy_config() -> dict:
     }
 
 
+
+
 def _do_toggle(name: str) -> dict:
     """Shared logic: flip a strategy's enabled flag and return the updated record."""
     from cortex.config import STRATEGY_CONFIG
@@ -162,7 +164,7 @@ def _do_toggle(name: str) -> dict:
 
 
 @router.put("/strategies/{name}/toggle", summary="Toggle strategy enabled state (PUT)")
-def toggle_strategy_put(name: str) -> dict:
+def toggle_strategy_put(name: str):
     """Enable or disable a strategy by its key name (PUT variant).
 
     Flips the 'enabled' flag and updates 'status' accordingly.
@@ -172,7 +174,7 @@ def toggle_strategy_put(name: str) -> dict:
 
 
 @router.post("/strategies/{name}/toggle", summary="Toggle strategy enabled state (POST)")
-def toggle_strategy_post(name: str) -> dict:
+def toggle_strategy_post(name: str):
     """Enable or disable a strategy by its key name (POST variant for browser clients).
 
     Identical behaviour to the PUT variant; provided so browser fetch calls
@@ -186,13 +188,13 @@ def toggle_strategy_post(name: str) -> dict:
 
 
 @router.get("/strategies/trade-mode", summary="Get current trade mode")
-def get_trade_mode() -> dict:
+def get_trade_mode():
     """Return the current trade mode (autonomous | semi-auto | manual)."""
     return {"mode": _TRADE_MODE, "timestamp": time.time()}
 
 
 @router.post("/strategies/trade-mode", summary="Set trade mode")
-def set_trade_mode(body: TradeModeUpdate) -> dict:
+def set_trade_mode(body: TradeModeUpdate):
     """Set the trade mode.  Accepted values: autonomous, semi-auto, manual."""
     global _TRADE_MODE
     mode = body.mode.lower().strip()

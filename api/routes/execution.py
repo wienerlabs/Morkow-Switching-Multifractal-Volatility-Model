@@ -76,7 +76,7 @@ class ExecutionStatsResponse(BaseModel):
 
 
 @router.post("/execution/preflight", summary="Preflight trade check", response_model=PreflightResponse)
-def preflight(req: PreflightRequest) -> PreflightResponse:
+def preflight(req: PreflightRequest):
     """Run preflight checks (Guardian veto, circuit breakers, portfolio limits) before execution."""
     from cortex.execution import preflight_check
 
@@ -94,7 +94,7 @@ def preflight(req: PreflightRequest) -> PreflightResponse:
 
 
 @router.post("/execution/trade", summary="Execute trade", response_model=ExecuteTradeResponse)
-def execute_trade(req: ExecuteTradeRequest) -> ExecuteTradeResponse:
+def execute_trade(req: ExecuteTradeRequest):
     """Execute a swap on Solana via Jupiter aggregator after preflight validation."""
     from cortex.execution import execute_trade as _execute
 
@@ -116,7 +116,7 @@ def execute_trade(req: ExecuteTradeRequest) -> ExecuteTradeResponse:
 
 
 @router.get("/execution/log", summary="Get execution log", response_model=ExecutionLogResponse)
-def get_execution_log(limit: int = Query(50, ge=1, le=500)) -> ExecutionLogResponse:
+def get_execution_log(limit: int = Query(50, ge=1, le=500)):
     """Return recent trade execution log entries."""
     from cortex.execution import get_execution_log as _log
 
@@ -124,7 +124,7 @@ def get_execution_log(limit: int = Query(50, ge=1, le=500)) -> ExecutionLogRespo
 
 
 @router.get("/execution/stats", summary="Get execution statistics", response_model=ExecutionStatsResponse)
-def get_execution_stats() -> ExecutionStatsResponse:
+def get_execution_stats():
     """Return aggregate execution statistics (fill rates, slippage, PnL)."""
     from cortex.execution import get_execution_stats as _stats
 
@@ -134,7 +134,7 @@ def get_execution_stats() -> ExecutionStatsResponse:
 
 
 @router.get("/execution/pipeline-status", summary="Get execution pipeline status for dashboard monitor")
-def get_pipeline_status() -> dict:
+def get_pipeline_status():
     """Return the current execution pipeline state for the dashboard execution monitor.
 
     Maps the latest execution to a structured view with step progress,
@@ -151,7 +151,7 @@ def get_pipeline_status() -> dict:
 
 
 @router.get("/execution/status", summary="Get current execution status")
-def get_execution_status() -> dict:
+def get_execution_status():
     """Return the current execution pipeline state.
 
     Alias for /execution/pipeline-status — used by the dashboard UI

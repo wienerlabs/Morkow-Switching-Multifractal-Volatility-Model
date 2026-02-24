@@ -59,7 +59,7 @@ def _parse_vault_fields(data: bytes) -> dict:
 @cached(ttl_seconds=30)
 def get_vault_info(
     mint: str = Query(default=USDC_MINT, description="Asset mint address"),
-) -> VaultInfoResponse:
+):
     mint_bytes = bytes(Pubkey.from_string(mint))
     vault_pda = derive_pda([b"vault", mint_bytes], VAULT_PROGRAM_ID)
 
@@ -83,7 +83,7 @@ def get_vault_info(
 def get_vault_user(
     wallet: str,
     mint: str = Query(default=USDC_MINT, description="Asset mint address"),
-) -> VaultUserResponse:
+):
     # First get vault info to find share_mint and compute share price
     mint_bytes = bytes(Pubkey.from_string(mint))
     vault_pda = derive_pda([b"vault", mint_bytes], VAULT_PROGRAM_ID)

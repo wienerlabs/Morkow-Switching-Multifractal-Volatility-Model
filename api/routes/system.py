@@ -20,7 +20,7 @@ _SOURCES = {
 
 
 @router.get("/system/health", summary="Data source health status")
-def get_system_health() -> dict:
+def get_system_health():
     """Return health status and latency for all external data sources.
 
     Leverages the ResilientClient's per-host health tracking to report

@@ -29,7 +29,7 @@ CATEGORY_MAP: dict[int, tuple[str, str]] = {
 
 
 @router.get("/categories", response_model=VestingCategoriesResponse)
-def get_vesting_categories() -> VestingCategoriesResponse:
+def get_vesting_categories():
     return VestingCategoriesResponse(
         categories=[
             VestingCategoryItem(id=cid, name=name, description=desc)
@@ -40,7 +40,7 @@ def get_vesting_categories() -> VestingCategoriesResponse:
 
 @router.get("/schedule/{wallet}", response_model=VestingScheduleResponse)
 @cached(ttl_seconds=60)
-def get_vesting_schedule(wallet: str) -> VestingScheduleResponse:
+def get_vesting_schedule(wallet: str):
     try:
         wallet_pubkey = Pubkey.from_string(wallet)
     except Exception:

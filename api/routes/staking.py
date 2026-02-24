@@ -79,13 +79,13 @@ def _get_pool_cached() -> dict:
 
 
 @router.get("/pool", response_model=StakingPoolResponse)
-def get_staking_pool() -> StakingPoolResponse:
+def get_staking_pool():
     """Return staking pool state: authority, reward rate, total staked, tiers."""
     return StakingPoolResponse(**_get_pool_cached())
 
 
 @router.get("/user/{wallet}", response_model=StakingUserResponse)
-def get_staking_user(wallet: str) -> StakingUserResponse:
+def get_staking_user(wallet: str):
     """Return a user's staking position and computed pending rewards."""
     try:
         wallet_pubkey = Pubkey.from_string(wallet)
@@ -140,7 +140,7 @@ def get_staking_user(wallet: str) -> StakingUserResponse:
 
 
 @router.get("/tiers", response_model=StakingTiersResponse)
-def get_staking_tiers() -> StakingTiersResponse:
+def get_staking_tiers():
     """Return just the tier definitions from the pool."""
     pool = _get_pool_cached()
     return StakingTiersResponse(tiers=pool["tiers"])

@@ -17,7 +17,7 @@ _EXPRESS_BASE = os.environ.get("EXPRESS_BACKEND_URL", "http://localhost:3001")
 
 
 @router.get("/token/info/{address}", response_model=TokenInfoResponse)
-def get_token_info(address: str) -> TokenInfoResponse:
+def get_token_info(address: str):
     """Fetch token metadata (name, symbol, logo, price, market cap, etc.)."""
     from cortex.data.solana import get_token_metadata
 
@@ -33,7 +33,7 @@ def get_token_info(address: str) -> TokenInfoResponse:
 
 
 @router.get("/token/supply", response_model=TokenSupplyResponse)
-def get_token_supply() -> TokenSupplyResponse:
+def get_token_supply():
     """Fetch on-chain token supply, staking, and treasury data.
 
     Proxies to the Express backend which has direct Solana RPC access.
@@ -138,7 +138,7 @@ def _fallback_solana_rpc(pool) -> TokenSupplyResponse:
 
 
 @router.get("/token/holders", tags=["token"])
-def get_token_holders(mint: str = _CRTX_MINT) -> dict:
+def get_token_holders(mint: str = _CRTX_MINT):
     """Fetch holder distribution and concentration risk for a token."""
     from cortex.data.helius_holders import get_holder_data
 

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import itertools
 import json
 import sys
 from pathlib import Path
@@ -24,7 +23,7 @@ from cortex.backtest.guardian_backtester import BacktestConfig, GuardianBacktest
 from cortex.backtest.analytics import PerformanceAnalyzer
 
 
-def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | None, bool]:
+def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | None]:
     parser = argparse.ArgumentParser(description="Guardian Backtesting Engine")
     parser.add_argument("--token", default="SOL", help="Token symbol (default: SOL)")
     parser.add_argument("--start", required=True, help="Start date (ISO format, e.g. 2026-01-01)")
@@ -46,11 +45,10 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
         choices=["regime", "always_long", "mean_revert"],
         help="Signal strategy",
     )
-    parser.add_argument("--stop-loss", type=float, default=0.03, help="Stop-loss pct (default: 0.03)")
-    parser.add_argument("--take-profit", type=float, default=0.08, help="Take-profit pct (default: 0.08)")
-    parser.add_argument("--trailing-stop", type=float, default=0.03, help="Trailing stop pct (default: 0.03)")
+    parser.add_argument("--stop-loss", type=float, default=0.02, help="Stop-loss pct (default: 0.02)")
+    parser.add_argument("--take-profit", type=float, default=0.05, help="Take-profit pct (default: 0.05)")
+    parser.add_argument("--trailing-stop", type=float, default=0.015, help="Trailing stop pct (default: 0.015)")
     parser.add_argument("--no-trailing", action="store_true", help="Disable trailing stop")
-    parser.add_argument("--sweep", action="store_true", help="Run parameter sweep instead of single backtest")
     parser.add_argument("--output", default=None, help="Output JSON file path (optional)")
 
     args = parser.parse_args(argv)
@@ -70,11 +68,11 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
         trailing_stop_pct=args.trailing_stop,
         use_trailing_stop=not args.no_trailing,
     )
-    return config, args.output, args.sweep
+    return config, args.output
 
 
 def main(argv: list[str] | None = None) -> None:
-    config, output_path, sweep_mode = parse_args(argv)
+    config, output_path = parse_args(argv)
 
     print(f"Running Guardian backtest: {config.token} {config.start_date} → {config.end_date} ({config.timeframe})")
     print(f"Capital: ${config.initial_capital:,.2f} | Strategy: {config.signal_strategy} | Threshold: {config.approval_threshold}")
@@ -88,20 +86,6 @@ def main(argv: list[str] | None = None) -> None:
         end_date=config.end_date,
         timeframe=config.timeframe,
     ))
-
-    if sweep_mode:
-        from cortex.backtest.sweep import ParameterSweep
-
-        sweep = ParameterSweep(config, data)
-        grid = ParameterSweep.default_grid()
-        total_combos = len(list(itertools.product(*grid.values())))
-        print(f"Running parameter sweep: {total_combos} combinations...")
-        results = sweep.sweep(grid)
-        print(ParameterSweep.format_results(results))
-        if output_path:
-            results.to_csv(output_path, index=False)
-            print(f"Results saved to {output_path}")
-        return
 
     backtester = GuardianBacktester(config)
     result = backtester.run(data=data)

@@ -38,7 +38,7 @@ class TestCalibrateAndVar:
         r = client.get("/api/v1/var/95", params={"token": "AAPL"})
         assert r.status_code == 200
         data = r.json()
-        assert data["var_value"] < 0, f"Expected negative VaR, got {data['var_value']}"
+        assert data["var_value"] < 0
         assert data["distribution"] == "normal"
 
     def test_var_student_t(self):
@@ -54,9 +54,7 @@ class TestCalibrateAndVar:
         r_t = client.get("/api/v1/var/95", params={
             "token": "AAPL", "use_student_t": True, "nu": 5.0,
         })
-        var_t = r_t.json()["var_value"]
-        var_n = r_n.json()["var_value"]
-        assert var_t < var_n, f"Student-t VaR ({var_t}) should be wider than normal ({var_n})"
+        assert r_t.json()["var_value"] < r_n.json()["var_value"]
 
     def test_regime(self):
         r = client.get("/api/v1/regime/current", params={"token": "AAPL"})
@@ -94,11 +92,12 @@ class TestCalibrateAndVar:
 class TestMissingToken:
     def test_var_404(self):
         r = client.get("/api/v1/var/95", params={"token": "NONEXISTENT"})
-        assert r.status_code == 404, f"Expected 404 for unknown token, got {r.status_code}"
+        assert r.status_code == 404
 
     def test_regime_404(self):
         r = client.get("/api/v1/regime/current", params={"token": "NONEXISTENT"})
-        assert r.status_code == 404, f"Expected 404 for unknown token, got {r.status_code}"
+        assert r.status_code == 404
+
 
 
 class TestGuardianUnit:

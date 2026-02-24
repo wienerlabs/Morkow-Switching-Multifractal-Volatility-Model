@@ -1,5 +1,7 @@
 from datetime import datetime
 from enum import Enum
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -92,11 +94,11 @@ class BacktestSummaryResponse(BaseModel):
     var_alpha: float
     breach_count: int
     breach_rate: float
-    kupiec_lr: float | None
-    kupiec_pvalue: float | None
+    kupiec_lr: Optional[float]
+    kupiec_pvalue: Optional[float]
     kupiec_pass: bool
-    christoffersen_lr: float | None
-    christoffersen_pvalue: float | None
+    christoffersen_lr: Optional[float]
+    christoffersen_pvalue: Optional[float]
     christoffersen_pass: bool
 
 
@@ -135,6 +137,7 @@ def get_regime_name(state_idx: int, num_states: int) -> str:
     if num_states in (4, 5, 6):
         return REGIME_NAMES.get(state_idx, f"State {state_idx}")
     return f"State {state_idx}/{num_states}"
+
 
 
 # ── News Intelligence Models ──
@@ -189,7 +192,7 @@ class NewsMeta(BaseModel):
     errors: list[str] = []
     elapsed_ms: int = 0
     total: int = 0
-    regime_state: int | None = None
+    regime_state: Optional[int] = None
 
 
 class NewsFeedResponse(BaseModel):
@@ -284,7 +287,7 @@ class RegimeParamsResponse(BaseModel):
 class CompareRequest(BaseModel):
     token: str = Field(..., description="Token key from _model_store (must be calibrated)")
     alpha: float = Field(0.05, gt=0.0, lt=1.0)
-    models: list[str] | None = Field(
+    models: Optional[list[str]] = Field(
         None,
         description="Subset of: msm, garch, egarch, gjr, rolling_20, rolling_60, ewma. None = all.",
     )
@@ -292,19 +295,19 @@ class CompareRequest(BaseModel):
 
 class ModelMetricsRow(BaseModel):
     model: str
-    log_likelihood: float | None
-    aic: float | None
-    bic: float | None
-    breach_rate: float | None
+    log_likelihood: Optional[float]
+    aic: Optional[float]
+    bic: Optional[float]
+    breach_rate: Optional[float]
     breach_count: int
-    kupiec_lr: float | None
-    kupiec_pvalue: float | None
-    kupiec_pass: bool | None
-    christoffersen_lr: float | None
-    christoffersen_pvalue: float | None
-    christoffersen_pass: bool | None
+    kupiec_lr: Optional[float]
+    kupiec_pvalue: Optional[float]
+    kupiec_pass: Optional[bool]
+    christoffersen_lr: Optional[float]
+    christoffersen_pvalue: Optional[float]
+    christoffersen_pass: Optional[bool]
     mae_volatility: float
-    correlation: float | None
+    correlation: Optional[float]
     num_params: int
 
 
@@ -322,7 +325,7 @@ class ComparisonReportResponse(BaseModel):
     alpha: float
     summary_table: str = Field(..., description="Markdown table")
     winners: dict[str, str]
-    pass_fail: dict[str, dict[str, bool | None]]
+    pass_fail: dict[str, dict[str, Optional[bool]]]
     ranking: list[str]
     timestamp: datetime
 
@@ -525,9 +528,9 @@ class EVTBacktestRow(BaseModel):
     breach_count: int
     breach_rate: float
     expected_rate: float
-    kupiec_lr: float | None
-    kupiec_pvalue: float | None
-    kupiec_pass: bool | None
+    kupiec_lr: Optional[float]
+    kupiec_pvalue: Optional[float]
+    kupiec_pass: Optional[bool]
 
 
 class EVTBacktestResponse(BaseModel):
@@ -815,9 +818,9 @@ class SVJCalibrateResponse(BaseModel):
     sigma_j: float
     feller_ratio: float
     feller_satisfied: bool
-    log_likelihood: float | None = None
-    aic: float | None = None
-    bic: float | None = None
+    log_likelihood: Optional[float] = None
+    aic: Optional[float] = None
+    bic: Optional[float] = None
     n_obs: int
     n_jumps_detected: int
     jump_fraction: float
@@ -825,7 +828,7 @@ class SVJCalibrateResponse(BaseModel):
     bns_pvalue: float
     optimization_success: bool
     use_hawkes: bool
-    hawkes_params: SVJHawkesParams | None = None
+    hawkes_params: Optional[SVJHawkesParams] = None
     timestamp: datetime
 
     class Config:
@@ -910,8 +913,8 @@ class SVJDiagnosticsResponse(BaseModel):
     jump_stats: SVJJumpStats
     parameter_quality: SVJParameterQuality
     moment_comparison: SVJMomentComparison
-    evt_tail: SVJEVTTail | None = None
-    clustering: SVJClustering | None = None
+    evt_tail: Optional[SVJEVTTail] = None
+    clustering: Optional[SVJClustering] = None
     timestamp: datetime
 
 
@@ -959,7 +962,7 @@ class GuardianAssessResponse(BaseModel):
 
 class LVaREstimateRequest(BaseModel):
     token: str = Field(..., description="Token key from _model_store (must be calibrated)")
-    window: int | None = Field(None, ge=5, le=200, description="Rolling window for spread estimation. None = full-sample.")
+    window: Optional[int] = Field(None, ge=5, le=200, description="Rolling window for spread estimation. None = full-sample.")
     position_value: float = Field(100_000.0, gt=0, description="Position notional in USD")
     holding_period: int = Field(1, ge=1, le=30, description="Holding period in days")
     confidence: float = Field(95.0, gt=50.0, le=99.99, description="VaR confidence level (%)")
@@ -991,10 +994,10 @@ class LVaREstimateResponse(BaseModel):
 class RegimeLiquidityItem(BaseModel):
     regime: int
     n_obs: int
-    spread_pct: float | None = None
-    spread_abs: float | None = None
-    mean_volume: float | None = None
-    liquidity_score: float | None = None
+    spread_pct: Optional[float] = None
+    spread_abs: Optional[float] = None
+    mean_volume: Optional[float] = None
+    liquidity_score: Optional[float] = None
     insufficient_data: bool = False
 
 
@@ -1031,7 +1034,7 @@ class RegimeLVaRResponse(BaseModel):
 class MarketImpactRequest(BaseModel):
     token: str = Field(..., description="Token key from _model_store (must be calibrated)")
     trade_size_usd: float = Field(..., gt=0, description="Proposed trade size in USD")
-    adv_usd: float | None = Field(None, gt=0, description="Average daily volume in USD. If None, uses stored volume data.")
+    adv_usd: Optional[float] = Field(None, gt=0, description="Average daily volume in USD. If None, uses stored volume data.")
     participation_rate: float = Field(0.10, gt=0.0, le=1.0, description="Max acceptable participation rate")
 
 
@@ -1045,6 +1048,7 @@ class MarketImpactResponse(BaseModel):
     trade_size_usd: float
     adv_usd: float
     timestamp: datetime
+
 
 
 # ── Oracle (Pyth) models ──
@@ -1181,6 +1185,7 @@ class MacroIndicatorsResponse(BaseModel):
     risk_level: str
     avg_gas_sol: float | None = None
     timestamp: float
+
 
 
 # ── Kelly Criterion models ──
@@ -1692,7 +1697,7 @@ class WalkForwardRequest(BaseModel):
     step_size: int = Field(1, ge=1, le=20, description="Steps between out-of-sample points")
     refit_interval: int = Field(20, ge=1, le=100, description="Steps between model recalibrations")
     expanding: bool = Field(True, description="True=expanding window, False=rolling")
-    max_train_window: int | None = Field(None, ge=50, description="Max window size for rolling mode")
+    max_train_window: Optional[int] = Field(None, ge=50, description="Max window size for rolling mode")
     confidence: float = Field(95.0, gt=50.0, le=99.99, description="VaR confidence level (%)")
     num_states: int = Field(5, ge=2, le=10)
     method: str = Field("empirical", pattern="^(mle|grid|empirical|hybrid)$")
@@ -1704,8 +1709,8 @@ class WalkForwardKupiecResult(BaseModel):
     statistic: float
     p_value: float
     pass_: bool = Field(alias="pass")
-    violation_rate: float | None = None
-    expected_rate: float | None = None
+    violation_rate: Optional[float] = None
+    expected_rate: Optional[float] = None
 
     class Config:
         populate_by_name = True
@@ -1717,18 +1722,18 @@ class WalkForwardRegimeResult(BaseModel):
     n_obs: int
     n_violations: int
     violation_rate: float
-    mean_return: float | None = None
-    volatility: float | None = None
-    sharpe: float | None = None
-    kupiec: WalkForwardKupiecResult | None = None
+    mean_return: Optional[float] = None
+    volatility: Optional[float] = None
+    sharpe: Optional[float] = None
+    kupiec: Optional[WalkForwardKupiecResult] = None
     insufficient_data: bool = False
 
 
 class WalkForwardParameterStability(BaseModel):
     n_refits: int
     stable: bool
-    sigma_low: dict | None = None
-    sigma_high: dict | None = None
+    sigma_low: Optional[dict] = None
+    sigma_high: Optional[dict] = None
 
 
 class WalkForwardHealthCheck(BaseModel):
@@ -1766,54 +1771,54 @@ class HistoricalExportResponse(BaseModel):
 class DexTokenPriceResponse(BaseModel):
     source: str = "dexscreener"
     token_address: str
-    price_usd: float | None = None
-    price_native: float | None = None
-    pair_address: str | None = None
-    dex_id: str | None = None
+    price_usd: Optional[float] = None
+    price_native: Optional[float] = None
+    pair_address: Optional[str] = None
+    dex_id: Optional[str] = None
     liquidity_usd: float = 0.0
     volume_24h: float = 0.0
-    error: str | None = None
+    error: Optional[str] = None
     timestamp: float
-    timestamp_iso: str | None = None
+    timestamp_iso: Optional[str] = None
 
 
 class DexPairLiquidityResponse(BaseModel):
     source: str = "dexscreener"
     pair_address: str
-    price_usd: float | None = None
+    price_usd: Optional[float] = None
     liquidity_usd: float = 0.0
     liquidity_base: float = 0.0
     liquidity_quote: float = 0.0
     volume_24h: float = 0.0
     volume_6h: float = 0.0
     volume_1h: float = 0.0
-    txns_24h: dict | None = None
+    txns_24h: Optional[dict] = None
     price_change_24h: float = 0.0
-    dex_id: str | None = None
-    error: str | None = None
+    dex_id: Optional[str] = None
+    error: Optional[str] = None
     timestamp: float
 
 
 class DexLiquidityMetricsResponse(BaseModel):
     source: str = "dexscreener"
-    pair_address: str | None = None
-    spread_pct: float | None = None
-    spread_vol_pct: float | None = None
-    volume_24h: float | None = None
-    liquidity: float | None = None
-    error: str | None = None
-    timestamp: float | None = None
+    pair_address: Optional[str] = None
+    spread_pct: Optional[float] = None
+    spread_vol_pct: Optional[float] = None
+    volume_24h: Optional[float] = None
+    liquidity: Optional[float] = None
+    error: Optional[str] = None
+    timestamp: Optional[float] = None
 
 
 class DexNewToken(BaseModel):
     token_address: str
-    pair_address: str | None = None
-    dex_id: str | None = None
-    price_usd: float | None = None
+    pair_address: Optional[str] = None
+    dex_id: Optional[str] = None
+    price_usd: Optional[float] = None
     liquidity_usd: float = 0.0
     volume_24h: float = 0.0
-    pair_created_at: int | None = None
-    base_token: dict | None = None
+    pair_created_at: Optional[int] = None
+    base_token: Optional[dict] = None
     timestamp: float
     meets_min_liquidity: bool = False
 
