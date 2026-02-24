@@ -15,8 +15,6 @@ __all__ = [
 import os
 import logging
 from datetime import datetime, timezone
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 
@@ -175,8 +173,8 @@ def get_token_ohlcv(
 
 def get_funding_rates(
     perp_market: str,
-    start_date: Optional[str | datetime] = None,
-    end_date: Optional[str | datetime] = None,
+    start_date: str | datetime | None = None,
+    end_date: str | datetime | None = None,
 ) -> pd.DataFrame:
     """
     Fetch funding rate history from Drift Protocol Data API.
@@ -282,7 +280,6 @@ def ohlcv_to_returns(df: pd.DataFrame) -> pd.Series:
     return pd.Series(rets, index=close.index[1:], name="r")
 
 
-
 def get_pool_liquidity(pool_address: str) -> dict:
     """
     Fetch detailed liquidity metrics from a Raydium pool for LVaR calculations.
@@ -371,7 +368,6 @@ def get_market_depth(
         "estimated_impact_usd": float(impact_pct / 100.0 * trade_size_usd) if not np.isnan(impact_pct) else None,
         "participation_rate": float(trade_size_usd / volume_24h) if volume_24h > 0 else None,
     }
-
 
 
 # Display name overrides for well-known wrapped/native tokens

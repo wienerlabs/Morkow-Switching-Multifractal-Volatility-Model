@@ -14,7 +14,8 @@ router = APIRouter(tags=["agents"])
 logger = logging.getLogger(__name__)
 
 
-def _safe(fn, default=None):
+def _safe(fn, default=None):  # type: ignore[no-untyped-def]
+    """Call *fn()* and return its result, or *default* on any exception."""
     try:
         return fn()
     except Exception:
@@ -43,7 +44,7 @@ def _avg_return_class(val: str) -> str:
 
 
 @router.get("/agents/status", summary="Aggregated agent signals for dashboard")
-def get_agents_status():
+def get_agents_status() -> dict:
     """Return live status for each dashboard agent, derived from backend modules."""
     ts = time.time()
 
@@ -252,7 +253,7 @@ def _build_arbitrage(cb_states: list[dict] | None) -> dict:
 
 
 @router.get("/agents/performance", summary="Agent accuracy heatmap data")
-def get_agents_performance():
+def get_agents_performance() -> dict:
     """Return per-agent accuracy broken down by token and timeframe.
 
     Used by the dashboard heatmap to visualize which agents perform

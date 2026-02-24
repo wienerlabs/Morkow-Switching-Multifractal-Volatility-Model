@@ -31,7 +31,7 @@ def _validate_solana_address(address: str, label: str = "address") -> None:
 
 
 @router.get("/dex/price/{token_address}", summary="Get token price", response_model=DexTokenPriceResponse)
-def get_dex_price(token_address: str):
+def get_dex_price(token_address: str) -> DexTokenPriceResponse:
     """Fetch current token price from DexScreener."""
     _validate_solana_address(token_address, "token address")
     from cortex.data.dexscreener import get_token_price
@@ -46,7 +46,7 @@ def get_dex_price(token_address: str):
 
 
 @router.get("/dex/pair/{pair_address}", summary="Get pair liquidity", response_model=DexPairLiquidityResponse)
-def get_dex_pair(pair_address: str):
+def get_dex_pair(pair_address: str) -> DexPairLiquidityResponse:
     """Fetch liquidity data for a trading pair from DexScreener."""
     _validate_solana_address(pair_address, "pair address")
     from cortex.data.dexscreener import get_pair_liquidity
@@ -59,7 +59,7 @@ def get_dex_pair(pair_address: str):
 
 
 @router.get("/dex/liquidity-metrics/{pair_address}", summary="Get liquidity metrics", response_model=DexLiquidityMetricsResponse)
-def get_dex_liquidity_metrics(pair_address: str):
+def get_dex_liquidity_metrics(pair_address: str) -> DexLiquidityMetricsResponse:
     """Extract structured liquidity metrics (TVL, depth, concentration) for a pair."""
     _validate_solana_address(pair_address, "pair address")
     from cortex.data.dexscreener import extract_liquidity_metrics
@@ -75,7 +75,7 @@ def get_dex_liquidity_metrics(pair_address: str):
 def get_dex_new_tokens(
     limit: int = Query(20, ge=1, le=100),
     min_liquidity: bool = Query(True),
-):
+) -> DexNewTokensResponse:
     """List recently launched tokens, optionally filtered by minimum liquidity."""
     from cortex.data.dexscreener import get_new_tokens
 
@@ -83,7 +83,7 @@ def get_dex_new_tokens(
 
 
 @router.get("/dex/status", summary="DexScreener service status", response_model=DexStatusResponse)
-def get_dex_status():
+def get_dex_status() -> DexStatusResponse:
     """Return DexScreener integration status and availability."""
     from cortex.data.dexscreener import is_available
 
