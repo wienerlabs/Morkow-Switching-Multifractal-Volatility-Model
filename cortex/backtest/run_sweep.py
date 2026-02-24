@@ -27,11 +27,11 @@ from cortex.backtest.guardian_backtester import BacktestConfig, GuardianBacktest
 from cortex.backtest.analytics import PerformanceAnalyzer
 
 
-def run_single(config: BacktestConfig, data: pd.DataFrame, cal_cache: dict | None = None) -> tuple[dict | None, dict]:
+def run_single(config: BacktestConfig, data: pd.DataFrame, cal_cache: dict | None = None, btc_data: pd.Series | None = None) -> tuple[dict | None, dict]:
     """Run backtest, return (metrics, calibration_cache)."""
     try:
         bt = GuardianBacktester(config, calibration_cache=cal_cache)
-        result = bt.run(data=data.copy())
+        result = bt.run(data=data.copy(), btc_data=btc_data)
         new_cache = bt.export_calibration_cache()
         analyzer = PerformanceAnalyzer(result)
         metrics = analyzer.compute_all()

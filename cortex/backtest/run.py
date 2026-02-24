@@ -56,6 +56,9 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
     parser.add_argument("--no-ta", action="store_true", help="Disable TA indicator filter")
     parser.add_argument("--rsi-oversold", type=float, default=30.0, help="RSI oversold threshold (default: 30)")
     parser.add_argument("--rsi-overbought", type=float, default=70.0, help="RSI overbought threshold (default: 70)")
+    parser.add_argument("--use-agents", action="store_true", help="Use multi-agent coordinator instead of monolithic Guardian")
+    parser.add_argument("--agent-threshold", type=float, default=60.0, help="Agent coordinator approval threshold (default: 60)")
+    parser.add_argument("--agent-veto", type=float, default=85.0, help="Agent veto score threshold (default: 85)")
     parser.add_argument("--sweep", action="store_true", help="Run parameter sweep instead of single backtest")
     parser.add_argument("--output", default=None, help="Output JSON file path (optional)")
 
@@ -81,6 +84,9 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
         use_ta_filter=not args.no_ta,
         rsi_oversold=args.rsi_oversold,
         rsi_overbought=args.rsi_overbought,
+        use_agents=args.use_agents,
+        agent_approval_threshold=args.agent_threshold,
+        agent_veto_score=args.agent_veto,
     )
     return config, args.output, args.sweep
 
@@ -88,8 +94,9 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
 def main(argv: list[str] | None = None) -> None:
     config, output_path, sweep_mode = parse_args(argv)
 
+    mode = "multi-agent" if config.use_agents else "monolithic Guardian"
     print(f"Running Guardian backtest: {config.token} {config.start_date} → {config.end_date} ({config.timeframe})")
-    print(f"Capital: ${config.initial_capital:,.2f} | Strategy: {config.signal_strategy} | Threshold: {config.approval_threshold}")
+    print(f"Capital: ${config.initial_capital:,.2f} | Strategy: {config.signal_strategy} | Mode: {mode}")
     print()
 
     # Load OHLCV data (async API, run synchronously here)
@@ -101,10 +108,26 @@ def main(argv: list[str] | None = None) -> None:
         timeframe=config.timeframe,
     ))
 
+    # Load BTC data for macro agent when using multi-agent mode
+    btc_data = None
+    if config.use_agents:
+        print("Loading BTC price data for macro agent...")
+        btc_ohlcv = asyncio.run(feed.load_ohlcv(
+            token="BTC",
+            start_date=config.start_date,
+            end_date=config.end_date,
+            timeframe=config.timeframe,
+        ))
+        if btc_ohlcv is not None and len(btc_ohlcv) > 0:
+            btc_data = btc_ohlcv["close"]
+            print(f"  BTC data loaded: {len(btc_data)} bars")
+        else:
+            print("  Warning: BTC data unavailable, macro agent will use neutral scores")
+
     if sweep_mode:
         from cortex.backtest.sweep import ParameterSweep
 
-        sweep = ParameterSweep(config, data)
+        sweep = ParameterSweep(config, data, btc_data=btc_data)
         grid = ParameterSweep.default_grid()
         total_combos = len(list(itertools.product(*grid.values())))
         print(f"Running parameter sweep: {total_combos} combinations...")
@@ -116,7 +139,7 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     backtester = GuardianBacktester(config)
-    result = backtester.run(data=data)
+    result = backtester.run(data=data, btc_data=btc_data)
 
     analyzer = PerformanceAnalyzer(result)
     report = analyzer.generate_report()

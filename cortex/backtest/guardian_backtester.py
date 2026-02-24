@@ -7,6 +7,7 @@ backtest with equity curve, trade log, and component-level scoring history.
 
 from __future__ import annotations
 
+import copy
 import logging
 from dataclasses import dataclass, field
 
@@ -52,6 +53,9 @@ class BacktestConfig:
     rsi_overbought: float = 70.0
     use_macd_filter: bool = True
     use_bb_filter: bool = True
+    use_agents: bool = False
+    agent_approval_threshold: float = 60.0
+    agent_veto_score: float = 85.0
 
 
 @dataclass
@@ -97,12 +101,24 @@ class GuardianBacktester:
         if calibration_cache:
             self._calibration_bar_cache = calibration_cache
 
-    def run(self, data: pd.DataFrame | None = None) -> BacktestResult:
-        """Main bar-by-bar event loop."""
+        # Multi-agent coordinator (lazy-init when use_agents=True)
+        self._coordinator = None
+        if config.use_agents:
+            self._coordinator = self._init_coordinator()
+
+    def run(self, data: pd.DataFrame | None = None, btc_data: pd.Series | None = None) -> BacktestResult:
+        """Main bar-by-bar event loop.
+
+        Args:
+            data: OHLCV DataFrame with datetime index.
+            btc_data: Optional BTC close prices (Series) for macro agent backtest mode.
+        """
         if data is None:
             raise ValueError(
                 "Provide OHLCV DataFrame directly (use HistoricalDataFeed.load_ohlcv() externally)."
             )
+
+        self._btc_data = btc_data
 
         df = HistoricalDataFeed.compute_returns(data)
 
@@ -199,7 +215,7 @@ class GuardianBacktester:
                 signals_generated += 1
                 trade_size_usd = self.equity * self.config.trade_size_pct
 
-                # Build model data dicts for assess_trade()
+                # Build model data dicts
                 model_data = self._build_model_data(returns_window)
                 evt_data = self._build_evt_data()
                 svj_data = self._build_svj_data(returns_window)
@@ -207,37 +223,16 @@ class GuardianBacktester:
                     self._extract_hawkes_events(returns_window)
                 )
 
-                # Neutral news: n_items=0 triggers early-return with score=50
-                neutral_news = {"n_items": 0}
-                # Neutral ALAMS: var_total=0.04375 → base score ~50
-                # (midpoint of FLOOR=0.01..CEILING=0.08 mapped to 0..80)
-                neutral_alams = {
-                    "var_total": 0.04375,
-                    "current_regime": 0,
-                    "delta": 0.0,
-                    "regime_probs": [],
-                }
-
-                try:
-                    from cortex.guardian import assess_trade
-
-                    decision = assess_trade(
-                        token=self.config.token,
-                        trade_size_usd=trade_size_usd,
-                        direction=signal,
-                        model_data=model_data,
-                        evt_data=evt_data,
-                        svj_data=svj_data,
-                        hawkes_data=hawkes_data,
-                        news_data=neutral_news,
-                        alams_data=neutral_alams,
-                        strategy=None,
-                        run_debate=False,
-                        agent_confidence=None,
+                if self._coordinator is not None:
+                    # Multi-agent path: coordinator dispatches to all agents
+                    decision = self._evaluate_agents(
+                        df, i, trade_size_usd, model_data, evt_data, svj_data, hawkes_data
                     )
-                except Exception:
-                    logger.warning("assess_trade_failed", bar=i, exc_info=True)
-                    decision = None
+                else:
+                    # Legacy path: monolithic assess_trade()
+                    decision = self._evaluate_guardian(
+                        signal, trade_size_usd, model_data, evt_data, svj_data, hawkes_data
+                    )
 
                 if decision is not None:
                     self.component_scores.append({
@@ -297,30 +292,38 @@ class GuardianBacktester:
         )
 
     def export_calibration_cache(self) -> dict[int, dict]:
-        """Export bar-indexed calibration cache for reuse across sweep runs."""
-        return self._calibration_bar_cache
+        """Export bar-indexed calibration cache for reuse across sweep runs.
+
+        Returns a shallow copy of the cache dict — individual snapshots are
+        already deep-copied at creation time, and _restore_calibration deep-copies
+        on read, so this is safe for cross-run sharing.
+        """
+        return dict(self._calibration_bar_cache)
 
     def _snapshot_calibration(self) -> dict:
-        """Snapshot current calibration state."""
+        """Snapshot current calibration state (deep copy to avoid mutation)."""
         return {
-            "evt_params": self._evt_params,
-            "svj_params": self._svj_params,
-            "hawkes_params": self._hawkes_params,
-            "msm_params": self._msm_params,
-            "filter_probs": self._filter_probs,
-            "sigma_states": self._sigma_states,
-            "P_matrix": self._P_matrix,
+            "evt_params": copy.deepcopy(self._evt_params),
+            "svj_params": copy.deepcopy(self._svj_params),
+            "hawkes_params": copy.deepcopy(self._hawkes_params),
+            "msm_params": copy.deepcopy(self._msm_params),
+            "filter_probs": self._filter_probs.copy(deep=True) if self._filter_probs is not None else None,
+            "sigma_states": self._sigma_states.copy() if self._sigma_states is not None else None,
+            "P_matrix": self._P_matrix.copy() if self._P_matrix is not None else None,
         }
 
     def _restore_calibration(self, snapshot: dict) -> None:
-        """Restore calibration from a snapshot."""
-        self._evt_params = snapshot.get("evt_params")
-        self._svj_params = snapshot.get("svj_params")
-        self._hawkes_params = snapshot.get("hawkes_params")
-        self._msm_params = snapshot.get("msm_params")
-        self._filter_probs = snapshot.get("filter_probs")
-        self._sigma_states = snapshot.get("sigma_states")
-        self._P_matrix = snapshot.get("P_matrix")
+        """Restore calibration from a snapshot (deep copy to isolate runs)."""
+        self._evt_params = copy.deepcopy(snapshot.get("evt_params"))
+        self._svj_params = copy.deepcopy(snapshot.get("svj_params"))
+        self._hawkes_params = copy.deepcopy(snapshot.get("hawkes_params"))
+        self._msm_params = copy.deepcopy(snapshot.get("msm_params"))
+        fp = snapshot.get("filter_probs")
+        self._filter_probs = fp.copy(deep=True) if fp is not None else None
+        ss = snapshot.get("sigma_states")
+        self._sigma_states = ss.copy() if ss is not None else None
+        pm = snapshot.get("P_matrix")
+        self._P_matrix = pm.copy() if pm is not None else None
 
     def _needs_recalibration(self, current_bar: int) -> bool:
         if self._last_calibration_bar < 0:
@@ -525,6 +528,96 @@ class GuardianBacktester:
             return result["event_times"]
         except Exception:
             return np.array([])
+
+    def _init_coordinator(self):
+        """Initialize multi-agent coordinator with all specialist agents."""
+        from cortex.agents.coordinator import AgentCoordinator
+        from cortex.agents.technical_analyst import TechnicalAnalystAgent
+        from cortex.agents.macro_analyst import MacroAnalystAgent
+        from cortex.agents.risk_researcher import RiskResearcherAgent
+
+        agents = [
+            TechnicalAnalystAgent(
+                rsi_oversold=self.config.rsi_oversold,
+                rsi_overbought=self.config.rsi_overbought,
+            ),
+            MacroAnalystAgent(),
+            RiskResearcherAgent(),
+        ]
+        return AgentCoordinator(
+            agents=agents,
+            approval_threshold=self.config.agent_approval_threshold,
+            veto_score=self.config.agent_veto_score,
+        )
+
+    def _evaluate_agents(
+        self,
+        df: pd.DataFrame,
+        bar_idx: int,
+        trade_size_usd: float,
+        model_data: dict | None,
+        evt_data: dict | None,
+        svj_data: dict | None,
+        hawkes_data: dict | None,
+    ) -> dict | None:
+        """Run multi-agent coordinator for trade approval."""
+        context = {
+            "evt_data": evt_data,
+            "svj_data": svj_data,
+            "hawkes_data": hawkes_data,
+            "model_data": model_data,
+            "btc_close": self._btc_data,
+        }
+        try:
+            decision = self._coordinator.evaluate_backtest(
+                token=self.config.token,
+                data=df,
+                bar_idx=bar_idx,
+                context=context,
+                trade_size_usd=trade_size_usd,
+            )
+            return self._coordinator.to_guardian_format(decision)
+        except Exception:
+            logger.warning("agent_coordinator_failed", bar=bar_idx, exc_info=True)
+            return None
+
+    def _evaluate_guardian(
+        self,
+        signal: str,
+        trade_size_usd: float,
+        model_data: dict | None,
+        evt_data: dict | None,
+        svj_data: dict | None,
+        hawkes_data: dict | None,
+    ) -> dict | None:
+        """Run legacy monolithic assess_trade() for trade approval."""
+        neutral_news = {"n_items": 0}
+        neutral_alams = {
+            "var_total": 0.04375,
+            "current_regime": 0,
+            "delta": 0.0,
+            "regime_probs": [],
+        }
+        try:
+            from cortex.guardian import assess_trade
+
+            return assess_trade(
+                token=self.config.token,
+                trade_size_usd=trade_size_usd,
+                direction=signal,
+                model_data=model_data,
+                evt_data=evt_data,
+                svj_data=svj_data,
+                hawkes_data=hawkes_data,
+                news_data=neutral_news,
+                alams_data=neutral_alams,
+                strategy=None,
+                run_debate=False,
+                agent_confidence=None,
+            )
+        except Exception:
+            logger.warning("assess_trade_failed", exc_info=True)
+            return None
 
     def _execute_trade(self, bar: pd.Series, direction: str, size_usd: float) -> dict | None:
         """Simulate execution and record in TradeLedger."""

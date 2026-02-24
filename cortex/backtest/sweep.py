@@ -14,9 +14,10 @@ from cortex.backtest.analytics import PerformanceAnalyzer
 class ParameterSweep:
     """Run backtester across parameter grid to find optimal configuration."""
 
-    def __init__(self, base_config: BacktestConfig, data: pd.DataFrame):
+    def __init__(self, base_config: BacktestConfig, data: pd.DataFrame, btc_data: pd.Series | None = None):
         self.base_config = base_config
         self.data = data
+        self.btc_data = btc_data
 
     def sweep(self, param_grid: dict[str, list]) -> pd.DataFrame:
         """Run all parameter combinations, return results sorted by Sharpe.
@@ -34,6 +35,7 @@ class ParameterSweep:
             "use_trailing_stop", "trade_size_pct", "position_hold_bars",
             "rsi_oversold", "rsi_overbought", "use_ta_filter",
             "momentum_threshold", "use_momentum_filter", "momentum_window",
+            "agent_approval_threshold", "agent_veto_score",
         }
 
         # Check if sweep only varies trade params (can reuse calibration)
@@ -49,7 +51,7 @@ class ParameterSweep:
 
             try:
                 bt = GuardianBacktester(config, calibration_cache=calibration_cache)
-                result = bt.run(data=self.data.copy())
+                result = bt.run(data=self.data.copy(), btc_data=self.btc_data)
 
                 # Cache calibration from first run
                 if calibration_cache is None and not varies_model_params:
