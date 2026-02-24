@@ -25,7 +25,7 @@ class BacktestRequest(BaseModel):
 
 
 @router.post("/run")
-async def run_backtest(req: BacktestRequest):
+async def run_backtest(req: BacktestRequest) -> dict:
     """Run a Guardian backtest and return metrics."""
     config = BacktestConfig(
         token=req.token,
