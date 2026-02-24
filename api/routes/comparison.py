@@ -54,7 +54,7 @@ def run_model_comparison(req: CompareRequest):
 
 
 @router.get("/compare/report/{token}", response_model=ComparisonReportResponse)
-def get_comparison_report(token: str, alpha: float = Query(0.05)):
+def get_comparison_report(token: str, alpha: float = Query(0.05)) -> ComparisonReportResponse:
     from cortex.comparison import generate_comparison_report
 
     if token not in _comparison_cache:
