@@ -280,7 +280,6 @@ def ohlcv_to_returns(df: pd.DataFrame) -> pd.Series:
     return pd.Series(rets, index=close.index[1:], name="r")
 
 
-
 def get_pool_liquidity(pool_address: str) -> dict:
     """
     Fetch detailed liquidity metrics from a Raydium pool for LVaR calculations.
@@ -369,7 +368,6 @@ def get_market_depth(
         "estimated_impact_usd": float(impact_pct / 100.0 * trade_size_usd) if not np.isnan(impact_pct) else None,
         "participation_rate": float(trade_size_usd / volume_24h) if volume_24h > 0 else None,
     }
-
 
 
 # Display name overrides for well-known wrapped/native tokens
