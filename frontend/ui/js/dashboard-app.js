@@ -66,8 +66,7 @@
                 var freshness = health.status === 'offline' ? 'dead' : age > 120 ? 'stale' : 'fresh';
                 return Object.assign({}, src, { status: health.status, latency: health.latency, freshness: freshness });
             }
-            var baseLatencies = { '400ms': 8, '1s': 45, 'Per block': 420, '5s': 120, '10s': 350, '60s': 800, '30s': 500 };
-            return Object.assign({}, src, { status: 'online', latency: baseLatencies[src.interval] || 100, freshness: 'fresh' });
+            return Object.assign({}, src, { status: 'unknown', latency: 0, freshness: 'unknown' });
         });
     }
 

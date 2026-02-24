@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query
 from api.models import (
     RegimeDurationsResponse,
     RegimeHistoryResponse,
+    RegimeParamsResponse,
     RegimePeriod,
     RegimeStatisticsResponse,
     RegimeStatRow,
@@ -83,6 +84,56 @@ def get_transition_alert(
         most_likely_next_regime=result["most_likely_next_regime"],
         next_regime_probability=result["next_regime_probability"],
         threshold=result["threshold"],
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.get("/regime/params", response_model=RegimeParamsResponse)
+def get_regime_params(token: str = Query("SOL")):
+    import numpy as np
+
+    m = _get_model(token)
+    cal = m["calibration"]
+    sigma_states = np.asarray(m["sigma_states"])
+    P_matrix = np.asarray(m["P_matrix"])
+    num_states = cal["num_states"]
+    leverage_gamma = m.get("leverage_gamma", 0.0)
+
+    # Build approximate emission params from sigma_states.
+    # Frontend HMM uses 3 features: [daily_return, volatility, volume_ratio].
+    # The backend MSM has volatility levels directly — derive approximate params.
+    emission_mean = []
+    emission_std = []
+    for k in range(num_states):
+        sigma = float(sigma_states[k])
+        # Leverage effect: low-vol states -> slight positive drift,
+        # high-vol states -> negative drift
+        frac = k / max(num_states - 1, 1)  # 0..1 from low to high vol
+        ret_mean = 0.005 * (1 - 2 * frac)  # +0.005 to -0.005
+        vol_ratio = 0.9 + 0.2 * frac  # 0.9 to 1.1
+
+        emission_mean.append([ret_mean, sigma, vol_ratio])
+        emission_std.append([
+            sigma * 0.8,
+            sigma * 0.3,
+            0.3 + 0.05 * k,
+        ])
+
+    return RegimeParamsResponse(
+        token=token,
+        num_states=num_states,
+        transition_matrix=P_matrix.tolist(),
+        sigma_states=sigma_states.tolist(),
+        emission_params={
+            "mean": emission_mean,
+            "std": emission_std,
+        },
+        calibration={
+            "sigma_low": cal["sigma_low"],
+            "sigma_high": cal["sigma_high"],
+            "p_stay": cal["p_stay"],
+            "leverage_gamma": leverage_gamma,
+        },
         timestamp=datetime.now(timezone.utc),
     )
 

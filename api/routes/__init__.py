@@ -37,6 +37,9 @@ from api.routes.strategies import router as strategies_router
 from api.routes.execution import router as execution_router
 from api.routes.agents import router as agents_router
 from api.routes.system import router as system_router
+from api.routes.vault import router as vault_router
+from api.routes.vesting import router as vesting_router
+from api.routes.staking import router as staking_router
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -74,4 +77,6 @@ router.include_router(execution_router)
 router.include_router(strategies_router)
 router.include_router(agents_router)
 router.include_router(system_router)
-
+router.include_router(vault_router)
+router.include_router(vesting_router)
+router.include_router(staking_router)

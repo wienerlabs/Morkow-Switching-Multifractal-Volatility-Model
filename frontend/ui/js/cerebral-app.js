@@ -32,7 +32,7 @@ function cxHash(i) { return (i * 2654435761) >>> 0; }
         { name: 'Rejected' },
     ];
 
-    // Base link values — will be jittered on each render
+    // Static architectural flow values (schematic, not real-time data)
     const BASE_LINKS = [
         { source: 'Market Data', target: 'ML Regime Detection', value: 80 },
         { source: 'Market Data', target: 'Analyst Reports', value: 45 },
@@ -62,18 +62,11 @@ function cxHash(i) { return (i * 2654435761) >>> 0; }
         'Guardian Exec': '#222222', 'Live Execution': '#080808', 'Rejected': '#cc0000',
     };
 
-    var _sankeyTick = 0;
-    function jitter(val) {
-        _sankeyTick++;
-        var wave = Math.sin(_sankeyTick * 0.7 + val * 0.3) * 0.075;
-        return Math.max(5, Math.round(val + val * wave));
-    }
-
     function renderSankey() {
-        container.innerHTML = '';
+        container.textContent = '';
 
         const nodes = SANKEY_NODES.map(d => Object.assign({}, d));
-        const links = BASE_LINKS.map(d => ({ source: d.source, target: d.target, value: jitter(d.value) }));
+        const links = BASE_LINKS.map(d => ({ source: d.source, target: d.target, value: d.value }));
 
         const sankey = d3.sankey()
             .nodeId(d => d.name)
@@ -153,7 +146,6 @@ function cxHash(i) { return (i * 2654435761) >>> 0; }
     }
 
     renderSankey();
-    setInterval(renderSankey, 10000);
 })();
 
 // === 2. ADVERSARIAL DEBATE THEATER ===
