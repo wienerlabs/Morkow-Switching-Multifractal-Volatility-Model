@@ -17,7 +17,7 @@ router = APIRouter(prefix="/webacy", tags=["webacy"])
 
 
 @router.get("/status", response_model=WebacyStatusResponse)
-def get_webacy_status():
+def get_webacy_status() -> WebacyStatusResponse:
     """Health check — returns whether the Webacy integration is enabled."""
     try:
         from cortex.webacy import is_webacy_enabled
@@ -28,7 +28,7 @@ def get_webacy_status():
 
 
 @router.get("/token/{mint_address}", response_model=WebacyTokenSafetyResponse)
-async def get_token_safety(mint_address: str):
+async def get_token_safety(mint_address: str) -> WebacyTokenSafetyResponse:
     """Run Webacy token safety analysis for a Solana mint address."""
     try:
         from cortex.webacy import check_token_safety
@@ -45,7 +45,7 @@ async def get_token_safety(mint_address: str):
 
 
 @router.get("/wallet/{address}", response_model=WebacyWalletRiskResponse)
-async def get_wallet_risk(address: str):
+async def get_wallet_risk(address: str) -> WebacyWalletRiskResponse:
     """Run Webacy wallet threat risk analysis for a Solana address."""
     try:
         from cortex.webacy import check_wallet_risk
@@ -62,7 +62,7 @@ async def get_wallet_risk(address: str):
 
 
 @router.get("/sanctions/{address}", response_model=WebacySanctionsResponse)
-async def get_sanctions_status(address: str):
+async def get_sanctions_status(address: str) -> WebacySanctionsResponse:
     """Check OFAC/sanctions status for a Solana address via Webacy."""
     try:
         from cortex.webacy import check_wallet_sanctions
