@@ -10,6 +10,13 @@ import argparse
 import asyncio
 import json
 import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env from project root before any config access
+_project_root = Path(__file__).resolve().parents[2]
+load_dotenv(_project_root / ".env")
 
 from cortex.backtest.data_feed import HistoricalDataFeed
 from cortex.backtest.guardian_backtester import BacktestConfig, GuardianBacktester
