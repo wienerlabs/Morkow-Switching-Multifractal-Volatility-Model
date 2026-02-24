@@ -163,7 +163,10 @@ class GuardianBacktester:
                     prev_regime = self.regime_history[-2]["regime"]
                     should_close = regime_state != prev_regime
                 if should_close:
-                    pnl = self._close_position(bar)
+                    exit_reason = "hold_limit"
+                    if not (bars_held >= self.config.position_hold_bars):
+                        exit_reason = "regime_change"
+                    pnl = self._close_position(bar, exit_reason=exit_reason)
                     self.equity += pnl
 
             # Generate signal
