@@ -204,6 +204,29 @@ class PerformanceAnalyzer:
             "regime_performance": regime_performance,
         }
 
+    # ── Exit Reason Breakdown ───────────────────────────────────────────
+
+    def exit_reason_breakdown(self) -> dict:
+        if self.trades_df.empty or "exit_reason" not in self.trades_df.columns:
+            return {}
+
+        counts = self.trades_df["exit_reason"].value_counts().to_dict()
+        total = len(self.trades_df)
+
+        breakdown = {}
+        for reason, count in counts.items():
+            reason_trades = self.trades_df[self.trades_df["exit_reason"] == reason]
+            avg_pnl = reason_trades["pnl"].mean()
+            win_rate = (reason_trades["pnl"] > 0).mean()
+            breakdown[reason] = {
+                "count": int(count),
+                "pct": round(count / total * 100, 1),
+                "avg_pnl": round(float(avg_pnl), 4),
+                "win_rate": round(float(win_rate), 3),
+            }
+
+        return breakdown
+
     # ── VaR Validation ─────────────────────────────────────────────────
 
     def var_validation(
