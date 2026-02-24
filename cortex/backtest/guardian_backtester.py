@@ -44,6 +44,9 @@ class BacktestConfig:
     take_profit_pct: float = 0.08
     trailing_stop_pct: float = 0.03
     use_trailing_stop: bool = True
+    momentum_window: int = 10
+    momentum_threshold: float = 0.5
+    use_momentum_filter: bool = True
 
 
 @dataclass
@@ -336,6 +339,20 @@ class GuardianBacktester:
         last_probs = self._filter_probs.iloc[-1].values
         return int(np.argmax(last_probs))
 
+    def _confirm_momentum(self, returns_pct: pd.Series, direction: str) -> bool:
+        """Check if recent momentum confirms the signal direction."""
+        if not self.config.use_momentum_filter:
+            return True
+        window = min(self.config.momentum_window, len(returns_pct))
+        if window < 3:
+            return True
+        recent = returns_pct.iloc[-window:]
+        std = recent.std()
+        momentum = recent.mean() / std if std > 0 else 0.0
+        if direction == "long":
+            return momentum > -self.config.momentum_threshold
+        return momentum < self.config.momentum_threshold
+
     def _build_signal(
         self, bar: pd.Series, regime_state: int, returns_pct: pd.Series
     ) -> str | None:
@@ -346,10 +363,14 @@ class GuardianBacktester:
 
         if strategy == "regime":
             if regime_state <= 1:
-                return "long"
-            if regime_state >= 3:
-                return "short"
-            return None
+                direction = "long"
+            elif regime_state >= 3:
+                direction = "short"
+            else:
+                return None
+            if not self._confirm_momentum(returns_pct, direction):
+                return None
+            return direction
 
         if strategy == "mean_revert":
             if len(returns_pct) < 2:
@@ -360,10 +381,14 @@ class GuardianBacktester:
                 return None
             z = last_ret / roll_std
             if z < -self.config.mean_revert_threshold:
-                return "long"
-            if z > self.config.mean_revert_threshold:
-                return "short"
-            return None
+                direction = "long"
+            elif z > self.config.mean_revert_threshold:
+                direction = "short"
+            else:
+                return None
+            if not self._confirm_momentum(returns_pct, direction):
+                return None
+            return direction
 
         return None
 

@@ -77,6 +77,7 @@ class ParameterSweep:
             "trailing_stop_pct": [0.02, 0.03, 0.05],
             "approval_threshold": [50.0, 60.0, 70.0],
             "trade_size_pct": [0.10, 0.15],
+            "momentum_threshold": [0.3, 0.5, 0.8],
         }
 
     @staticmethod

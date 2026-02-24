@@ -50,6 +50,9 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
     parser.add_argument("--take-profit", type=float, default=0.08, help="Take-profit pct (default: 0.08)")
     parser.add_argument("--trailing-stop", type=float, default=0.03, help="Trailing stop pct (default: 0.03)")
     parser.add_argument("--no-trailing", action="store_true", help="Disable trailing stop")
+    parser.add_argument("--momentum-window", type=int, default=10, help="Momentum lookback window in bars (default: 10)")
+    parser.add_argument("--momentum-threshold", type=float, default=0.5, help="Momentum z-score threshold (default: 0.5)")
+    parser.add_argument("--no-momentum", action="store_true", help="Disable momentum filter")
     parser.add_argument("--sweep", action="store_true", help="Run parameter sweep instead of single backtest")
     parser.add_argument("--output", default=None, help="Output JSON file path (optional)")
 
@@ -69,6 +72,9 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
         take_profit_pct=args.take_profit,
         trailing_stop_pct=args.trailing_stop,
         use_trailing_stop=not args.no_trailing,
+        momentum_window=args.momentum_window,
+        momentum_threshold=args.momentum_threshold,
+        use_momentum_filter=not args.no_momentum,
     )
     return config, args.output, args.sweep
 
