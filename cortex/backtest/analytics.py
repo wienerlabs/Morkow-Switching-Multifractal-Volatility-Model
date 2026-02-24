@@ -363,6 +363,32 @@ class PerformanceAnalyzer:
             f"{m.get('signals_rejected', 0)} rejected",
             f"  Approval Rate:   {m.get('approval_rate', 0) * 100:.1f}%",
             "",
-            "=" * 60,
         ]
+
+        # Risk Management section
+        exit_reasons = m.get("exit_reasons", {})
+        risk_mgmt = m.get("risk_management", {})
+        if exit_reasons or risk_mgmt:
+            lines.append("-- Risk Management --")
+            if exit_reasons:
+                lines.append("  Exit Reasons:")
+                for reason in [
+                    "stop_loss", "take_profit", "trailing_stop",
+                    "hold_limit", "regime_change", "end_of_data",
+                ]:
+                    info = exit_reasons.get(reason)
+                    if info:
+                        lines.append(
+                            f"    {reason:18s} {info['count']:>3d} ({info['pct']:>5.1f}%)"
+                            f"  avg PnL: ${info['avg_pnl']:>8.4f}  win: {info['win_rate']*100:.0f}%"
+                        )
+            if risk_mgmt:
+                lines.append("  Effectiveness:")
+                lines.append(f"    Avg SL loss:       ${risk_mgmt.get('avg_sl_loss', 0):.4f}  vs hold: ${risk_mgmt.get('avg_hold_loss', 0):.4f}")
+                reduction = risk_mgmt.get("sl_loss_reduction", 0)
+                lines.append(f"    SL loss reduction: ${reduction:.4f}  {'(SL caps losses tighter)' if reduction > 0 else ''}")
+                lines.append(f"    Avg managed win:   ${risk_mgmt.get('avg_managed_win', 0):.4f}  vs hold: ${risk_mgmt.get('avg_hold_win', 0):.4f}")
+            lines.append("")
+
+        lines.append("=" * 60)
         return "\n".join(lines)
