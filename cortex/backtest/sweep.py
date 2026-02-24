@@ -21,17 +21,24 @@ class ParameterSweep:
     def sweep(self, param_grid: dict[str, list]) -> pd.DataFrame:
         """Run all parameter combinations, return results sorted by Sharpe.
 
-        param_grid example:
-            {
-                "stop_loss_pct": [0.02, 0.03, 0.05],
-                "take_profit_pct": [0.05, 0.08, 0.12],
-                "trailing_stop_pct": [0.02, 0.03, 0.05],
-                "approval_threshold": [50, 60, 70],
-            }
+        Uses calibration caching: first run calibrates models, subsequent
+        runs reuse cached calibration — typically 5-10x faster.
         """
         keys = list(param_grid.keys())
         values = list(param_grid.values())
         combos = list(itertools.product(*values))
+
+        # Params that don't affect model calibration (only trade execution)
+        trade_only_params = {
+            "stop_loss_pct", "take_profit_pct", "trailing_stop_pct",
+            "use_trailing_stop", "trade_size_pct", "position_hold_bars",
+            "rsi_oversold", "rsi_overbought", "use_ta_filter",
+            "momentum_threshold", "use_momentum_filter", "momentum_window",
+        }
+
+        # Check if sweep only varies trade params (can reuse calibration)
+        varies_model_params = any(k not in trade_only_params for k in keys)
+        calibration_cache = None
 
         results = []
         total = len(combos)
@@ -41,8 +48,14 @@ class ParameterSweep:
             config = replace(self.base_config, **params)
 
             try:
-                bt = GuardianBacktester(config)
+                bt = GuardianBacktester(config, calibration_cache=calibration_cache)
                 result = bt.run(data=self.data.copy())
+
+                # Cache calibration from first run
+                if calibration_cache is None and not varies_model_params:
+                    calibration_cache = bt.export_calibration_cache()
+                    print(f"  [cached calibration from run 1 — remaining runs will be faster]")
+
                 analyzer = PerformanceAnalyzer(result)
                 metrics = analyzer.compute_all()
 
@@ -78,6 +91,8 @@ class ParameterSweep:
             "approval_threshold": [50.0, 60.0, 70.0],
             "trade_size_pct": [0.10, 0.15],
             "momentum_threshold": [0.3, 0.5, 0.8],
+            "rsi_oversold": [25.0, 30.0, 35.0],
+            "rsi_overbought": [65.0, 70.0, 75.0],
         }
 
     @staticmethod

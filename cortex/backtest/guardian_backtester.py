@@ -47,6 +47,11 @@ class BacktestConfig:
     momentum_window: int = 10
     momentum_threshold: float = 0.5
     use_momentum_filter: bool = True
+    use_ta_filter: bool = True
+    rsi_oversold: float = 30.0
+    rsi_overbought: float = 70.0
+    use_macd_filter: bool = True
+    use_bb_filter: bool = True
 
 
 @dataclass
@@ -65,7 +70,7 @@ class BacktestResult:
 class GuardianBacktester:
     """Replays Guardian pipeline on historical OHLCV data bar-by-bar."""
 
-    def __init__(self, config: BacktestConfig) -> None:
+    def __init__(self, config: BacktestConfig, calibration_cache: dict | None = None) -> None:
         self.config = config
         self.feed = HistoricalDataFeed()
         self.executor = ExecutionSimulator()
@@ -86,6 +91,12 @@ class GuardianBacktester:
         self._P_matrix = None
         self._last_calibration_bar: int = -1
 
+        # Bar-indexed calibration cache: {bar_number: calibration_snapshot}
+        # Populated on first run, reused on subsequent runs (deterministic)
+        self._calibration_bar_cache: dict[int, dict] = {}
+        if calibration_cache:
+            self._calibration_bar_cache = calibration_cache
+
     def run(self, data: pd.DataFrame | None = None) -> BacktestResult:
         """Main bar-by-bar event loop."""
         if data is None:
@@ -94,6 +105,12 @@ class GuardianBacktester:
             )
 
         df = HistoricalDataFeed.compute_returns(data)
+
+        # Pre-compute TA indicators once (adds rsi, macd_hist, bb_upper, bb_lower columns)
+        if self.config.use_ta_filter:
+            from cortex.backtest.technical import TechnicalIndicators
+            df = TechnicalIndicators.compute_all(df)
+
         if len(df) < self.config.min_calibration_bars + 10:
             raise ValueError(
                 f"Need at least {self.config.min_calibration_bars + 10} bars, got {len(df)}"
@@ -113,8 +130,12 @@ class GuardianBacktester:
 
             # Recalibrate models at configured intervals
             if self._needs_recalibration(i):
-                events = self._extract_hawkes_events(returns_window)
-                self._calibrate_models(returns_window, events)
+                if i in self._calibration_bar_cache:
+                    self._restore_calibration(self._calibration_bar_cache[i])
+                else:
+                    events = self._extract_hawkes_events(returns_window)
+                    self._calibrate_models(returns_window, events)
+                    self._calibration_bar_cache[i] = self._snapshot_calibration()
                 self._last_calibration_bar = i
 
             # Determine current regime
@@ -275,6 +296,32 @@ class GuardianBacktester:
             config=self.config,
         )
 
+    def export_calibration_cache(self) -> dict[int, dict]:
+        """Export bar-indexed calibration cache for reuse across sweep runs."""
+        return self._calibration_bar_cache
+
+    def _snapshot_calibration(self) -> dict:
+        """Snapshot current calibration state."""
+        return {
+            "evt_params": self._evt_params,
+            "svj_params": self._svj_params,
+            "hawkes_params": self._hawkes_params,
+            "msm_params": self._msm_params,
+            "filter_probs": self._filter_probs,
+            "sigma_states": self._sigma_states,
+            "P_matrix": self._P_matrix,
+        }
+
+    def _restore_calibration(self, snapshot: dict) -> None:
+        """Restore calibration from a snapshot."""
+        self._evt_params = snapshot.get("evt_params")
+        self._svj_params = snapshot.get("svj_params")
+        self._hawkes_params = snapshot.get("hawkes_params")
+        self._msm_params = snapshot.get("msm_params")
+        self._filter_probs = snapshot.get("filter_probs")
+        self._sigma_states = snapshot.get("sigma_states")
+        self._P_matrix = snapshot.get("P_matrix")
+
     def _needs_recalibration(self, current_bar: int) -> bool:
         if self._last_calibration_bar < 0:
             return True
@@ -353,6 +400,35 @@ class GuardianBacktester:
             return momentum > -self.config.momentum_threshold
         return momentum < self.config.momentum_threshold
 
+    def _confirm_ta(self, bar: pd.Series, direction: str) -> bool:
+        """Check if at least 1 TA indicator confirms the signal direction."""
+        if not self.config.use_ta_filter:
+            return True
+
+        score = 0
+        rsi = bar.get("rsi")
+        macd_hist = bar.get("macd_hist")
+        bb_upper = bar.get("bb_upper")
+        bb_lower = bar.get("bb_lower")
+        close = float(bar["close"])
+
+        if direction == "long":
+            if rsi is not None and not pd.isna(rsi) and rsi < self.config.rsi_oversold:
+                score += 1
+            if self.config.use_macd_filter and macd_hist is not None and not pd.isna(macd_hist) and macd_hist > 0:
+                score += 1
+            if self.config.use_bb_filter and bb_lower is not None and not pd.isna(bb_lower) and close <= bb_lower * 1.01:
+                score += 1
+        else:
+            if rsi is not None and not pd.isna(rsi) and rsi > self.config.rsi_overbought:
+                score += 1
+            if self.config.use_macd_filter and macd_hist is not None and not pd.isna(macd_hist) and macd_hist < 0:
+                score += 1
+            if self.config.use_bb_filter and bb_upper is not None and not pd.isna(bb_upper) and close >= bb_upper * 0.99:
+                score += 1
+
+        return score >= 1
+
     def _build_signal(
         self, bar: pd.Series, regime_state: int, returns_pct: pd.Series
     ) -> str | None:
@@ -369,6 +445,8 @@ class GuardianBacktester:
             else:
                 return None
             if not self._confirm_momentum(returns_pct, direction):
+                return None
+            if not self._confirm_ta(bar, direction):
                 return None
             return direction
 
@@ -387,6 +465,8 @@ class GuardianBacktester:
             else:
                 return None
             if not self._confirm_momentum(returns_pct, direction):
+                return None
+            if not self._confirm_ta(bar, direction):
                 return None
             return direction
 

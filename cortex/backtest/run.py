@@ -53,6 +53,9 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
     parser.add_argument("--momentum-window", type=int, default=10, help="Momentum lookback window in bars (default: 10)")
     parser.add_argument("--momentum-threshold", type=float, default=0.5, help="Momentum z-score threshold (default: 0.5)")
     parser.add_argument("--no-momentum", action="store_true", help="Disable momentum filter")
+    parser.add_argument("--no-ta", action="store_true", help="Disable TA indicator filter")
+    parser.add_argument("--rsi-oversold", type=float, default=30.0, help="RSI oversold threshold (default: 30)")
+    parser.add_argument("--rsi-overbought", type=float, default=70.0, help="RSI overbought threshold (default: 70)")
     parser.add_argument("--sweep", action="store_true", help="Run parameter sweep instead of single backtest")
     parser.add_argument("--output", default=None, help="Output JSON file path (optional)")
 
@@ -75,6 +78,9 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
         momentum_window=args.momentum_window,
         momentum_threshold=args.momentum_threshold,
         use_momentum_filter=not args.no_momentum,
+        use_ta_filter=not args.no_ta,
+        rsi_oversold=args.rsi_oversold,
+        rsi_overbought=args.rsi_overbought,
     )
     return config, args.output, args.sweep
 

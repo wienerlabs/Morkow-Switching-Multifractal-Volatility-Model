@@ -4,6 +4,7 @@ Loads OHLCV data from Birdeye API or local CSV cache, computes returns,
 and extracts large-move events for Hawkes process input.
 """
 
+import asyncio
 import os
 import warnings
 from datetime import datetime, timezone
@@ -144,17 +145,26 @@ class HistoricalDataFeed:
                     chunk_start + _MAX_CANDLES_PER_REQUEST * interval_secs,
                     time_to,
                 )
-                resp = await client.get(
-                    f"{BIRDEYE_BASE}/defi/ohlcv",
-                    headers=headers,
-                    params={
-                        "address": address,
-                        "type": interval,
-                        "time_from": chunk_start,
-                        "time_to": chunk_end,
-                    },
-                )
-                resp.raise_for_status()
+                for attempt in range(5):
+                    resp = await client.get(
+                        f"{BIRDEYE_BASE}/defi/ohlcv",
+                        headers=headers,
+                        params={
+                            "address": address,
+                            "type": interval,
+                            "time_from": chunk_start,
+                            "time_to": chunk_end,
+                        },
+                    )
+                    if resp.status_code == 429:
+                        wait = 2 ** attempt
+                        logger.info("rate_limited", retry_in=wait, attempt=attempt + 1)
+                        await asyncio.sleep(wait)
+                        continue
+                    resp.raise_for_status()
+                    break
+                else:
+                    resp.raise_for_status()
                 items = resp.json().get("data", {}).get("items", [])
                 all_items.extend(items)
                 chunk_start = chunk_end
