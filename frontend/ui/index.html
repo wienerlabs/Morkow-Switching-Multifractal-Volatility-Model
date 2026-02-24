@@ -545,6 +545,17 @@
                             <button class="btn btn-sm" onclick="tvLoadChart(null, 'day', 1, 365, this)">1Y</button>
                         </div>
                     </div>
+                    <div id="indicatorToolbar" style="display:flex;flex-wrap:wrap;gap:0.25rem;padding:0.4rem 0.75rem;border-top:1px solid var(--border);background:#fafafa;">
+                        <span style="font-size:0.5rem;color:var(--dim);align-self:center;margin-right:0.25rem;">INDICATORS</span>
+                        <button class="btn btn-sm" data-indicator="sma20" style="font-size:0.5rem;padding:0.15rem 0.5rem;">SMA 20</button>
+                        <button class="btn btn-sm" data-indicator="sma50" style="font-size:0.5rem;padding:0.15rem 0.5rem;">SMA 50</button>
+                        <button class="btn btn-sm" data-indicator="sma200" style="font-size:0.5rem;padding:0.15rem 0.5rem;">SMA 200</button>
+                        <button class="btn btn-sm" data-indicator="ema12" style="font-size:0.5rem;padding:0.15rem 0.5rem;">EMA 12</button>
+                        <button class="btn btn-sm" data-indicator="ema26" style="font-size:0.5rem;padding:0.15rem 0.5rem;">EMA 26</button>
+                        <button class="btn btn-sm" data-indicator="bb" style="font-size:0.5rem;padding:0.15rem 0.5rem;">Bollinger</button>
+                        <button class="btn btn-sm" data-indicator="vwap" style="font-size:0.5rem;padding:0.15rem 0.5rem;">VWAP</button>
+                        <button class="btn btn-sm" data-indicator="ichimoku" style="font-size:0.5rem;padding:0.15rem 0.5rem;">Ichimoku</button>
+                    </div>
                     <div class="tv-chart-container" id="tvChartContainer"><div class="tv-loading" id="tvLoading">Loading chart...</div></div>
                 </div>
 
@@ -719,6 +730,8 @@
     <script src="js/vault-ui.js"></script>
     <script src="js/staking-sdk.js"></script>
     <script src="js/staking-ui.js"></script>
+    <script src="js/technical-indicators.js"></script>
+    <script src="js/indicators-ui.js"></script>
 
     <!-- UI State Manager -->
     <script>

@@ -726,9 +726,20 @@ async function tvLoadChart(poolAddress, timeframe, aggregate, limit, btn) {
             color: parseFloat(d[4]) >= parseFloat(d[1]) ? 'rgba(0,170,0,0.3)' : 'rgba(204,0,0,0.3)'
         })).sort((a, b) => a.time - b.time);
 
+        // Merge volume into candle data for indicators that need it
+        var candlesWithVolume = candles.map(function (c, idx) {
+            return { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: volumes[idx] ? volumes[idx].value : 0 };
+        });
+        window._tvCandleData = candlesWithVolume;
+
         tvCandleSeries.setData(candles);
         tvVolumeSeries.setData(volumes);
         tvChart.timeScale().fitContent();
+
+        // Re-apply active indicators after chart data reload
+        if (typeof IndicatorsUI !== 'undefined') {
+            try { IndicatorsUI.reapplyIndicators(); } catch (e) {}
+        }
     } catch (e) {
         console.error('Chart load error:', e);
     } finally {

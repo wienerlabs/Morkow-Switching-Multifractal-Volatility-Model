@@ -187,6 +187,39 @@
             </div>
         </div>
 
+        <!-- Technical Analysis Section -->
+        <div class="section-header">
+            <span>Technical Analysis</span>
+            <span class="text-dim">20 INDICATORS · BUY/SELL SIGNALS</span>
+        </div>
+        <div class="ta-grid" style="display:grid;grid-template-columns:1fr 2fr;border:1px solid var(--border);margin-bottom:1.5rem;">
+            <div id="taSummaryPanel" style="border-right:1px solid var(--border);">
+                <div style="text-align:center;padding:2rem;color:var(--dim);font-size:0.65rem;">Loading Technical Analysis...</div>
+            </div>
+            <div style="padding:1rem;">
+                <div style="font-size:0.55rem;color:var(--dim);text-transform:uppercase;margin-bottom:0.75rem;">Oscillators &amp; Momentum</div>
+                <div id="taOscillatorGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.5rem;margin-bottom:1rem;">
+                    <div class="ta-mini-card" id="taRSI"><div class="ta-mini-label">RSI (14)</div><div class="ta-mini-val" id="taRSIVal">--</div></div>
+                    <div class="ta-mini-card" id="taMACD"><div class="ta-mini-label">MACD</div><div class="ta-mini-val" id="taMACDVal">--</div></div>
+                    <div class="ta-mini-card" id="taStoch"><div class="ta-mini-label">Stochastic</div><div class="ta-mini-val" id="taStochVal">--</div></div>
+                    <div class="ta-mini-card" id="taCCI"><div class="ta-mini-label">CCI (20)</div><div class="ta-mini-val" id="taCCIVal">--</div></div>
+                    <div class="ta-mini-card" id="taWR"><div class="ta-mini-label">Williams %R</div><div class="ta-mini-val" id="taWRVal">--</div></div>
+                    <div class="ta-mini-card" id="taADX"><div class="ta-mini-label">ADX (14)</div><div class="ta-mini-val" id="taADXVal">--</div></div>
+                    <div class="ta-mini-card" id="taATR"><div class="ta-mini-label">ATR (14)</div><div class="ta-mini-val" id="taATRVal">--</div></div>
+                    <div class="ta-mini-card" id="taUO"><div class="ta-mini-label">Ultimate Osc</div><div class="ta-mini-val" id="taUOVal">--</div></div>
+                </div>
+                <div style="font-size:0.55rem;color:var(--dim);text-transform:uppercase;margin-bottom:0.75rem;">Moving Averages</div>
+                <div id="taMAGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;">
+                    <div class="ta-mini-card"><div class="ta-mini-label">SMA 20</div><div class="ta-mini-val" id="taSMA20">--</div></div>
+                    <div class="ta-mini-card"><div class="ta-mini-label">SMA 50</div><div class="ta-mini-val" id="taSMA50">--</div></div>
+                    <div class="ta-mini-card"><div class="ta-mini-label">SMA 200</div><div class="ta-mini-val" id="taSMA200">--</div></div>
+                    <div class="ta-mini-card"><div class="ta-mini-label">EMA 12</div><div class="ta-mini-val" id="taEMA12">--</div></div>
+                    <div class="ta-mini-card"><div class="ta-mini-label">EMA 26</div><div class="ta-mini-val" id="taEMA26">--</div></div>
+                    <div class="ta-mini-card"><div class="ta-mini-label">VWAP</div><div class="ta-mini-val" id="taVWAP">--</div></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Full-width Heatmap Section -->
         <div class="section-header">
             <span>Crypto Heatmap — Full View</span>
@@ -228,5 +261,8 @@
     <script src="js/wallet.js"></script>
     <script src="js/toast.js"></script>
     <script src="js/market-app.js"></script>
+    <script src="js/technical-indicators.js"></script>
+    <script src="js/indicators-ui.js"></script>
+    <script src="js/market-ta.js"></script>
 </body>
 </html>
