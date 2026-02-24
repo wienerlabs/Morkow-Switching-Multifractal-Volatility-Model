@@ -30,11 +30,11 @@ class BacktestConfig:
     timeframe: str = "1h"
     start_date: str = ""
     end_date: str = ""
-    trade_size_pct: float = 0.05
+    trade_size_pct: float = 0.10
     recalibration_interval: int = 24
     min_calibration_bars: int = 100
     guardian_weights: dict | None = None
-    approval_threshold: float = 75.0
+    approval_threshold: float = 60.0
     webacy_enabled: bool = False
     news_enabled: bool = False
     signal_strategy: str = "regime"
