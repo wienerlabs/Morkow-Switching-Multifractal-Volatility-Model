@@ -15,8 +15,6 @@ __all__ = [
 import os
 import logging
 from datetime import datetime, timezone
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 
@@ -175,8 +173,8 @@ def get_token_ohlcv(
 
 def get_funding_rates(
     perp_market: str,
-    start_date: Optional[str | datetime] = None,
-    end_date: Optional[str | datetime] = None,
+    start_date: str | datetime | None = None,
+    end_date: str | datetime | None = None,
 ) -> pd.DataFrame:
     """
     Fetch funding rate history from Drift Protocol Data API.
