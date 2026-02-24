@@ -1897,3 +1897,83 @@ class NarratorStatusResponse(BaseModel):
     error_count: int = 0
     avg_latency_ms: float = 0
     total_latency_ms: float = 0
+
+
+# ── Vault (read-only on-chain) ──────────────────────────────────
+
+
+class VaultInfoResponse(BaseModel):
+    vault_pda: str
+    authority: str
+    asset_mint: str
+    share_mint: str
+    total_assets: int
+    total_shares: int
+    performance_fee_bps: int
+    state: str
+    name: str
+
+
+class VaultUserResponse(BaseModel):
+    wallet: str
+    share_balance: int
+    estimated_assets: float
+
+
+# ── Vesting (read-only on-chain) ────────────────────────────────
+
+
+class VestingCategoryItem(BaseModel):
+    id: int
+    name: str
+    description: str
+
+
+class VestingCategoriesResponse(BaseModel):
+    categories: list[VestingCategoryItem]
+
+
+class VestingScheduleResponse(BaseModel):
+    beneficiary: str
+    mint: str
+    total_amount: int
+    released_amount: int
+    start_time: int
+    end_time: int
+    category: int
+    category_name: str
+    claimable_amount: int
+    percent_vested: float
+
+
+# ── Staking (read-only on-chain) ────────────────────────────────
+
+
+class StakingTier(BaseModel):
+    min_amount: int
+    multiplier_bps: int
+
+
+class StakingPoolResponse(BaseModel):
+    pool_pda: str
+    authority: str
+    reward_mint: str
+    reward_rate: int
+    total_staked: int
+    last_update_time: int
+    tiers: list[StakingTier]
+
+
+class StakingUserResponse(BaseModel):
+    wallet: str
+    stake_pda: str
+    owner: str
+    amount_staked: int
+    reward_debt: int
+    tier_index: int
+    stake_timestamp: int
+    pending_rewards: float
+
+
+class StakingTiersResponse(BaseModel):
+    tiers: list[StakingTier]
