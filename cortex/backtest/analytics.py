@@ -28,6 +28,8 @@ class PerformanceAnalyzer:
         metrics.update(self.drawdown_analysis())
         metrics.update(self.trade_quality())
         metrics.update(self.guardian_metrics())
+        metrics["exit_reasons"] = self.exit_reason_breakdown()
+        metrics["risk_management"] = self.risk_management_effectiveness()
         metrics.update(self.benchmark_comparison())
         return metrics
 
