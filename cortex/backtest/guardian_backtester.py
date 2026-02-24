@@ -180,6 +180,17 @@ class GuardianBacktester:
                     self._extract_hawkes_events(returns_window)
                 )
 
+                # Neutral news: n_items=0 triggers early-return with score=50
+                neutral_news = {"n_items": 0}
+                # Neutral ALAMS: var_total=0.04375 → base score ~50
+                # (midpoint of FLOOR=0.01..CEILING=0.08 mapped to 0..80)
+                neutral_alams = {
+                    "var_total": 0.04375,
+                    "current_regime": 0,
+                    "delta": 0.0,
+                    "regime_probs": [],
+                }
+
                 try:
                     from cortex.guardian import assess_trade
 
@@ -191,8 +202,8 @@ class GuardianBacktester:
                         evt_data=evt_data,
                         svj_data=svj_data,
                         hawkes_data=hawkes_data,
-                        news_data=None,
-                        alams_data=None,
+                        news_data=neutral_news,
+                        alams_data=neutral_alams,
                         strategy=None,
                         run_debate=False,
                         agent_confidence=None,
@@ -222,6 +233,7 @@ class GuardianBacktester:
                                 "entry_price": exec_result["execution_price"],
                                 "entry_bar": i,
                                 "entry_ts": str(ts),
+                                "max_favorable_pct": 0.0,
                             }
                     else:
                         signals_rejected += 1
