@@ -1,3 +1,5 @@
+"""FastAPI application entry point for Cortex Risk Engine."""
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 
