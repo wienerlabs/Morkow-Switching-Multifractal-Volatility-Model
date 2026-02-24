@@ -81,8 +81,29 @@
     font-weight: 600;
 }
 
+/* Technical Analysis Cards */
+.ta-mini-card {
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    text-align: center;
+}
+
+.ta-mini-label {
+    font-size: 0.5rem;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 3px;
+}
+
+.ta-mini-val {
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    font-weight: 600;
+}
+
 @media (max-width: 960px) {
     .market-grid { grid-template-columns: 1fr; }
     .ob-grid { grid-template-columns: 1fr; }
+    .ta-grid { grid-template-columns: 1fr !important; }
     #depthChart { display: none; }
 }

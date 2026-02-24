@@ -40,6 +40,7 @@ from api.routes.system import router as system_router
 from api.routes.vault import router as vault_router
 from api.routes.vesting import router as vesting_router
 from api.routes.staking import router as staking_router
+from api.routes.webacy import router as webacy_router
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -80,3 +81,4 @@ router.include_router(system_router)
 router.include_router(vault_router)
 router.include_router(vesting_router)
 router.include_router(staking_router)
+router.include_router(webacy_router)
