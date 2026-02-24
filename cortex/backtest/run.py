@@ -45,11 +45,11 @@ def parse_args(argv: list[str] | None = None) -> tuple[BacktestConfig, str | Non
         choices=["regime", "always_long", "mean_revert"],
         help="Signal strategy",
     )
-    parser.add_argument("--output", default=None, help="Output JSON file path (optional)")
-    parser.add_argument("--stop-loss", type=float, default=0.02, help="Stop-loss percentage (default: 0.02 = 2%%)")
-    parser.add_argument("--take-profit", type=float, default=0.05, help="Take-profit percentage (default: 0.05 = 5%%)")
-    parser.add_argument("--trailing-stop", type=float, default=0.015, help="Trailing stop percentage (default: 0.015 = 1.5%%)")
+    parser.add_argument("--stop-loss", type=float, default=0.02, help="Stop-loss pct (default: 0.02)")
+    parser.add_argument("--take-profit", type=float, default=0.05, help="Take-profit pct (default: 0.05)")
+    parser.add_argument("--trailing-stop", type=float, default=0.015, help="Trailing stop pct (default: 0.015)")
     parser.add_argument("--no-trailing", action="store_true", help="Disable trailing stop")
+    parser.add_argument("--output", default=None, help="Output JSON file path (optional)")
 
     args = parser.parse_args(argv)
 
