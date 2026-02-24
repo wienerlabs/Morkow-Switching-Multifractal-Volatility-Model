@@ -422,7 +422,7 @@ class GuardianBacktester:
         else:
             return size_usd * (entry_price - current_price) / entry_price
 
-    def _close_position(self, bar: pd.Series) -> float:
+    def _close_position(self, bar: pd.Series, exit_reason: str = "hold_limit") -> float:
         """Close current position, return realized PnL."""
         if self.position is None:
             return 0.0
@@ -449,6 +449,7 @@ class GuardianBacktester:
             "entry_bar": self.position["entry_bar"],
             "entry_ts": self.position["entry_ts"],
             "exit_ts": str(bar.name) if hasattr(bar, "name") else "",
+            "exit_reason": exit_reason,
         })
 
         self.position = None
