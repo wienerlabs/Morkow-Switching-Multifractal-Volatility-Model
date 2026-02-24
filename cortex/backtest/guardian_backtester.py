@@ -122,6 +122,39 @@ class GuardianBacktester:
                 "regime": regime_state,
             })
 
+            # Risk management exits (SL/TP/trailing)
+            if self.position is not None:
+                current_price = float(bar["close"])
+                entry_price = self.position["entry_price"]
+
+                if self.position["direction"] == "long":
+                    unrealized_pct = (current_price - entry_price) / entry_price
+                else:
+                    unrealized_pct = (entry_price - current_price) / entry_price
+
+                self.position["max_favorable_pct"] = max(
+                    self.position.get("max_favorable_pct", 0.0), unrealized_pct
+                )
+
+                exit_reason = None
+
+                if self.config.stop_loss_pct and unrealized_pct <= -self.config.stop_loss_pct:
+                    exit_reason = "stop_loss"
+                elif self.config.take_profit_pct and unrealized_pct >= self.config.take_profit_pct:
+                    exit_reason = "take_profit"
+                elif (
+                    self.config.use_trailing_stop
+                    and self.config.trailing_stop_pct
+                    and self.position["max_favorable_pct"] > 0
+                ):
+                    drawdown_from_peak = self.position["max_favorable_pct"] - unrealized_pct
+                    if drawdown_from_peak >= self.config.trailing_stop_pct:
+                        exit_reason = "trailing_stop"
+
+                if exit_reason:
+                    pnl = self._close_position(bar, exit_reason=exit_reason)
+                    self.equity += pnl
+
             # Close position if hold limit exceeded or regime changed
             if self.position is not None:
                 bars_held = i - self.position["entry_bar"]
