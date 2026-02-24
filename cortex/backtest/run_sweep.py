@@ -2,6 +2,10 @@
 
 Phase 1: Sweep key params on Jan 2026 (in-sample)
 Phase 2: Validate top configs on Oct-Dec 2025 (out-of-sample)
+
+Uses bar-indexed calibration cache: first run builds cache, subsequent
+runs reuse cached model calibrations (EVT/SVJ/Hawkes/MSM are data-dependent
+only, not affected by trade params or approval_threshold).
 """
 
 from __future__ import annotations
@@ -23,10 +27,12 @@ from cortex.backtest.guardian_backtester import BacktestConfig, GuardianBacktest
 from cortex.backtest.analytics import PerformanceAnalyzer
 
 
-def run_single(config: BacktestConfig, data: pd.DataFrame) -> dict | None:
+def run_single(config: BacktestConfig, data: pd.DataFrame, cal_cache: dict | None = None) -> tuple[dict | None, dict]:
+    """Run backtest, return (metrics, calibration_cache)."""
     try:
-        bt = GuardianBacktester(config)
+        bt = GuardianBacktester(config, calibration_cache=cal_cache)
         result = bt.run(data=data.copy())
+        new_cache = bt.export_calibration_cache()
         analyzer = PerformanceAnalyzer(result)
         metrics = analyzer.compute_all()
 
@@ -45,10 +51,10 @@ def run_single(config: BacktestConfig, data: pd.DataFrame) -> dict | None:
             "expectancy": metrics.get("expectancy", 0),
             "buy_hold_return_pct": bh_return,
             "alpha_pct": metrics.get("total_return_pct", 0) - bh_return,
-        }
+        }, new_cache
     except Exception as e:
         print(f"  FAILED: {e}")
-        return None
+        return None, cal_cache or {}
 
 
 def run_sweep(base_config: BacktestConfig, data: pd.DataFrame, grid: dict) -> pd.DataFrame:
@@ -58,14 +64,18 @@ def run_sweep(base_config: BacktestConfig, data: pd.DataFrame, grid: dict) -> pd
     print(f"\nSweeping {total} combinations...")
     print("=" * 80)
 
+    cal_cache = None
     results = []
     for idx, combo in enumerate(combos, 1):
         params = dict(zip(keys, combo))
         config = replace(base_config, **params)
 
         t0 = time.time()
-        metrics = run_single(config, data)
+        metrics, cal_cache = run_single(config, data, cal_cache)
         elapsed = time.time() - t0
+
+        if idx == 1:
+            print(f"  [calibration cached — remaining {total-1} runs will be ~5-10x faster]")
 
         if metrics:
             row = {**params, **metrics}
@@ -119,7 +129,7 @@ def fetch_with_retry(feed: HistoricalDataFeed, token: str, start: str, end: str,
             return asyncio.run(feed.load_ohlcv(token=token, start_date=start, end_date=end, timeframe=timeframe))
         except Exception as e:
             if "429" in str(e) and attempt < max_retries - 1:
-                wait = 30 * (attempt + 1)
+                wait = 60 * (attempt + 1)
                 print(f"  Rate limited, waiting {wait}s before retry...")
                 time.sleep(wait)
             else:
@@ -141,21 +151,21 @@ def main():
         timeframe="1h", initial_capital=10000,
     )
 
-    # Tight grid: 12 combos (~24 min total)
-    # Key insight: approval_threshold is the biggest lever (controls trade count)
+    # Focused grid: most impactful params
+    # approval_threshold controls trade count (biggest lever)
     # SL/TP control risk/reward profile
+    # trailing_stop adds downside protection
     grid = {
         "approval_threshold": [40.0, 50.0, 60.0],
-        "stop_loss_pct": [0.03, 0.05],
-        "take_profit_pct": [0.08, 0.12],
+        "stop_loss_pct": [0.03, 0.05, 0.08],
+        "take_profit_pct": [0.08, 0.12, 0.15],
+        "trailing_stop_pct": [0.03, 0.05],
     }
 
     total_combos = 1
     for v in grid.values():
         total_combos *= len(v)
     print(f"Grid size: {total_combos} combinations")
-    est_min = total_combos * 2
-    print(f"Estimated time: ~{est_min} min")
 
     is_results = run_sweep(base, is_data, grid)
     print_results(is_results, "IN-SAMPLE RESULTS (Jan 2026)")
@@ -185,6 +195,7 @@ def main():
     }]
 
     oos_rows = []
+    oos_cache = None
     for rank, (_, row) in enumerate(top_3.iterrows(), 1):
         params = {col: row[col] for col in param_cols}
         config = replace(base,
@@ -194,7 +205,7 @@ def main():
 
         print(f"\n  Config #{rank}: {params}")
         t0 = time.time()
-        metrics = run_single(config, oos_data)
+        metrics, oos_cache = run_single(config, oos_data, oos_cache)
         elapsed = time.time() - t0
 
         if metrics:
