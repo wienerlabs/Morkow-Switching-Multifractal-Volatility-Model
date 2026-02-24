@@ -38,11 +38,11 @@ class BacktestConfig:
     webacy_enabled: bool = False
     news_enabled: bool = False
     signal_strategy: str = "regime"
-    position_hold_bars: int = 24
+    position_hold_bars: int = 48
     mean_revert_threshold: float = 2.0
-    stop_loss_pct: float = 0.02
-    take_profit_pct: float = 0.05
-    trailing_stop_pct: float = 0.015
+    stop_loss_pct: float = 0.03
+    take_profit_pct: float = 0.08
+    trailing_stop_pct: float = 0.03
     use_trailing_stop: bool = True
 
 
