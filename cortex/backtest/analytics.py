@@ -227,6 +227,47 @@ class PerformanceAnalyzer:
 
         return breakdown
 
+    # ── Risk Management Effectiveness ───────────────────────────────────
+
+    def risk_management_effectiveness(self) -> dict:
+        if self.trades_df.empty or "exit_reason" not in self.trades_df.columns:
+            return {}
+
+        df = self.trades_df
+        sl_trades = df[df["exit_reason"] == "stop_loss"]
+        tp_trades = df[df["exit_reason"] == "take_profit"]
+        trail_trades = df[df["exit_reason"] == "trailing_stop"]
+        hold_trades = df[df["exit_reason"] == "hold_limit"]
+
+        # Avg loss on SL exits vs hold_limit exits
+        sl_losses = sl_trades["pnl"][sl_trades["pnl"] < 0]
+        hold_losses = hold_trades["pnl"][hold_trades["pnl"] < 0]
+        avg_sl_loss = round(float(sl_losses.mean()), 4) if len(sl_losses) > 0 else 0.0
+        avg_hold_loss = round(float(hold_losses.mean()), 4) if len(hold_losses) > 0 else 0.0
+
+        # Avg win on TP/trailing exits vs hold_limit exits
+        managed = pd.concat([tp_trades, trail_trades]) if not (tp_trades.empty and trail_trades.empty) else pd.DataFrame()
+        managed_wins = managed["pnl"][managed["pnl"] > 0] if not managed.empty and "pnl" in managed.columns else pd.Series(dtype=float)
+        hold_wins = hold_trades["pnl"][hold_trades["pnl"] > 0]
+        avg_managed_win = round(float(managed_wins.mean()), 4) if len(managed_wins) > 0 else 0.0
+        avg_hold_win = round(float(hold_wins.mean()), 4) if len(hold_wins) > 0 else 0.0
+
+        # sl_loss_reduction: positive means SL capped losses tighter than hold_limit
+        # (avg_hold_loss is more negative, so hold_loss - sl_loss = how much worse hold is)
+        sl_loss_reduction = round(avg_sl_loss - avg_hold_loss, 4) if avg_hold_loss != 0.0 else 0.0
+
+        return {
+            "avg_sl_loss": avg_sl_loss,
+            "avg_hold_loss": avg_hold_loss,
+            "sl_loss_reduction": sl_loss_reduction,
+            "avg_managed_win": avg_managed_win,
+            "avg_hold_win": avg_hold_win,
+            "sl_count": len(sl_trades),
+            "tp_count": len(tp_trades),
+            "trail_count": len(trail_trades),
+            "hold_count": len(hold_trades),
+        }
+
     # ── VaR Validation ─────────────────────────────────────────────────
 
     def var_validation(
