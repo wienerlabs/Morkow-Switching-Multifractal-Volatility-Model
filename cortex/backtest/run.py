@@ -111,18 +111,21 @@ def main(argv: list[str] | None = None) -> None:
     # Load BTC data for macro agent when using multi-agent mode
     btc_data = None
     if config.use_agents:
-        print("Loading BTC price data for macro agent...")
-        btc_ohlcv = asyncio.run(feed.load_ohlcv(
-            token="BTC",
-            start_date=config.start_date,
-            end_date=config.end_date,
-            timeframe=config.timeframe,
-        ))
-        if btc_ohlcv is not None and len(btc_ohlcv) > 0:
-            btc_data = btc_ohlcv["close"]
-            print(f"  BTC data loaded: {len(btc_data)} bars")
-        else:
-            print("  Warning: BTC data unavailable, macro agent will use neutral scores")
+        try:
+            # Try wrapped BTC on Solana (tBTC)
+            btc_ohlcv = asyncio.run(feed.load_ohlcv(
+                token="6DNSN2BJsaPFdDBt5W1CvUXZwFpqN1NbqjAy2Ghq3g2K",
+                start_date=config.start_date,
+                end_date=config.end_date,
+                timeframe=config.timeframe,
+            ))
+            if btc_ohlcv is not None and len(btc_ohlcv) > 0:
+                btc_data = btc_ohlcv["close"]
+                print(f"  BTC proxy data loaded: {len(btc_data)} bars")
+        except Exception:
+            pass
+        if btc_data is None:
+            print("  BTC data unavailable — macro agent will use neutral scores")
 
     if sweep_mode:
         from cortex.backtest.sweep import ParameterSweep
