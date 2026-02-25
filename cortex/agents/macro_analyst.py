@@ -21,6 +21,7 @@ class MacroAnalystAgent(BaseAgent):
 
     def __init__(self, correlation_window: int = 168) -> None:
         self.correlation_window = correlation_window  # 168 hours = 7 days for 1h bars
+        self._btc_cache: pd.Series | None = None
 
     def analyze(self, token: str, data: pd.DataFrame, context: dict[str, Any]) -> AgentSignal:
         """Live mode: fetch real macro data."""
@@ -72,6 +73,21 @@ class MacroAnalystAgent(BaseAgent):
         """Backtest mode: use BTC price data from context as macro proxy."""
         btc_prices = context.get("btc_close")
         sol_close = data["close"].astype(float)
+
+        if btc_prices is None and self._btc_cache is not None:
+            btc_prices = self._btc_cache
+
+        if btc_prices is None and data.index is not None and len(data) > 0:
+            try:
+                from cortex.backtest.data_feed import load_btc_ohlcv
+                start_str = str(data.index[0].date())
+                end_str = str(data.index[-1].date())
+                btc_df = load_btc_ohlcv(start_str, end_str)
+                btc_prices = btc_df["close"]
+                self._btc_cache = btc_prices
+                logger.info("btc_loaded_on_fly", rows=len(btc_prices))
+            except Exception as e:
+                logger.warning("btc_load_failed_falling_back_to_neutral", error=str(e))
 
         # Default neutral values
         fg_proxy = 50

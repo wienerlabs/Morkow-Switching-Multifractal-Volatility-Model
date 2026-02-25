@@ -85,16 +85,18 @@ class TechnicalAnalystAgent(BaseAgent):
             bb_score > 70,
         ])
 
-        if bullish_count >= 2:
+        if bullish_count > bearish_count:
             direction = "long"
-        elif bearish_count >= 2:
+        elif bearish_count > bullish_count:
             direction = "short"
+        elif bullish_count >= 1 and bearish_count >= 1:
+            direction = None  # conflicting signals
         else:
             direction = None
 
         # Confidence: higher when indicators agree
         agreement = max(bullish_count, bearish_count) / 3.0
-        confidence = 0.3 + agreement * 0.5  # 0.3 to 0.8
+        confidence = 0.2 + agreement * 0.6  # 0.2 (single) to 0.8 (all agree)
 
         reasoning_parts = []
         if not pd.isna(current_rsi):

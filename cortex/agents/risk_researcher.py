@@ -88,15 +88,15 @@ class RiskResearcherAgent(BaseAgent):
             scores[k] * self.MODEL_WEIGHTS[k] for k in self.MODEL_WEIGHTS
         )
 
-        # Direction based on regime
+        # Direction based on regime (only if we have regime data)
         regime_state = 0
+        direction = None
         if model_data:
             regime_state = model_data.get("current_regime", 0)
-        direction = None
-        if regime_state <= 1:
-            direction = "long"
-        elif regime_state >= 3:
-            direction = "short"
+            if regime_state <= 1:
+                direction = "long"
+            elif regime_state >= 3:
+                direction = "short"
 
         # Confidence: higher when models agree (low variance)
         score_values = list(scores.values())

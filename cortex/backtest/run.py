@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 _project_root = Path(__file__).resolve().parents[2]
 load_dotenv(_project_root / ".env")
 
-from cortex.backtest.data_feed import HistoricalDataFeed
+from cortex.backtest.data_feed import HistoricalDataFeed, load_btc_ohlcv
 from cortex.backtest.guardian_backtester import BacktestConfig, GuardianBacktester
 from cortex.backtest.analytics import PerformanceAnalyzer
 
@@ -112,18 +112,28 @@ def main(argv: list[str] | None = None) -> None:
     btc_data = None
     if config.use_agents:
         try:
-            # Try wrapped BTC on Solana (tBTC)
-            btc_ohlcv = asyncio.run(feed.load_ohlcv(
-                token="6DNSN2BJsaPFdDBt5W1CvUXZwFpqN1NbqjAy2Ghq3g2K",
+            btc_ohlcv = load_btc_ohlcv(
                 start_date=config.start_date,
                 end_date=config.end_date,
-                timeframe=config.timeframe,
-            ))
+                interval=config.timeframe,
+            )
             if btc_ohlcv is not None and len(btc_ohlcv) > 0:
                 btc_data = btc_ohlcv["close"]
-                print(f"  BTC proxy data loaded: {len(btc_data)} bars")
-        except Exception:
-            pass
+                print(f"  BTC data loaded via CoinGecko: {len(btc_data)} bars")
+        except Exception as e:
+            print(f"  CoinGecko BTC load failed ({e}), trying Birdeye fallback...")
+            try:
+                btc_ohlcv = asyncio.run(feed.load_ohlcv(
+                    token="6DNSN2BJsaPFdDBt5W1CvUXZwFpqN1NbqjAy2Ghq3g2K",
+                    start_date=config.start_date,
+                    end_date=config.end_date,
+                    timeframe=config.timeframe,
+                ))
+                if btc_ohlcv is not None and len(btc_ohlcv) > 0:
+                    btc_data = btc_ohlcv["close"]
+                    print(f"  BTC proxy data loaded via Birdeye: {len(btc_data)} bars")
+            except Exception:
+                pass
         if btc_data is None:
             print("  BTC data unavailable — macro agent will use neutral scores")
 
