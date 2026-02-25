@@ -7,6 +7,7 @@ backtest with equity curve, trade log, and component-level scoring history.
 
 from __future__ import annotations
 
+import copy
 import logging
 from dataclasses import dataclass, field
 
@@ -47,6 +48,14 @@ class BacktestConfig:
     momentum_window: int = 10
     momentum_threshold: float = 0.5
     use_momentum_filter: bool = True
+    use_ta_filter: bool = True
+    rsi_oversold: float = 30.0
+    rsi_overbought: float = 70.0
+    use_macd_filter: bool = True
+    use_bb_filter: bool = True
+    use_agents: bool = False
+    agent_approval_threshold: float = 60.0
+    agent_veto_score: float = 85.0
 
 
 @dataclass
@@ -65,7 +74,7 @@ class BacktestResult:
 class GuardianBacktester:
     """Replays Guardian pipeline on historical OHLCV data bar-by-bar."""
 
-    def __init__(self, config: BacktestConfig) -> None:
+    def __init__(self, config: BacktestConfig, calibration_cache: dict | None = None) -> None:
         self.config = config
         self.feed = HistoricalDataFeed()
         self.executor = ExecutionSimulator()
@@ -86,14 +95,38 @@ class GuardianBacktester:
         self._P_matrix = None
         self._last_calibration_bar: int = -1
 
-    def run(self, data: pd.DataFrame | None = None) -> BacktestResult:
-        """Main bar-by-bar event loop."""
+        # Bar-indexed calibration cache: {bar_number: calibration_snapshot}
+        # Populated on first run, reused on subsequent runs (deterministic)
+        self._calibration_bar_cache: dict[int, dict] = {}
+        if calibration_cache:
+            self._calibration_bar_cache = calibration_cache
+
+        # Multi-agent coordinator (lazy-init when use_agents=True)
+        self._coordinator = None
+        if config.use_agents:
+            self._coordinator = self._init_coordinator()
+
+    def run(self, data: pd.DataFrame | None = None, btc_data: pd.Series | None = None) -> BacktestResult:
+        """Main bar-by-bar event loop.
+
+        Args:
+            data: OHLCV DataFrame with datetime index.
+            btc_data: Optional BTC close prices (Series) for macro agent backtest mode.
+        """
         if data is None:
             raise ValueError(
                 "Provide OHLCV DataFrame directly (use HistoricalDataFeed.load_ohlcv() externally)."
             )
 
+        self._btc_data = btc_data
+
         df = HistoricalDataFeed.compute_returns(data)
+
+        # Pre-compute TA indicators once (adds rsi, macd_hist, bb_upper, bb_lower columns)
+        if self.config.use_ta_filter:
+            from cortex.backtest.technical import TechnicalIndicators
+            df = TechnicalIndicators.compute_all(df)
+
         if len(df) < self.config.min_calibration_bars + 10:
             raise ValueError(
                 f"Need at least {self.config.min_calibration_bars + 10} bars, got {len(df)}"
@@ -113,8 +146,12 @@ class GuardianBacktester:
 
             # Recalibrate models at configured intervals
             if self._needs_recalibration(i):
-                events = self._extract_hawkes_events(returns_window)
-                self._calibrate_models(returns_window, events)
+                if i in self._calibration_bar_cache:
+                    self._restore_calibration(self._calibration_bar_cache[i])
+                else:
+                    events = self._extract_hawkes_events(returns_window)
+                    self._calibrate_models(returns_window, events)
+                    self._calibration_bar_cache[i] = self._snapshot_calibration()
                 self._last_calibration_bar = i
 
             # Determine current regime
@@ -178,7 +215,7 @@ class GuardianBacktester:
                 signals_generated += 1
                 trade_size_usd = self.equity * self.config.trade_size_pct
 
-                # Build model data dicts for assess_trade()
+                # Build model data dicts
                 model_data = self._build_model_data(returns_window)
                 evt_data = self._build_evt_data()
                 svj_data = self._build_svj_data(returns_window)
@@ -186,37 +223,16 @@ class GuardianBacktester:
                     self._extract_hawkes_events(returns_window)
                 )
 
-                # Neutral news: n_items=0 triggers early-return with score=50
-                neutral_news = {"n_items": 0}
-                # Neutral ALAMS: var_total=0.04375 → base score ~50
-                # (midpoint of FLOOR=0.01..CEILING=0.08 mapped to 0..80)
-                neutral_alams = {
-                    "var_total": 0.04375,
-                    "current_regime": 0,
-                    "delta": 0.0,
-                    "regime_probs": [],
-                }
-
-                try:
-                    from cortex.guardian import assess_trade
-
-                    decision = assess_trade(
-                        token=self.config.token,
-                        trade_size_usd=trade_size_usd,
-                        direction=signal,
-                        model_data=model_data,
-                        evt_data=evt_data,
-                        svj_data=svj_data,
-                        hawkes_data=hawkes_data,
-                        news_data=neutral_news,
-                        alams_data=neutral_alams,
-                        strategy=None,
-                        run_debate=False,
-                        agent_confidence=None,
+                if self._coordinator is not None:
+                    # Multi-agent path: coordinator dispatches to all agents
+                    decision = self._evaluate_agents(
+                        df, i, trade_size_usd, model_data, evt_data, svj_data, hawkes_data
                     )
-                except Exception:
-                    logger.warning("assess_trade_failed", bar=i, exc_info=True)
-                    decision = None
+                else:
+                    # Legacy path: monolithic assess_trade()
+                    decision = self._evaluate_guardian(
+                        signal, trade_size_usd, model_data, evt_data, svj_data, hawkes_data
+                    )
 
                 if decision is not None:
                     self.component_scores.append({
@@ -274,6 +290,40 @@ class GuardianBacktester:
             signals_rejected=signals_rejected,
             config=self.config,
         )
+
+    def export_calibration_cache(self) -> dict[int, dict]:
+        """Export bar-indexed calibration cache for reuse across sweep runs.
+
+        Returns a shallow copy of the cache dict — individual snapshots are
+        already deep-copied at creation time, and _restore_calibration deep-copies
+        on read, so this is safe for cross-run sharing.
+        """
+        return dict(self._calibration_bar_cache)
+
+    def _snapshot_calibration(self) -> dict:
+        """Snapshot current calibration state (deep copy to avoid mutation)."""
+        return {
+            "evt_params": copy.deepcopy(self._evt_params),
+            "svj_params": copy.deepcopy(self._svj_params),
+            "hawkes_params": copy.deepcopy(self._hawkes_params),
+            "msm_params": copy.deepcopy(self._msm_params),
+            "filter_probs": self._filter_probs.copy(deep=True) if self._filter_probs is not None else None,
+            "sigma_states": self._sigma_states.copy() if self._sigma_states is not None else None,
+            "P_matrix": self._P_matrix.copy() if self._P_matrix is not None else None,
+        }
+
+    def _restore_calibration(self, snapshot: dict) -> None:
+        """Restore calibration from a snapshot (deep copy to isolate runs)."""
+        self._evt_params = copy.deepcopy(snapshot.get("evt_params"))
+        self._svj_params = copy.deepcopy(snapshot.get("svj_params"))
+        self._hawkes_params = copy.deepcopy(snapshot.get("hawkes_params"))
+        self._msm_params = copy.deepcopy(snapshot.get("msm_params"))
+        fp = snapshot.get("filter_probs")
+        self._filter_probs = fp.copy(deep=True) if fp is not None else None
+        ss = snapshot.get("sigma_states")
+        self._sigma_states = ss.copy() if ss is not None else None
+        pm = snapshot.get("P_matrix")
+        self._P_matrix = pm.copy() if pm is not None else None
 
     def _needs_recalibration(self, current_bar: int) -> bool:
         if self._last_calibration_bar < 0:
@@ -353,6 +403,35 @@ class GuardianBacktester:
             return momentum > -self.config.momentum_threshold
         return momentum < self.config.momentum_threshold
 
+    def _confirm_ta(self, bar: pd.Series, direction: str) -> bool:
+        """Check if at least 1 TA indicator confirms the signal direction."""
+        if not self.config.use_ta_filter:
+            return True
+
+        score = 0
+        rsi = bar.get("rsi")
+        macd_hist = bar.get("macd_hist")
+        bb_upper = bar.get("bb_upper")
+        bb_lower = bar.get("bb_lower")
+        close = float(bar["close"])
+
+        if direction == "long":
+            if rsi is not None and not pd.isna(rsi) and rsi < self.config.rsi_oversold:
+                score += 1
+            if self.config.use_macd_filter and macd_hist is not None and not pd.isna(macd_hist) and macd_hist > 0:
+                score += 1
+            if self.config.use_bb_filter and bb_lower is not None and not pd.isna(bb_lower) and close <= bb_lower * 1.01:
+                score += 1
+        else:
+            if rsi is not None and not pd.isna(rsi) and rsi > self.config.rsi_overbought:
+                score += 1
+            if self.config.use_macd_filter and macd_hist is not None and not pd.isna(macd_hist) and macd_hist < 0:
+                score += 1
+            if self.config.use_bb_filter and bb_upper is not None and not pd.isna(bb_upper) and close >= bb_upper * 0.99:
+                score += 1
+
+        return score >= 1
+
     def _build_signal(
         self, bar: pd.Series, regime_state: int, returns_pct: pd.Series
     ) -> str | None:
@@ -369,6 +448,8 @@ class GuardianBacktester:
             else:
                 return None
             if not self._confirm_momentum(returns_pct, direction):
+                return None
+            if not self._confirm_ta(bar, direction):
                 return None
             return direction
 
@@ -387,6 +468,8 @@ class GuardianBacktester:
             else:
                 return None
             if not self._confirm_momentum(returns_pct, direction):
+                return None
+            if not self._confirm_ta(bar, direction):
                 return None
             return direction
 
@@ -445,6 +528,96 @@ class GuardianBacktester:
             return result["event_times"]
         except Exception:
             return np.array([])
+
+    def _init_coordinator(self):
+        """Initialize multi-agent coordinator with all specialist agents."""
+        from cortex.agents.coordinator import AgentCoordinator
+        from cortex.agents.technical_analyst import TechnicalAnalystAgent
+        from cortex.agents.macro_analyst import MacroAnalystAgent
+        from cortex.agents.risk_researcher import RiskResearcherAgent
+
+        agents = [
+            TechnicalAnalystAgent(
+                rsi_oversold=self.config.rsi_oversold,
+                rsi_overbought=self.config.rsi_overbought,
+            ),
+            MacroAnalystAgent(),
+            RiskResearcherAgent(),
+        ]
+        return AgentCoordinator(
+            agents=agents,
+            approval_threshold=self.config.agent_approval_threshold,
+            veto_score=self.config.agent_veto_score,
+        )
+
+    def _evaluate_agents(
+        self,
+        df: pd.DataFrame,
+        bar_idx: int,
+        trade_size_usd: float,
+        model_data: dict | None,
+        evt_data: dict | None,
+        svj_data: dict | None,
+        hawkes_data: dict | None,
+    ) -> dict | None:
+        """Run multi-agent coordinator for trade approval."""
+        context = {
+            "evt_data": evt_data,
+            "svj_data": svj_data,
+            "hawkes_data": hawkes_data,
+            "model_data": model_data,
+            "btc_close": self._btc_data,
+        }
+        try:
+            decision = self._coordinator.evaluate_backtest(
+                token=self.config.token,
+                data=df,
+                bar_idx=bar_idx,
+                context=context,
+                trade_size_usd=trade_size_usd,
+            )
+            return self._coordinator.to_guardian_format(decision)
+        except Exception:
+            logger.warning("agent_coordinator_failed", bar=bar_idx, exc_info=True)
+            return None
+
+    def _evaluate_guardian(
+        self,
+        signal: str,
+        trade_size_usd: float,
+        model_data: dict | None,
+        evt_data: dict | None,
+        svj_data: dict | None,
+        hawkes_data: dict | None,
+    ) -> dict | None:
+        """Run legacy monolithic assess_trade() for trade approval."""
+        neutral_news = {"n_items": 0}
+        neutral_alams = {
+            "var_total": 0.04375,
+            "current_regime": 0,
+            "delta": 0.0,
+            "regime_probs": [],
+        }
+        try:
+            from cortex.guardian import assess_trade
+
+            return assess_trade(
+                token=self.config.token,
+                trade_size_usd=trade_size_usd,
+                direction=signal,
+                model_data=model_data,
+                evt_data=evt_data,
+                svj_data=svj_data,
+                hawkes_data=hawkes_data,
+                news_data=neutral_news,
+                alams_data=neutral_alams,
+                strategy=None,
+                run_debate=False,
+                agent_confidence=None,
+            )
+        except Exception:
+            logger.warning("assess_trade_failed", exc_info=True)
+            return None
 
     def _execute_trade(self, bar: pd.Series, direction: str, size_usd: float) -> dict | None:
         """Simulate execution and record in TradeLedger."""

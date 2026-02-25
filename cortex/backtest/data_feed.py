@@ -4,7 +4,9 @@ Loads OHLCV data from Birdeye API or local CSV cache, computes returns,
 and extracts large-move events for Hawkes process input.
 """
 
+import asyncio
 import os
+import time
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -84,6 +86,91 @@ def _cache_filename(token: str, timeframe: str, start: str, end: str) -> str:
     return f"{safe_token}_{timeframe}_{safe_start}_{safe_end}.csv"
 
 
+_BTC_CACHE_DIR = Path("data/backtest_cache")
+
+
+def load_btc_ohlcv(
+    start_date: str,
+    end_date: str,
+    interval: str = "1h",
+    cache_dir: Path | None = None,
+) -> pd.DataFrame:
+    cache_dir = cache_dir or _BTC_CACHE_DIR
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_start = start_date.replace(":", "-").replace("+", "")
+    safe_end = end_date.replace(":", "-").replace("+", "")
+    cache_path = cache_dir / f"BTC_1h_{safe_start}_{safe_end}.csv"
+
+    if cache_path.exists():
+        logger.info("btc_cache_hit", path=str(cache_path))
+        df = pd.read_csv(cache_path, parse_dates=["timestamp"], index_col="timestamp")
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC")
+        return df
+
+    unix_start = _to_unix(start_date)
+    unix_end = _to_unix(end_date)
+
+    url = (
+        "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range"
+        f"?vs_currency=usd&from={unix_start}&to={unix_end}"
+    )
+
+    data = None
+    for attempt in range(3):
+        try:
+            resp = httpx.get(url, timeout=30)
+            if resp.status_code == 429:
+                wait = 2 ** (attempt + 1)
+                logger.warning("coingecko_rate_limited", retry_in=wait, attempt=attempt + 1)
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            break
+        except httpx.HTTPStatusError:
+            if attempt < 2:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            raise
+        except httpx.RequestError:
+            if attempt < 2:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            raise
+
+    if data is None:
+        raise RuntimeError("Failed to fetch BTC data from CoinGecko after 3 attempts")
+
+    prices = data.get("prices", [])
+    volumes = data.get("total_volumes", [])
+    if not prices:
+        raise ValueError(f"No BTC price data returned for {start_date} → {end_date}")
+
+    vol_map = {int(v[0]): v[1] for v in volumes} if volumes else {}
+
+    records = []
+    for ts_ms, price in prices:
+        ts = pd.Timestamp(int(ts_ms), unit="ms", tz="UTC")
+        vol = vol_map.get(int(ts_ms), 0.0)
+        records.append({
+            "timestamp": ts,
+            "open": price,
+            "high": price,
+            "low": price,
+            "close": price,
+            "volume": vol,
+        })
+
+    df = pd.DataFrame(records).set_index("timestamp").sort_index()
+    df = df[~df.index.duplicated(keep="first")]
+
+    df.to_csv(cache_path, index=True, index_label="timestamp")
+    logger.info("btc_cached", rows=len(df), path=str(cache_path))
+    return df
+
+
 class HistoricalDataFeed:
     """Loads and manages historical OHLCV data for backtesting."""
 
@@ -144,17 +231,26 @@ class HistoricalDataFeed:
                     chunk_start + _MAX_CANDLES_PER_REQUEST * interval_secs,
                     time_to,
                 )
-                resp = await client.get(
-                    f"{BIRDEYE_BASE}/defi/ohlcv",
-                    headers=headers,
-                    params={
-                        "address": address,
-                        "type": interval,
-                        "time_from": chunk_start,
-                        "time_to": chunk_end,
-                    },
-                )
-                resp.raise_for_status()
+                for attempt in range(5):
+                    resp = await client.get(
+                        f"{BIRDEYE_BASE}/defi/ohlcv",
+                        headers=headers,
+                        params={
+                            "address": address,
+                            "type": interval,
+                            "time_from": chunk_start,
+                            "time_to": chunk_end,
+                        },
+                    )
+                    if resp.status_code == 429:
+                        wait = 2 ** attempt
+                        logger.info("rate_limited", retry_in=wait, attempt=attempt + 1)
+                        await asyncio.sleep(wait)
+                        continue
+                    resp.raise_for_status()
+                    break
+                else:
+                    resp.raise_for_status()
                 items = resp.json().get("data", {}).get("items", [])
                 all_items.extend(items)
                 chunk_start = chunk_end
