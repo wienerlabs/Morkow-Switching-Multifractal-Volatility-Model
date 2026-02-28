@@ -603,6 +603,18 @@ MODEL_VERSION_HISTORY_SIZE = int(os.environ.get("MODEL_VERSION_HISTORY_SIZE", "3
 
 API_VERSION = os.environ.get("API_VERSION", "1.2.0")
 
+# ── Phase 6-8: Multi-Agent Alpha Engine ──
+
+SHARPE_WEIGHTS_ENABLED = os.environ.get("SHARPE_WEIGHTS_ENABLED", "false").lower() == "true"
+HMM_REGIME_ENABLED = os.environ.get("HMM_REGIME_ENABLED", "false").lower() == "true"
+COINTEGRATION_ENABLED = os.environ.get("COINTEGRATION_ENABLED", "false").lower() == "true"
+HMM_N_STATES = int(os.environ.get("HMM_N_STATES", "3"))
+HMM_MIN_BARS = int(os.environ.get("HMM_MIN_BARS", "100"))
+HMM_RETRAIN_INTERVAL = int(os.environ.get("HMM_RETRAIN_INTERVAL", "24"))
+COINT_LOOKBACK = int(os.environ.get("COINT_LOOKBACK", "168"))
+COINT_ENTRY_ZSCORE = float(os.environ.get("COINT_ENTRY_ZSCORE", "2.0"))
+COINT_MAX_HALF_LIFE = float(os.environ.get("COINT_MAX_HALF_LIFE", "72.0"))
+
 
 # ── Startup Validation ──
 

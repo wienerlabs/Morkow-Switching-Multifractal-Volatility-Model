@@ -15,6 +15,7 @@ from typing import Any
 import pandas as pd
 
 from cortex.agents.base import AgentSignal, BaseAgent
+from cortex.config import SHARPE_WEIGHTS_ENABLED, HMM_REGIME_ENABLED
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +44,14 @@ class AgentCoordinator:
         agents: list[BaseAgent],
         approval_threshold: float = 60.0,
         veto_score: float = 85.0,
+        pnl_tracker=None,
+        hmm_detector=None,
     ) -> None:
         self.agents = agents
         self.approval_threshold = approval_threshold
         self.veto_score = veto_score
+        self._pnl_tracker = pnl_tracker
+        self._hmm_detector = hmm_detector
 
     def evaluate(
         self,
@@ -100,14 +105,26 @@ class AgentCoordinator:
                 reasoning="No agents produced signals",
             )
 
-        # Build weight map from agent instances
+        # Build weight map — dynamic Sharpe weights if available, else static
         agent_weights = {a.name: a.weight for a in self.agents}
+
+        if SHARPE_WEIGHTS_ENABLED and self._pnl_tracker is not None:
+            sharpe_weights = self._pnl_tracker.compute_sharpe_weights()
+            if sharpe_weights is not None:
+                agent_weights = sharpe_weights
+
+        # Apply regime multiplier if available
+        regime_multiplier = 1.0
+        if HMM_REGIME_ENABLED and self._hmm_detector is not None:
+            regime_mults = self._hmm_detector.get_regime_multipliers()
+            if regime_mults is not None:
+                regime_multiplier = regime_mults.get("regime_multiplier", 1.0)
 
         # Confidence-weighted risk score
         total_weight = 0.0
         weighted_score = 0.0
         for sig in signals:
-            w = agent_weights.get(sig.agent_name, 1.0) * sig.confidence
+            w = agent_weights.get(sig.agent_name, 1.0) * regime_multiplier * sig.confidence
             weighted_score += sig.score * w
             total_weight += w
 
@@ -118,7 +135,7 @@ class AgentCoordinator:
         direction_votes: dict[str, float] = {"long": 0.0, "short": 0.0}
         for sig in signals:
             if sig.direction is not None:
-                w = agent_weights.get(sig.agent_name, 1.0) * sig.confidence
+                w = agent_weights.get(sig.agent_name, 1.0) * regime_multiplier * sig.confidence
                 direction_votes[sig.direction] += w
 
         if direction_votes["long"] > direction_votes["short"] and direction_votes["long"] > 0:
