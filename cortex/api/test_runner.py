@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import re
+import sys
 import time
 import uuid
 from collections import deque
@@ -269,9 +270,9 @@ async def _run_subprocess(state: RunState) -> None:
     """Execute pytest in a subprocess and stream output."""
     target = state.target
     if target == "all":
-        cmd = ["python", "-m", "pytest", "tests/", "-v", "--tb=short", "--no-header"]
+        cmd = [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short", "--no-header"]
     else:
-        cmd = ["python", "-m", "pytest", target, "-v", "--tb=short", "--no-header"]
+        cmd = [sys.executable, "-m", "pytest", target, "-v", "--tb=short", "--no-header"]
 
     logger.info("Starting test run %s: %s", state.run_id, " ".join(cmd))
 
@@ -352,7 +353,7 @@ async def discover_tests() -> DiscoverResponse:
         return _discover_cache
 
     proc = await asyncio.create_subprocess_exec(
-        "python", "-m", "pytest", "--collect-only", "-q", "tests/",
+        sys.executable, "-m", "pytest", "--collect-only", "-qq", "tests/",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
         cwd=PROJECT_ROOT,
