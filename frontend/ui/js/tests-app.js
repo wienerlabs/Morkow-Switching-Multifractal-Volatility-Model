@@ -271,8 +271,8 @@
         }
         if (els.ringFail) {
             els.ringFail.setAttribute('stroke-dasharray', failLen + ' ' + RING_C);
-            // offset fail arc after pass arc — base offset is -quarter turn (-81.75)
-            var failOffset = -81.75 - passLen;
+            // offset fail arc after pass arc (CSS rotate(-90deg) handles 12 o'clock start)
+            var failOffset = -passLen;
             els.ringFail.setAttribute('stroke-dashoffset', failOffset);
         }
 
