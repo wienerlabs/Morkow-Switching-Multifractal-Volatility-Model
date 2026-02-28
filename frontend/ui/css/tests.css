@@ -1,0 +1,379 @@
+/* ═══════════════════════════════════════════════
+   CORTEX — Test Runner Page
+   ═══════════════════════════════════════════════ */
+
+/* ═══ Summary Metrics ═══ */
+.test-summary {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    border-bottom: 1px solid var(--border);
+}
+.test-summary .metric-cell {
+    padding: 0.75rem 1rem;
+    border-right: 1px solid var(--border);
+    border-bottom: none;
+}
+.test-summary .metric-cell:last-child {
+    border-right: none;
+}
+
+/* ═══ Controls Bar ═══ */
+.test-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--subtle);
+}
+.test-controls-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.test-controls-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+/* ═══ Search Input ═══ */
+.test-search {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 0.4rem 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    width: 220px;
+    outline: none;
+    border-radius: 0;
+    transition: border-color 0.2s;
+}
+.test-search::placeholder {
+    color: var(--dim);
+}
+.test-search:focus {
+    border-color: var(--fg);
+}
+
+/* ═══ Filter Pills ═══ */
+.filter-pills {
+    display: flex;
+    border: 1px solid var(--border);
+}
+.filter-pill {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.6rem;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    cursor: pointer;
+    background: none;
+    border: none;
+    border-right: 1px solid var(--border);
+    color: var(--dim);
+    transition: all 0.2s;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+}
+.filter-pill:last-child {
+    border-right: none;
+}
+.filter-pill:hover {
+    background: var(--muted);
+    color: var(--fg);
+}
+.filter-pill.active {
+    background: var(--fg);
+    color: var(--bg);
+}
+
+/* ═══ Progress Bar ═══ */
+.test-progress-section {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+}
+.test-progress-text {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.6rem;
+    color: var(--dim);
+    margin-bottom: 0.5rem;
+    font-family: var(--font-mono);
+}
+.test-progress-text .progress-stats {
+    display: flex;
+    gap: 1rem;
+}
+.test-progress-text .stat-pass { color: var(--green); }
+.test-progress-text .stat-fail { color: var(--red); }
+.test-progress-text .stat-run { color: var(--yellow); }
+.test-progress {
+    width: 100%;
+    height: 4px;
+    background: var(--fg);
+    position: relative;
+    overflow: hidden;
+}
+.test-progress-fill {
+    height: 100%;
+    background: var(--green);
+    transition: width 0.3s ease;
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+.test-progress-fail {
+    height: 100%;
+    background: var(--red);
+    transition: width 0.3s ease, left 0.3s ease;
+    position: absolute;
+    top: 0;
+}
+
+/* ═══ Section Header ═══ */
+.test-section-header {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.7rem;
+    text-transform: capitalize;
+    background: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* ═══ Test File Rows ═══ */
+.test-file-list {
+    border-bottom: 1px solid var(--border);
+}
+.test-file-row {
+    display: grid;
+    grid-template-columns: 20px 1fr 80px 80px 60px;
+    padding: 0.65rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    align-items: center;
+    gap: 0.5rem;
+}
+.test-file-row:last-child {
+    border-bottom: none;
+}
+.test-file-row:hover {
+    background: var(--hover);
+}
+.test-file-row.running {
+    background: var(--subtle);
+}
+.test-file-name {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.test-file-count {
+    font-size: 0.6rem;
+    color: var(--dim);
+    text-align: right;
+}
+.test-file-status {
+    text-align: center;
+}
+.test-file-action {
+    text-align: right;
+}
+.test-file-action .btn {
+    font-size: 0.55rem;
+    padding: 0.15rem 0.5rem;
+}
+
+/* ═══ Expanded File — Test Functions ═══ */
+.test-file-expanded {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    background: var(--subtle);
+}
+.test-file-expanded.open {
+    max-height: 2000px;
+}
+.test-function-row {
+    display: grid;
+    grid-template-columns: 20px 20px 1fr 80px 60px;
+    padding: 0.4rem 1rem 0.4rem 2rem;
+    font-size: 0.65rem;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    gap: 0.5rem;
+    transition: background 0.15s;
+}
+.test-function-row:hover {
+    background: var(--hover);
+}
+.test-function-row:last-child {
+    border-bottom: none;
+}
+.test-function-name {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--dim);
+}
+.test-function-duration {
+    font-size: 0.55rem;
+    color: var(--dim);
+    text-align: right;
+}
+.test-function-status {
+    text-align: center;
+}
+
+/* ═══ Output Terminal ═══ */
+.test-output-section {
+    border-top: 1px solid var(--border);
+}
+.test-output {
+    background: #0a0a0a;
+    color: #00aa00;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 1rem;
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    line-height: 1.6;
+}
+.test-output::-webkit-scrollbar {
+    width: 6px;
+}
+.test-output::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+.test-output::-webkit-scrollbar-thumb {
+    background: #333;
+}
+.test-output .line-pass {
+    color: #00aa00;
+}
+.test-output .line-fail {
+    color: #cc0000;
+}
+.test-output .line-skip {
+    color: #cc8800;
+}
+.test-output .line-info {
+    color: #555555;
+}
+.test-output .line-error {
+    color: #cc0000;
+    padding-left: 1.5rem;
+    font-size: 0.65rem;
+}
+
+/* ═══ Tabs (Output Section) ═══ */
+.test-output-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--muted);
+}
+
+/* ═══ History Table ═══ */
+.test-history-row {
+    display: grid;
+    grid-template-columns: 140px 80px 60px 60px 60px 1fr 80px;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.65rem;
+    align-items: center;
+    gap: 0.5rem;
+}
+.test-history-row.header {
+    background: var(--muted);
+    color: var(--dim);
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: default;
+}
+.test-history-row:not(.header):hover {
+    background: var(--hover);
+    cursor: pointer;
+}
+
+/* ═══ Empty State ═══ */
+.test-empty-state {
+    padding: 3rem 1rem;
+    text-align: center;
+    color: var(--dim);
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+}
+.test-empty-state .empty-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.75rem;
+    opacity: 0.4;
+}
+.test-empty-state .empty-title {
+    font-size: 0.75rem;
+    color: var(--fg);
+    margin-bottom: 0.25rem;
+}
+.test-empty-state .empty-sub {
+    font-size: 0.6rem;
+    color: var(--dim);
+}
+
+/* ═══ Running Dot Pulse ═══ */
+.dot-running {
+    animation: test-pulse 1.8s infinite;
+}
+@keyframes test-pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(204,136,0,0.4); }
+    50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(204,136,0,0); }
+}
+
+/* ═══ Responsive ═══ */
+@media (max-width: 1024px) {
+    .test-summary {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    .test-summary .metric-cell:nth-child(3) {
+        border-right: none;
+    }
+    .test-summary .metric-cell:nth-child(3) ~ .metric-cell {
+        border-top: 1px solid var(--border);
+    }
+}
+
+@media (max-width: 768px) {
+    .test-summary {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .test-summary .metric-cell:nth-child(even) {
+        border-right: none;
+    }
+    .test-controls {
+        flex-wrap: wrap;
+    }
+    .test-controls-right {
+        margin-left: 0;
+        width: 100%;
+    }
+    .test-search {
+        width: 100%;
+    }
+    .test-file-row {
+        grid-template-columns: 16px 1fr 60px 60px;
+    }
+    .test-file-action {
+        display: none;
+    }
+    .test-history-row {
+        grid-template-columns: 100px 60px 50px 50px 50px 1fr;
+    }
+}

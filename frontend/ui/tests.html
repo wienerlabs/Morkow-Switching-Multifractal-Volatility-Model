@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORTEX | Test Runner</title>
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/tests.css">
+</head>
+<body>
+    <div class="scanline"></div>
+
+    <div class="container">
+        <!-- Price Ticker -->
+        <div class="ticker">
+            <div class="ticker-content" id="tickerContent">
+                <span class="ticker-item">Loading live prices...</span>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <img src="assets/logos/cortex-logo-dark.png" alt="CORTEX" class="logo-img">
+                <span>v.0.1.0</span>
+            </div>
+            <a class="nav-item" href="index.html">Dashboard</a>
+            <a class="nav-item" href="market.html">Market Data</a>
+            <a class="nav-item" href="history.html">History</a>
+            <a class="nav-item" href="cerebral.html">Cerebral</a>
+            <a class="nav-item" href="tokenomics.html">Tokenomics</a>
+            <div class="nav-item active">Tests</div>
+        </header>
+
+        <!-- ═══════════════════════════════════════════════════════
+             SUMMARY METRICS BAR
+             ═══════════════════════════════════════════════════════ -->
+        <div class="test-summary" id="testSummary">
+            <div class="metric-cell">
+                <div class="metric-label">Total Files</div>
+                <div class="metric-value" id="metricTotalFiles">--</div>
+            </div>
+            <div class="metric-cell">
+                <div class="metric-label">Total Tests</div>
+                <div class="metric-value" id="metricTotalTests">--</div>
+            </div>
+            <div class="metric-cell">
+                <div class="metric-label">Last Run</div>
+                <div class="metric-value" id="metricLastRun">&#x2014;</div>
+            </div>
+            <div class="metric-cell">
+                <div class="metric-label">Suite Status</div>
+                <div class="metric-value" id="metricSuiteStatus">
+                    <span class="dot dot-dim" id="suiteStatusDot"></span>
+                </div>
+            </div>
+            <div class="metric-cell">
+                <div class="metric-label">Duration</div>
+                <div class="metric-value" id="metricDuration">&#x2014;</div>
+            </div>
+            <div class="metric-cell">
+                <div class="metric-label">Pass Rate</div>
+                <div class="metric-value" id="metricPassRate">&#x2014;</div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════
+             CONTROLS BAR
+             ═══════════════════════════════════════════════════════ -->
+        <div class="test-controls">
+            <div class="test-controls-left">
+                <button class="btn btn-filled" id="btnRunAll" onclick="onRunAll()">Run All Tests</button>
+                <button class="btn" id="btnRunFailed" onclick="onRunFailed()">Run Failed</button>
+                <button class="btn btn-red hidden" id="btnCancel" onclick="onCancel()">Cancel</button>
+            </div>
+            <div class="test-controls-right">
+                <input type="text" class="test-search" id="searchInput" placeholder="Search test files..." oninput="onSearchInput(event)">
+                <div class="filter-pills">
+                    <button class="filter-pill active" data-filter="all" onclick="onFilterClick('all', this)">All</button>
+                    <button class="filter-pill" data-filter="passed" onclick="onFilterClick('passed', this)">Pass</button>
+                    <button class="filter-pill" data-filter="failed" onclick="onFilterClick('failed', this)">Fail</button>
+                    <button class="filter-pill" data-filter="skipped" onclick="onFilterClick('skipped', this)">Skip</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════
+             PROGRESS BAR
+             ═══════════════════════════════════════════════════════ -->
+        <div class="test-progress-section hidden" id="progressSection">
+            <div class="test-progress-text">
+                <span id="progressLabel">0 / 0 (0%)</span>
+                <div class="progress-stats">
+                    <span class="stat-pass" id="progressPassed">0 passed</span>
+                    <span class="stat-fail" id="progressFailed">0 failed</span>
+                    <span class="stat-run" id="progressRunning">0 running</span>
+                </div>
+            </div>
+            <div class="test-progress">
+                <div class="test-progress-fill" id="progressFill" style="width: 0%"></div>
+                <div class="test-progress-fail" id="progressFailBar" style="width: 0%; left: 0%"></div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════
+             TEST FILE LIST
+             ═══════════════════════════════════════════════════════ -->
+        <div class="test-section-header">
+            <span>Test Files</span>
+            <span class="text-dim" id="fileCountLabel">-- files</span>
+        </div>
+        <div class="test-file-list" id="testFileList">
+            <div class="test-empty-state" id="testEmptyState">
+                <div class="empty-icon">&#x25A0;</div>
+                <div class="empty-title">Discovering tests...</div>
+                <div class="empty-sub">Connecting to the API server</div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════
+             OUTPUT SECTION (Tabs: Current Run / History)
+             ═══════════════════════════════════════════════════════ -->
+        <div class="test-output-section">
+            <div class="test-output-tabs">
+                <button class="tab-pill active" id="tabCurrentRun" onclick="switchOutputTab('current')">Current Run</button>
+                <button class="tab-pill" id="tabHistory" onclick="switchOutputTab('history')">History</button>
+            </div>
+
+            <!-- Current Run Tab -->
+            <div id="panelCurrentRun">
+                <div class="test-output" id="testOutput">
+                    <div class="line-info">Waiting for test run...</div>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="panelHistory" class="hidden">
+                <div class="test-history-row header">
+                    <div>Timestamp</div>
+                    <div>Duration</div>
+                    <div>Passed</div>
+                    <div>Failed</div>
+                    <div>Skipped</div>
+                    <div>Target</div>
+                    <div>Status</div>
+                </div>
+                <div id="historyBody">
+                    <div class="test-empty-state">
+                        <div class="empty-sub">No test history yet</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <div>CORTEX TEST RUNNER</div>
+            <div>PYTEST SUITE</div>
+            <div>&#xA9;2026 WIENER LABS</div>
+        </footer>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/ticker.js"></script>
+    <script src="js/tests-app.js"></script>
+</body>
+</html>
