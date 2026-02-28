@@ -10,6 +10,7 @@ only, not affected by trade params or approval_threshold).
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import itertools
 import time
@@ -136,7 +137,17 @@ def fetch_with_retry(feed: HistoricalDataFeed, token: str, start: str, end: str,
                 raise
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Parameter sweep + out-of-sample validation")
+    parser.add_argument("--sharpe-enabled", action="store_true", help="Enable Sharpe contribution weights (Phase 6)")
+    parser.add_argument("--hmm-enabled", action="store_true", help="Enable HMM regime detection (Phase 7)")
+    parser.add_argument("--coint-enabled", action="store_true", help="Enable SOL/BTC cointegration signal (Phase 8)")
+    parser.add_argument("--compare-features", action="store_true", help="Run 8-combo feature toggle sweep")
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     feed = HistoricalDataFeed()
 
     # ── Phase 1: In-sample sweep on Jan 2026 ──
@@ -149,6 +160,9 @@ def main():
     base = BacktestConfig(
         token="SOL", start_date="2026-01-01", end_date="2026-01-31",
         timeframe="1h", initial_capital=10000,
+        sharpe_weights_enabled=args.sharpe_enabled,
+        hmm_regime_enabled=args.hmm_enabled,
+        cointegration_enabled=args.coint_enabled,
     )
 
     # Focused grid: most impactful params

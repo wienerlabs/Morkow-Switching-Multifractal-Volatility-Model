@@ -56,6 +56,13 @@ class BacktestConfig:
     use_agents: bool = False
     agent_approval_threshold: float = 60.0
     agent_veto_score: float = 85.0
+    # Phase 6-8 feature flags
+    sharpe_weights_enabled: bool = False
+    hmm_regime_enabled: bool = False
+    cointegration_enabled: bool = False
+    hmm_min_bars: int = 100
+    hmm_retrain_interval: int = 24
+    coint_lookback: int = 168
 
 
 @dataclass
@@ -78,6 +85,27 @@ class GuardianBacktester:
         self.config = config
         self.feed = HistoricalDataFeed()
         self.executor = ExecutionSimulator()
+
+        # Phase 6-8 components
+        self._pnl_tracker = None
+        self._hmm_detector = None
+        self._coint_module = None
+
+        if config.sharpe_weights_enabled:
+            from cortex.signal_pnl_tracker import SignalPnLTracker
+            self._pnl_tracker = SignalPnLTracker(min_samples=5)
+
+        if config.hmm_regime_enabled:
+            from cortex.hmm_regime import HMMRegimeDetector
+            self._hmm_detector = HMMRegimeDetector(
+                min_bars=config.hmm_min_bars,
+                retrain_interval=config.hmm_retrain_interval,
+            )
+
+        if config.cointegration_enabled:
+            from cortex.cointegration import CointegrationModule
+            self._coint_module = CointegrationModule()
+
         self.ledger = TradeLedger()
         self.equity = config.initial_capital
         self.position: dict | None = None
@@ -548,6 +576,8 @@ class GuardianBacktester:
             agents=agents,
             approval_threshold=self.config.agent_approval_threshold,
             veto_score=self.config.agent_veto_score,
+            pnl_tracker=self._pnl_tracker,
+            hmm_detector=self._hmm_detector,
         )
 
     def _evaluate_agents(

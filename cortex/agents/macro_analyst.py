@@ -85,9 +85,9 @@ class MacroAnalystAgent(BaseAgent):
                 btc_df = load_btc_ohlcv(start_str, end_str)
                 btc_prices = btc_df["close"]
                 self._btc_cache = btc_prices
-                logger.info("btc_loaded_on_fly", rows=len(btc_prices))
+                logger.info("btc_loaded_on_fly: %d rows", len(btc_prices))
             except Exception as e:
-                logger.warning("btc_load_failed_falling_back_to_neutral", error=str(e))
+                logger.warning("btc_load_failed_falling_back_to_neutral: %s", e)
 
         # Default neutral values
         fg_proxy = 50
@@ -127,6 +127,25 @@ class MacroAnalystAgent(BaseAgent):
         score, direction, confidence = self._compute_score(
             fg_proxy, 0.0, sol_btc_corr, btc_trend
         )
+
+        # Phase 8: Cointegration adjustment
+        coint_signal = context.get("cointegration_signal") if context else None
+        if coint_signal is not None and hasattr(coint_signal, "is_valid") and coint_signal.is_valid:
+            coint_adj = float(np.clip(coint_signal.z_score * -10.0, -25.0, 25.0))
+            score = float(np.clip(score + coint_adj, 0.0, 100.0))
+
+            # Re-derive direction from adjusted score
+            if score < 35:
+                direction = "long"
+            elif score > 65:
+                direction = "short"
+            else:
+                direction = None
+
+            # Strong cointegration overrides direction
+            if abs(coint_signal.z_score) >= 2.0 and coint_signal.direction:
+                direction = coint_signal.direction
+                confidence = min(0.8, confidence + 0.2)
 
         fg_class = "Neutral"
         if fg_proxy <= 25:
