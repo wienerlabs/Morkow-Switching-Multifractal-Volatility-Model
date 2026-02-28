@@ -74,6 +74,7 @@ class RunStatus(str, Enum):
 
 class RunRequest(BaseModel):
     target: str  # e.g. "tests/test_guardian.py" or "all"
+    files: list[str] | None = None  # optional list of specific files to run
 
 
 class TestFileInfo(BaseModel):
@@ -135,6 +136,7 @@ class RunState:
 
     run_id: str
     target: str
+    files: list[str] | None = None
     status: RunStatus = RunStatus.RUNNING
     started_at: float = field(default_factory=time.time)
     finished_at: float | None = None
@@ -269,10 +271,16 @@ async def _broadcast(state: RunState, message: dict[str, Any]) -> None:
 async def _run_subprocess(state: RunState) -> None:
     """Execute pytest in a subprocess and stream output."""
     target = state.target
-    if target == "all":
-        cmd = [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short", "--no-header"]
+    cmd = [sys.executable, "-m", "pytest"]
+
+    if state.files:
+        cmd.extend(state.files)
+    elif target == "all":
+        cmd.append("tests/")
     else:
-        cmd = [sys.executable, "-m", "pytest", target, "-v", "--tb=short", "--no-header"]
+        cmd.append(target)
+
+    cmd.extend(["-v", "--tb=short", "--no-header"])
 
     logger.info("Starting test run %s: %s", state.run_id, " ".join(cmd))
 
@@ -371,7 +379,7 @@ async def discover_tests() -> DiscoverResponse:
 async def start_run(body: RunRequest) -> RunResponse:
     """Launch a pytest run as an async subprocess."""
     run_id = str(uuid.uuid4())
-    state = RunState(run_id=run_id, target=body.target)
+    state = RunState(run_id=run_id, target=body.target, files=body.files)
     _runs[run_id] = state
     _history.append(run_id)
     _evict_history()

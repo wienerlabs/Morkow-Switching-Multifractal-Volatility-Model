@@ -334,8 +334,14 @@
         }
 
         if (els.progressPassBar)   els.progressPassBar.style.width   = passPct + '%';
-        if (els.progressFailBar)   els.progressFailBar.style.width   = failPct + '%';
-        if (els.progressActiveBar) els.progressActiveBar.style.width = (state.running ? activePct : '0') + '%';
+        if (els.progressFailBar) {
+            els.progressFailBar.style.width = failPct + '%';
+            els.progressFailBar.style.left  = passPct + '%';
+        }
+        if (els.progressActiveBar) {
+            els.progressActiveBar.style.width = (state.running ? activePct : '0') + '%';
+            els.progressActiveBar.style.left  = (parseFloat(passPct) + parseFloat(failPct)) + '%';
+        }
 
         // stats
         if (els.psPass)      els.psPass.textContent      = pass;
@@ -692,6 +698,7 @@
                 var fPct = (((fr.failed || 0) + (fr.error || 0)) / fileTotalRun * 100).toFixed(1);
                 miniPass.style.width = pPct + '%';
                 miniFail.style.width = fPct + '%';
+                miniFail.style.left  = pPct + '%';
             } else {
                 miniPass.style.width = '0%';
                 miniFail.style.width = '0%';
@@ -847,18 +854,20 @@
             showToast('No failed tests to re-run', 'error');
             return;
         }
-        // run all — backend handles filtering, or run individually
-        await startRun('all');
+        var filePaths = failedFiles.map(function (f) { return f.file; });
+        await startRun('failed', filePaths);
     }
 
     async function runFile(file) {
         await startRun(file);
     }
 
-    async function startRun(target) {
+    async function startRun(target, files) {
         if (state.running) return;
 
-        var data = await apiPost('/run', { target: target });
+        var body = { target: target };
+        if (files && files.length > 0) body.files = files;
+        var data = await apiPost('/run', body);
         if (!data || !data.run_id) {
             appendTerminal('Failed to start test run \u2014 is the API server running?', 'tr-term-fail');
             showToast('Failed to start test run', 'error');
