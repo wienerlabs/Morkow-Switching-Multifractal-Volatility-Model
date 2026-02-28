@@ -27,7 +27,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -499,3 +501,22 @@ async def get_history(
             break
 
     return entries
+
+
+# ---------------------------------------------------------------------------
+# Standalone app — run with: uvicorn cortex.api.test_runner:app --reload
+# ---------------------------------------------------------------------------
+
+app = FastAPI(title="Cortex Test Runner")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(router)
+
+_frontend_dir = Path(__file__).resolve().parent.parent.parent / "frontend" / "ui"
+if _frontend_dir.is_dir():
+    app.mount("/ui", StaticFiles(directory=str(_frontend_dir), html=True), name="ui")
