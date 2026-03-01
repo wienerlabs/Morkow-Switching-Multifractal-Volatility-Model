@@ -2024,3 +2024,21 @@ class LaunchRiskResponse(BaseModel):
     details: dict
     risk_factors: list[str]
     timestamp: datetime
+
+
+# ── Ghost Watcher (Phase 15) ────────────────────────────────────
+
+
+class GhostWatcherRequest(BaseModel):
+    token_mint: str = Field(..., description="Solana token mint address")
+
+
+class GhostWatcherResponse(BaseModel):
+    risk_score: int = Field(..., ge=0, le=100)
+    dormant_whales_detected: int
+    wallets_reactivating: int
+    aggregate_dormant_balance_pct: float
+    cluster_detected: bool
+    details: dict
+    risk_factors: list[str]
+    timestamp: datetime

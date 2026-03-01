@@ -80,6 +80,9 @@ from cortex.config import (
     # Phase 14: Launch Tracker
     LAUNCH_TRACKER_ENABLED,
     LAUNCH_TRACKER_VETO_THRESHOLD,
+    # Phase 15: Ghost Watcher
+    GHOST_WATCHER_ENABLED,
+    GHOST_WATCHER_VETO_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
@@ -424,6 +427,22 @@ def _score_launch_tracker(launch_data: dict) -> dict:
     }
 
 
+def _score_ghost_watcher(ghost_data: dict) -> dict:
+    """Convert GhostWatcherResult dict into a 0-100 risk score for Guardian composite."""
+    score = min(100.0, max(0.0, float(ghost_data.get("risk_score", 0))))
+    return {
+        "component": "ghost_watcher",
+        "score": round(score, 2),
+        "details": {
+            "dormant_whales_detected": ghost_data.get("dormant_whales_detected", 0),
+            "wallets_reactivating": ghost_data.get("wallets_reactivating", 0),
+            "aggregate_dormant_balance_pct": round(ghost_data.get("aggregate_dormant_balance_pct", 0.0), 2),
+            "cluster_detected": ghost_data.get("cluster_detected", False),
+            "risk_factors": ghost_data.get("risk_factors", []),
+        },
+    }
+
+
 def record_trade_outcome(
     pnl: float,
     size: float,
@@ -548,6 +567,7 @@ def assess_trade(
     run_debate: bool = False,
     agent_confidence: float | None = None,
     launch_data: dict | None = None,
+    ghost_watcher_data: dict | None = None,
 ) -> dict:
     """Run all risk components and return composite Guardian assessment."""
     cache_key = f"{token}:{direction}"
@@ -687,6 +707,17 @@ def assess_trade(
             bundle_detected = launch_data.get("bundle_detected", False)
             if cex_funded and bundle_detected:
                 veto_reasons.append("launch_tracker_suspicious_launch")
+
+    # ── Phase 15: Ghost Watcher component ──
+    if GHOST_WATCHER_ENABLED and ghost_watcher_data is not None:
+        gw_score = _score_ghost_watcher(ghost_watcher_data)
+        scores.append(gw_score)
+        available_weights += WEIGHTS.get("ghost_watcher", 0.0)
+        if gw_score["score"] >= GHOST_WATCHER_VETO_THRESHOLD:
+            cluster = ghost_watcher_data.get("cluster_detected", False)
+            high_conc = ghost_watcher_data.get("aggregate_dormant_balance_pct", 0.0) > 10.0
+            if cluster and high_conc:
+                veto_reasons.append("ghost_watcher_coordinated_dump")
 
     # ── Task 3: Use adaptive weights if enabled ──
     active_weights = WEIGHTS

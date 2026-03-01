@@ -7,6 +7,8 @@ from fastapi import APIRouter, Query
 
 from api.models import (
     DexSpreadItem,
+    GhostWatcherRequest,
+    GhostWatcherResponse,
     LaunchRiskRequest,
     LaunchRiskResponse,
     OnchainDepthRequest,
@@ -132,6 +134,23 @@ def get_launch_risk(req: LaunchRiskRequest):
         deployer_age_days=result.deployer_age_days,
         top10_concentration_pct=result.top10_concentration_pct,
         deploy_to_first_trade_sec=result.deploy_to_first_trade_sec,
+        details=result.details,
+        risk_factors=result.risk_factors,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.post("/lvar/ghost-watcher", response_model=GhostWatcherResponse)
+def get_ghost_watcher_risk(req: GhostWatcherRequest):
+    from cortex.data.ghost_watcher import compute_ghost_risk
+
+    result = compute_ghost_risk(token_mint=req.token_mint)
+    return GhostWatcherResponse(
+        risk_score=result.risk_score,
+        dormant_whales_detected=result.dormant_whales_detected,
+        wallets_reactivating=result.wallets_reactivating,
+        aggregate_dormant_balance_pct=result.aggregate_dormant_balance_pct,
+        cluster_detected=result.cluster_detected,
         details=result.details,
         risk_factors=result.risk_factors,
         timestamp=datetime.now(timezone.utc),
