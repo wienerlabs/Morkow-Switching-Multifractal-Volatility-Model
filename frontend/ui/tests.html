@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORTEX | Test Runner</title>
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/tests.css">
+</head>
+<body>
+    <div class="scanline"></div>
+
+    <div class="container">
+        <!-- Price Ticker -->
+        <div class="ticker">
+            <div class="ticker-content" id="tickerContent">
+                <span class="ticker-item">Loading live prices...</span>
+            </div>
+        </div>
+
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <img src="assets/logos/cortex-logo-dark.png" alt="CORTEX" class="logo-img">
+                <span>v.0.1.0</span>
+            </div>
+            <a class="nav-item" href="index.html">Dashboard</a>
+            <a class="nav-item" href="market.html">Market Data</a>
+            <a class="nav-item" href="history.html">History</a>
+            <a class="nav-item" href="cerebral.html">Cerebral</a>
+            <a class="nav-item" href="tokenomics.html">Tokenomics</a>
+            <div class="nav-item active">Tests</div>
+        </header>
+
+        <!-- ═══ HERO METRICS ═══ -->
+        <div class="tr-hero">
+            <div class="tr-hero-left">
+                <div class="tr-hero-ring-wrap">
+                    <svg class="tr-ring" viewBox="0 0 120 120" id="heroRing">
+                        <circle class="tr-ring-bg" cx="60" cy="60" r="52" />
+                        <circle class="tr-ring-pass" cx="60" cy="60" r="52" id="ringPass"
+                                stroke-dasharray="0 327" />
+                        <circle class="tr-ring-fail" cx="60" cy="60" r="52" id="ringFail"
+                                stroke-dasharray="0 327" />
+                    </svg>
+                    <div class="tr-ring-center" id="ringCenter">
+                        <div class="tr-ring-pct" id="ringPct">--</div>
+                        <div class="tr-ring-label">pass rate</div>
+                    </div>
+                </div>
+                <div class="tr-hero-stats">
+                    <div class="tr-stat">
+                        <div class="tr-stat-value" id="metricTotalFiles">--</div>
+                        <div class="tr-stat-label">Test Files</div>
+                    </div>
+                    <div class="tr-stat">
+                        <div class="tr-stat-value" id="metricTotalTests">--</div>
+                        <div class="tr-stat-label">Total Tests</div>
+                    </div>
+                    <div class="tr-stat">
+                        <div class="tr-stat-value tr-stat-pass" id="metricPassed">0</div>
+                        <div class="tr-stat-label">Passed</div>
+                    </div>
+                    <div class="tr-stat">
+                        <div class="tr-stat-value tr-stat-fail" id="metricFailed">0</div>
+                        <div class="tr-stat-label">Failed</div>
+                    </div>
+                    <div class="tr-stat">
+                        <div class="tr-stat-value" id="metricDuration">&mdash;</div>
+                        <div class="tr-stat-label">Duration</div>
+                    </div>
+                    <div class="tr-stat">
+                        <div class="tr-stat-value" id="metricETA">&mdash;</div>
+                        <div class="tr-stat-label">ETA</div>
+                    </div>
+                </div>
+            </div>
+            <div class="tr-hero-right">
+                <div class="tr-hero-status" id="heroStatus">
+                    <div class="tr-status-dot tr-status-idle" id="statusDot"></div>
+                    <div class="tr-status-text" id="statusText">Idle</div>
+                </div>
+                <div class="tr-hero-actions">
+                    <button class="btn btn-filled btn-lg tr-btn-run" id="btnRunAll" onclick="TestRunner.runAll()">
+                        <span class="tr-btn-icon">&#9654;</span> Run All Tests
+                    </button>
+                    <button class="btn btn-lg" id="btnRunFailed" onclick="TestRunner.runFailed()">
+                        <span class="tr-btn-icon">&#9888;</span> Run Failed
+                    </button>
+                    <button class="btn btn-red btn-lg tr-btn-cancel hidden" id="btnCancel" onclick="TestRunner.cancel()">
+                        <span class="tr-btn-icon">&#9632;</span> Cancel
+                    </button>
+                </div>
+                <div class="tr-shortcuts">
+                    <kbd>&#8984;Enter</kbd> Run All &nbsp;&middot;&nbsp; <kbd>Esc</kbd> Cancel
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ PROGRESS SECTION ═══ -->
+        <div class="tr-progress-wrap hidden" id="progressWrap">
+            <div class="tr-progress-header">
+                <span class="tr-progress-title" id="progressTitle">Running tests...</span>
+                <span class="tr-progress-counter" id="progressCounter">0 / 0</span>
+            </div>
+            <div class="tr-progress-bar">
+                <div class="tr-progress-pass" id="progressPassBar" style="width:0%"></div>
+                <div class="tr-progress-fail" id="progressFailBar" style="width:0%"></div>
+                <div class="tr-progress-active" id="progressActiveBar" style="width:0%"></div>
+            </div>
+            <div class="tr-progress-stats">
+                <span class="tr-ps-item tr-ps-pass"><span class="tr-ps-dot tr-dot-pass"></span> <span id="psPass">0</span> passed</span>
+                <span class="tr-ps-item tr-ps-fail"><span class="tr-ps-dot tr-dot-fail"></span> <span id="psFail">0</span> failed</span>
+                <span class="tr-ps-item tr-ps-skip"><span class="tr-ps-dot tr-dot-skip"></span> <span id="psSkip">0</span> skipped</span>
+                <span class="tr-ps-item tr-ps-remaining"><span id="psRemaining">0</span> remaining</span>
+            </div>
+        </div>
+
+        <!-- ═══ CONTROLS BAR ═══ -->
+        <div class="tr-controls">
+            <input type="text" class="tr-search" id="searchInput" placeholder="&#128269; Search tests..." oninput="TestRunner.onSearch(event)">
+            <div class="tr-filters" id="filterBar">
+                <button class="tr-filter active" data-filter="all" onclick="TestRunner.setFilter('all', this)">All</button>
+                <button class="tr-filter" data-filter="passed" onclick="TestRunner.setFilter('passed', this)">
+                    <span class="tr-filter-dot tr-dot-pass"></span> Pass
+                </button>
+                <button class="tr-filter" data-filter="failed" onclick="TestRunner.setFilter('failed', this)">
+                    <span class="tr-filter-dot tr-dot-fail"></span> Fail
+                </button>
+                <button class="tr-filter" data-filter="skipped" onclick="TestRunner.setFilter('skipped', this)">
+                    <span class="tr-filter-dot tr-dot-skip"></span> Skip
+                </button>
+                <button class="tr-filter" data-filter="not_run" onclick="TestRunner.setFilter('not_run', this)">
+                    <span class="tr-filter-dot tr-dot-dim"></span> Pending
+                </button>
+            </div>
+        </div>
+
+        <!-- ═══ SPLIT VIEW: File List + Live Feed ═══ -->
+        <div class="tr-split">
+            <!-- LEFT: Test File List -->
+            <div class="tr-panel tr-panel-files">
+                <div class="tr-panel-header">
+                    <span>Test Files</span>
+                    <span class="tr-panel-count" id="fileCountLabel">-- files</span>
+                </div>
+                <div class="tr-file-list" id="testFileList">
+                    <div class="tr-empty" id="testEmptyState">
+                        <div class="tr-empty-icon">
+                            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                                <rect x="8" y="6" width="32" height="36" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                <line x1="14" y1="16" x2="34" y2="16" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+                                <line x1="14" y1="22" x2="34" y2="22" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+                                <line x1="14" y1="28" x2="28" y2="28" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+                            </svg>
+                        </div>
+                        <div class="tr-empty-title">Discovering tests...</div>
+                        <div class="tr-empty-sub">Connecting to API server</div>
+                        <div class="tr-spinner"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT: Live Feed + Output -->
+            <div class="tr-panel tr-panel-feed">
+                <div class="tr-panel-header">
+                    <div class="tr-feed-tabs">
+                        <button class="tr-feed-tab active" id="tabOutput" onclick="TestRunner.switchTab('output')">Terminal</button>
+                        <button class="tr-feed-tab" id="tabLiveFeed" onclick="TestRunner.switchTab('feed')">Live Feed</button>
+                        <button class="tr-feed-tab" id="tabHistory" onclick="TestRunner.switchTab('history')">History</button>
+                    </div>
+                    <span class="tr-feed-count" id="feedCount"></span>
+                </div>
+
+                <!-- Terminal Output Tab -->
+                <div class="tr-terminal" id="panelTerminal">
+                    <div class="tr-terminal-output" id="terminalOutput">
+                        <div class="tr-term-line tr-term-dim">Waiting for test run...</div>
+                    </div>
+                </div>
+
+                <!-- Live Feed Tab -->
+                <div class="tr-feed hidden" id="panelFeed">
+                    <div class="tr-feed-empty" id="feedEmpty">
+                        <div class="tr-feed-empty-text">Run tests to see live results</div>
+                    </div>
+                    <div class="tr-feed-list" id="feedList"></div>
+                </div>
+
+                <!-- History Tab -->
+                <div class="tr-history hidden" id="panelHistory">
+                    <div class="tr-history-header">
+                        <div>Time</div>
+                        <div>Target</div>
+                        <div>Duration</div>
+                        <div>Result</div>
+                        <div>Status</div>
+                    </div>
+                    <div id="historyBody">
+                        <div class="tr-empty">
+                            <div class="tr-empty-sub">No test history yet</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ TOAST CONTAINER ═══ -->
+        <div class="tr-toast-container" id="toastContainer"></div>
+
+        <footer>
+            <div>CORTEX TEST RUNNER</div>
+            <div>PYTEST SUITE &middot; <span id="footerTestCount">--</span> TESTS</div>
+            <div>&copy;2026 WIENER LABS</div>
+        </footer>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/ticker.js"></script>
+    <script src="js/tests-app.js"></script>
+</body>
+</html>
