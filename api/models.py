@@ -2004,3 +2004,23 @@ class WebacySanctionsResponse(BaseModel):
 
 class WebacyStatusResponse(BaseModel):
     enabled: bool
+
+
+# ── Launch Risk (Launch Tracker) ─────────────────────────────────
+
+
+class LaunchRiskRequest(BaseModel):
+    token_mint: str = Field(..., description="Solana token mint address")
+    holder_concentration_pct: float | None = Field(None, description="Top-10 holder concentration (0-100)")
+
+
+class LaunchRiskResponse(BaseModel):
+    score: int = Field(..., ge=0, le=100)
+    cex_funded: bool
+    bundle_detected: bool
+    deployer_age_days: float
+    top10_concentration_pct: float
+    deploy_to_first_trade_sec: float
+    details: dict
+    risk_factors: list[str]
+    timestamp: datetime

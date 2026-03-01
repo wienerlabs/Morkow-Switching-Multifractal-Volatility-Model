@@ -77,6 +77,9 @@ from cortex.config import (
     WEBACY_ENABLED,
     WEBACY_API_KEY,
     WEBACY_HARD_VETO_SCORE,
+    # Phase 14: Launch Tracker
+    LAUNCH_TRACKER_ENABLED,
+    LAUNCH_TRACKER_VETO_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
@@ -404,6 +407,23 @@ def _score_webacy(safety_data: dict) -> dict:
     }
 
 
+def _score_launch_tracker(launch_data: dict) -> dict:
+    """Convert LaunchRiskResult dict into a 0-100 risk score for Guardian composite."""
+    score = min(100.0, max(0.0, float(launch_data.get("score", 0))))
+    return {
+        "component": "launch_tracker",
+        "score": round(score, 2),
+        "details": {
+            "cex_funded": launch_data.get("cex_funded", False),
+            "bundle_detected": launch_data.get("bundle_detected", False),
+            "deployer_age_days": round(launch_data.get("deployer_age_days", 0.0), 2),
+            "top10_concentration_pct": round(launch_data.get("top10_concentration_pct", 0.0), 2),
+            "deploy_to_first_trade_sec": round(launch_data.get("deploy_to_first_trade_sec", 0.0), 2),
+            "risk_factors": launch_data.get("risk_factors", []),
+        },
+    }
+
+
 def record_trade_outcome(
     pnl: float,
     size: float,
@@ -527,6 +547,7 @@ def assess_trade(
     strategy: str | None = None,
     run_debate: bool = False,
     agent_confidence: float | None = None,
+    launch_data: dict | None = None,
 ) -> dict:
     """Run all risk components and return composite Guardian assessment."""
     cache_key = f"{token}:{direction}"
@@ -655,6 +676,17 @@ def assess_trade(
         webacy_score = _score_webacy(webacy_safety)
         scores.append(webacy_score)
         available_weights += WEIGHTS.get("webacy", 0.10)
+
+    # ── Phase 14: Launch Tracker component ──
+    if LAUNCH_TRACKER_ENABLED and launch_data is not None:
+        lt_score = _score_launch_tracker(launch_data)
+        scores.append(lt_score)
+        available_weights += WEIGHTS.get("launch_tracker", 0.0)
+        if lt_score["score"] >= LAUNCH_TRACKER_VETO_THRESHOLD:
+            cex_funded = launch_data.get("cex_funded", False)
+            bundle_detected = launch_data.get("bundle_detected", False)
+            if cex_funded and bundle_detected:
+                veto_reasons.append("launch_tracker_suspicious_launch")
 
     # ── Task 3: Use adaptive weights if enabled ──
     active_weights = WEIGHTS

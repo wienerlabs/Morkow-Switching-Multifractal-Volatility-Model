@@ -7,6 +7,8 @@ from fastapi import APIRouter, Query
 
 from api.models import (
     DexSpreadItem,
+    LaunchRiskRequest,
+    LaunchRiskResponse,
     OnchainDepthRequest,
     OnchainDepthResponse,
     OnchainLVaRRequest,
@@ -111,6 +113,27 @@ def estimate_onchain_lvar(req: OnchainLVaRRequest):
         confidence=req.confidence,
         holding_period=req.holding_period,
         position_value=req.position_value,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+@router.post("/lvar/launch-risk", response_model=LaunchRiskResponse)
+def get_launch_risk(req: LaunchRiskRequest):
+    from cortex.data.launch_tracker import compute_launch_risk
+
+    result = compute_launch_risk(
+        token_mint=req.token_mint,
+        holder_concentration_pct=req.holder_concentration_pct,
+    )
+    return LaunchRiskResponse(
+        score=result.score,
+        cex_funded=result.cex_funded,
+        bundle_detected=result.bundle_detected,
+        deployer_age_days=result.deployer_age_days,
+        top10_concentration_pct=result.top10_concentration_pct,
+        deploy_to_first_trade_sec=result.deploy_to_first_trade_sec,
+        details=result.details,
+        risk_factors=result.risk_factors,
         timestamp=datetime.now(timezone.utc),
     )
 
